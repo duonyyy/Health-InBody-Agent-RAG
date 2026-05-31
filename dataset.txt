@@ -1,0 +1,7 @@
+USDA FoodData Central
+Vietnamese Food Recipes
+ViFoodComposition
+FoodInfo
+FoodRecordFinal
+Ratings Dataset (ratings.csv): Một tập dữ liệu ghi lại các tương tác và đánh giá của người dùng đối với các món ăn, được sử dụng để huấn luyện mô hình Lọc cộng tác (Collaborative Filtering) nhằm cá nhân hóa các đề xuất
+https://liendoancutathehinhhcm.storage.googleapis.com/documents/tai-lieu-khoa-dao-tao-nguoi-huong-dan-tap-luyen-mon-the-hinh-va-fitness.pdf

@@ -1,0 +1,86 @@
+# Python cache/build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+!.env.template
+!.env.*.template
+!*.env.example
+!*.env.template
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+secrets/
+credentials/
+
+# Logs and runtime files
+*.log
+logs/
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+
+# Docker/runtime volumes
+postgres_data/
+qdrant_volume/
+valkey_data/
+worker_volume/
+
+# Embedding model weights and generated serving assets
+embed_serving/models/
+embed_serving/logs/
+
+# Large/raw/generated datasets
+dataset/
+data_pipeline/dataset/raw/**
+!data_pipeline/dataset/raw/README.md
+data_pipeline/dataset/processed/**
+!data_pipeline/dataset/processed/README.md
+data_pipeline/dataset/rag_documents/**
+!data_pipeline/dataset/rag_documents/README.md
+data_pipeline/logs/
+
+# Keep small documentation/config placeholders tracked
+!data_pipeline/dataset/README.md
+!data_pipeline/configs/README.md
+!data_pipeline/utils/README.md
+
+# Node/frontend dependencies if added later
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+

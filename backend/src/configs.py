@@ -1,0 +1,2 @@
+
+DEFAULT_COLLECTION_NAME = "llm"
