@@ -1,8 +1,10 @@
-# FastAPI Concepts Explained
+# Giải Thích FastAPI Backend
 
-File `backend/src/app.py` là entrypoint FastAPI của Health/InBody Multi-Agent RAG MVP. File này định nghĩa request schema, endpoint chat, agent capability, search, indexing, summarization và health tools.
+File `backend/src/app.py` là entrypoint FastAPI của dự án Health/InBody Agent RAG. File này định nghĩa các request schema bằng Pydantic, các endpoint chat, search, indexing, summarization và health tools.
 
-## 1. App metadata
+## 1. FastAPI App
+
+Ứng dụng được tạo với metadata:
 
 ```python
 app = FastAPI(
@@ -11,84 +13,167 @@ app = FastAPI(
 )
 ```
 
-Tên app vẫn giữ `Agent RAG Backend` để tương thích tài liệu cũ, nhưng flow chat chính hiện là Multi-Agent RAG MVP.
+Khi chạy local hoặc Docker, API mặc định ở:
 
-## 2. Chat request
-
-`CompleteRequest` dùng cho `/chat/complete`:
-
-```python
-class CompleteRequest(BaseModel):
-    bot_id: Optional[str] = "health-inbody-agent"
-    user_id: str
-    user_message: str
-    history: Optional[List[Dict[str, str]]] = None
-    sync_request: Optional[bool] = True
+```text
+http://localhost:8000
 ```
 
-## 3. Chat response mới
+Swagger UI:
 
-`POST /chat/complete` với `sync_request=true` gọi:
-
-```python
-multi_agent_handle(data.user_message, history=data.history)
+```text
+http://localhost:8000/docs
 ```
 
-Response:
+## 2. Pydantic Request Models
+
+FastAPI dùng Pydantic để validate JSON request.
+
+### `CompleteRequest`
+
+Dùng cho `/chat/complete`:
 
 ```json
 {
-  "response": {
-    "role": "assistant",
-    "content": "...",
-    "agent_trace": [
-      {
-        "agent": "SupervisorAgent",
-        "action": "select_agents",
-        "status": "success",
-        "summary": "Selected agents: InBodyAgent, RAGAgent"
-      }
-    ],
-    "selected_agents": [],
-    "tool_results": [],
-    "retrieved_docs": [],
-    "safety_result": {},
-    "errors": []
-  }
+  "bot_id": "health-inbody-agent",
+  "user_id": "demo-user",
+  "user_message": "BMI và PBF khác nhau thế nào?",
+  "history": [],
+  "sync_request": true
 }
 ```
 
-## 4. Endpoint chính
+Các field bắt buộc:
 
-| Method | Path | Mô tả |
+- `user_id`
+- `user_message`
+
+### `SearchRequest`
+
+Dùng cho `/search`:
+
+```json
+{
+  "query": "mỡ nội tạng cao nên làm gì",
+  "limit": 5,
+  "use_rerank": true
+}
+```
+
+`limit` được giới hạn từ 1 đến 20.
+
+### `DocumentCreateRequest`
+
+Dùng cho `/document/create` để index một document.
+
+### `DocumentsIndexRequest`
+
+Dùng cho `/documents/index` và `/data/import` để index nhiều documents.
+
+### Health Tool Requests
+
+- `BmiRequest`: `weight_kg`, `height_cm`
+- `PbfRequest`: `pbf_percent`, `sex`
+- `VisceralFatRequest`: `visceral_fat_level`
+- `NutritionRequest`: `goal`, `weight_kg`, `activity_level`
+- `TrainingRequest`: `goal`, `fitness_level`, `days_per_week`
+- `SafetyRequest`: `question`, `conditions`
+
+## 3. Nhóm Endpoint
+
+### System
+
+| Method | Path | Chức năng |
 | --- | --- | --- |
-| `GET` | `/health` | Health check và multi-agent summary |
+| `GET` | `/` | Thông tin service |
+| `GET` | `/health` | Kiểm tra cache, search, agent tools |
+
+### Chat
+
+| Method | Path | Chức năng |
+| --- | --- | --- |
 | `POST` | `/chat/complete` | Chat endpoint chính |
 | `GET` | `/chat/complete/{task_id}` | Poll kết quả Celery async |
-| `POST` | `/agent/answer` | Gọi multi-agent trực tiếp |
-| `GET` | `/agent/tools` | Liệt kê agent capabilities và trace schema |
-| `POST` | `/search` | Hybrid search trên corpus |
-| `POST` | `/tools/bmi` | Debug endpoint tính BMI |
-| `POST` | `/tools/pbf` | Debug endpoint đánh giá PBF |
-| `POST` | `/tools/visceral-fat` | Debug endpoint đánh giá mỡ nội tạng |
-| `POST` | `/tools/nutrition` | Debug endpoint dinh dưỡng |
-| `POST` | `/tools/training` | Debug endpoint lịch tập |
-| `POST` | `/tools/safety` | Debug endpoint safety |
+| `POST` | `/agent/answer` | Gọi agent trả lời trực tiếp |
+| `GET` | `/agent/tools` | Xem danh sách tools |
 
-## 5. Ví dụ request
+### Retrieval và Indexing
+
+| Method | Path | Chức năng |
+| --- | --- | --- |
+| `POST` | `/search` | Hybrid search |
+| `POST` | `/collection/create` | Tạo Qdrant collection |
+| `POST` | `/document/create` | Index một document |
+| `POST` | `/documents/index` | Index nhiều documents |
+| `POST` | `/data/import` | Alias import documents |
+
+### Health Tools
+
+| Method | Path | Chức năng |
+| --- | --- | --- |
+| `POST` | `/tools/bmi` | Tính BMI |
+| `POST` | `/tools/pbf` | Đánh giá PBF |
+| `POST` | `/tools/visceral-fat` | Đánh giá mỡ nội tạng |
+| `POST` | `/tools/nutrition` | Gợi ý dinh dưỡng |
+| `POST` | `/tools/training` | Gợi ý lịch tập |
+| `POST` | `/tools/safety` | Kiểm tra cảnh báo y tế |
+
+## 4. Ví Dụ Gọi API
+
+### Chat
 
 ```bash
 curl -X POST http://localhost:8000/chat/complete \
   -H "Content-Type: application/json" \
   -d '{
     "user_id": "demo-user",
-    "user_message": "Tôi nam, 72kg, cao 170cm, PBF 28%, mỡ nội tạng level 12. Tôi nên giảm mỡ hay tăng cơ trước và tập thế nào 3 buổi/tuần?",
+    "user_message": "PBF cao thì nên tập gì?",
     "sync_request": true
   }'
 ```
 
-## 6. Lưu ý
+### Search
 
-- Người dùng cuối nên đi qua `/chat/complete`, không cần gọi `/tools/...` trực tiếp.
-- `/tools/...` được giữ để dev/debug và test từng tool.
-- Backend hiện chưa có endpoint upload/parse ảnh hoặc PDF InBody.
+```bash
+curl -X POST http://localhost:8000/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "BMI trong báo cáo InBody nên đọc như thế nào?",
+    "limit": 5,
+    "use_rerank": true
+  }'
+```
+
+### BMI Tool
+
+```bash
+curl -X POST http://localhost:8000/tools/bmi \
+  -H "Content-Type: application/json" \
+  -d '{"weight_kg": 70, "height_cm": 170}'
+```
+
+## 5. Cách FastAPI Xử Lý Lỗi
+
+- Request thiếu field hoặc sai kiểu dữ liệu: FastAPI trả `422`.
+- `user_id` hoặc `user_message` rỗng ở `/chat/complete`: backend trả `400`.
+- Lỗi trong chat/index/search: backend log lỗi và trả `500`.
+- Celery không khả dụng khi gọi async: backend trả `503`.
+
+## 6. Chạy Service
+
+Chạy bằng Docker:
+
+```bash
+cd backend
+docker compose up --build
+```
+
+Chạy local:
+
+```bash
+cd backend
+pip install -r requirements.txt
+cd src
+uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+```
+

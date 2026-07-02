@@ -1,12 +1,10 @@
-# Health/InBody Multi-Agent RAG MVP
+# Health Chatbot Agent RAG
 
 ## I. Tổng Quan
 
-Dự án xây dựng hệ thống chatbot hỏi đáp sức khỏe ứng dụng Multi-Agent RAG, tập trung vào giải thích chỉ số InBody và tư vấn tham khảo về dinh dưỡng, tập luyện. Người dùng đặt câu hỏi bằng tiếng Việt, nhập các chỉ số như cân nặng, chiều cao, PBF, mỡ nội tạng bằng văn bản, và nhận câu trả lời từ một flow nhiều agent chuyên trách.
+Dự án xây dựng hệ thống chatbot hỏi đáp sức khỏe ứng dụng Agent RAG, tập trung vào phân tích báo cáo InBody và tư vấn cải thiện sức khỏe cá nhân hóa. Người dùng có thể tải lên ảnh hoặc PDF kết quả InBody, đặt câu hỏi bằng tiếng Việt, và nhận câu trả lời dựa trên dữ liệu đã trích xuất, lịch sử đo, cùng kho tri thức y khoa - dinh dưỡng được kiểm soát.
 
-MVP hiện tại kết hợp FastAPI, LangGraph, health tools, hybrid retrieval, LLM và safety guardrail để tạo câu trả lời có ngữ cảnh. Mục tiêu không phải thay thế bác sĩ, mà hỗ trợ người dùng hiểu các chỉ số cơ thể và nhận khuyến nghị tham khảo an toàn.
-
-> Lưu ý phạm vi hiện tại: backend chưa có endpoint upload/parse ảnh hoặc PDF báo cáo InBody. OCR và lưu lịch sử đo là hạng mục roadmap, chưa phải tính năng MVP đang chạy.
+Hệ thống kết hợp các kỹ thuật OCR, phân tích bố cục tài liệu, truy xuất tri thức bằng vector database, mô hình ngôn ngữ lớn và agent tool-calling để tạo ra câu trả lời có ngữ cảnh. Mục tiêu không phải thay thế bác sĩ, mà hỗ trợ người dùng hiểu các chỉ số cơ thể, theo dõi tiến bộ và nhận khuyến nghị tham khảo về dinh dưỡng, luyện tập trong 1-2 Tuan.
 
 ## II. Bài Toán
 
@@ -14,7 +12,7 @@ Kết quả đo InBody thường được cung cấp dưới dạng ảnh hoặc
 
 Dự án giải quyết các nhu cầu chính:
 
-- Nhận câu hỏi tự nhiên và chỉ số InBody do người dùng nhập bằng văn bản.
+- Đọc ảnh/PDF báo cáo InBody và trích xuất chỉ số quan trọng.
 - Chuẩn hóa dữ liệu thành hồ sơ sức khỏe có cấu trúc.
 - Cho phép người dùng hỏi đáp tự nhiên bằng tiếng Việt.
 - Truy xuất kiến thức liên quan từ kho tài liệu sức khỏe, dinh dưỡng, luyện tập.
@@ -23,9 +21,9 @@ Dự án giải quyết các nhu cầu chính:
 
 ## III. Mục Tiêu Dự Án
 
-- Xây dựng Multi-Agent RAG MVP có khả năng tự chọn agent/tool phù hợp khi người dùng hỏi về chỉ số InBody, dinh dưỡng, tập luyện hoặc an toàn y tế.
+- Xây dựng hệ thống AI có khả năng đọc thông tin từ ảnh hoặc PDF báo cáo InBody với độ chính xác mục tiêu trên 85%.
 - Sử dụng LLM để đọc dữ liệu InBody đã được cấu trúc hóa, đánh giá tình trạng cơ thể như thừa cân, thiếu cơ, mỡ cơ thể cao hoặc rủi ro liên quan đến mỡ nội tạng.
-- Xây dựng chatbot hỏi đáp sức khỏe sử dụng Multi-Agent RAG, trả lời dựa trên tài liệu, tool results và safety guardrail.
+- Xây dựng chatbot hỏi đáp sức khỏe sử dụng Agent RAG, trả lời dựa trên tài liệu và dữ liệu cá nhân của người dùng.
 - Đưa ra nhận xét, lịch tập luyện và chế độ ăn uống tham khảo cho 3-6 tháng dựa trên mục tiêu của người dùng.
 - Hỗ trợ tiếng Việt, dễ sử dụng qua web hoặc ứng dụng di động.
 - Tích hợp lịch sử đo InBody để theo dõi tiến bộ và cá nhân hóa phản hồi.
@@ -35,14 +33,14 @@ Dự án giải quyết các nhu cầu chính:
 
 ### Input
 
-- Câu hỏi tiếng Việt và chỉ số InBody nhập dạng văn bản trong chat.
+- Ảnh hoặc PDF báo cáo InBody.
 - Câu hỏi sức khỏe của người dùng bằng tiếng Việt.
 - Thông tin bổ sung tùy chọn: tuổi, giới tính, chiều cao, cân nặng, mục tiêu, mức độ vận động, bệnh nền hoặc hạn chế luyện tập.
 - Lịch sử đo InBody theo thời gian.
 
 ### Output
 
-- Câu trả lời phân tích dạng văn bản trong chat.
+- Báo cáo phân tích dạng văn bản/PDF.
 - Tóm tắt tình trạng, ví dụ: `BMI 25.5 - thừa cân nhẹ`.
 - Nhận xét chỉ số, ví dụ: `Mỡ nội tạng cao, nên ưu tiên giảm mỡ để giảm rủi ro sức khỏe`.
 - Chế độ ăn uống tham khảo theo mục tiêu, ví dụ: `Giảm khoảng 300-500 kcal/ngày, tăng protein, ưu tiên thực phẩm ít chế biến`.
@@ -52,72 +50,62 @@ Dự án giải quyết các nhu cầu chính:
 - Câu trả lời chatbot có trích dẫn hoặc nguồn tham khảo từ kho tri thức.
 - Cảnh báo an toàn khi câu hỏi liên quan đến bệnh lý, thuốc, triệu chứng nguy hiểm hoặc tình huống cần gặp bác sĩ.
 
-## V. Kiến Trúc Multi-Agent RAG MVP
+## V. Kiến Trúc Agent RAG
 
 ```mermaid
 flowchart LR
     A[Người dùng] --> B[Frontend Chat UI]
     B --> C[Backend FastAPI]
-    C --> D[LangGraph Multi-Agent State]
-    D --> E[QuestionNormalizerAgent]
-    E --> F[SupervisorAgent]
-    F --> G[InBodyAgent]
-    F --> H[RAGAgent]
-    F --> I[NutritionAgent]
-    F --> J[TrainingAgent]
-    F --> K[WebSearchAgent]
-    G --> L[Health Tools]
-    I --> L
-    J --> L
-    H --> M[Hybrid Search: BM25 + Qdrant]
-    M --> N[Reranker]
-    K --> O[Tavily Web Search]
-    L --> P[SafetyAgent]
-    N --> P
-    O --> P
-    P --> Q[ResponseComposerAgent]
-    Q --> R[Final Answer + agent_trace]
-    R --> B
+    C --> D[Health Agent]
+    D --> E[OCR & Document Parser]
+    D --> F[Query Rewriter]
+    D --> G[Hybrid Retriever]
+    G --> H[Vector Database]
+    G --> I[BM25 Search]
+    H --> J[Reranker]
+    I --> J
+    J --> K[LLM Generator]
+    D --> L[Context Tools]
+    L --> M[Structured InBody Data]
+    L --> N[Progress Tracker]
+    L --> O[Safety Guardrail]
+    K --> P[Final Answer]
+    P --> B
 ```
 
 ### Các thành phần chính
 
-- **Frontend Chat UI:** giao diện trò chuyện, hiển thị câu trả lời và `agent_trace`.
-- **Backend FastAPI:** cung cấp API chat, search, health tools, indexing và health check.
-- **QuestionNormalizerAgent:** viết lại câu hỏi follow-up thành câu hỏi độc lập khi cần.
-- **SupervisorAgent:** chọn một hoặc nhiều agent chuyên trách cho cùng một câu hỏi.
-- **InBodyAgent:** tính BMI, đánh giá PBF và mỡ nội tạng từ chỉ số người dùng nhập.
-- **NutritionAgent:** gợi ý protein và chiến lược năng lượng theo mục tiêu.
-- **TrainingAgent:** gợi ý lịch tập cơ bản theo mục tiêu và số buổi/tuần.
-- **RAGAgent:** rewrite query, hybrid search, rerank tài liệu sức khỏe/InBody.
-- **SafetyAgent:** luôn chạy để kiểm tra cảnh báo y tế.
-- **ResponseComposerAgent:** tổng hợp kết quả agent/tool/RAG thành câu trả lời cuối.
+- **Frontend Chat UI:** giao diện trò chuyện, upload ảnh/PDF InBody, xem lịch sử và báo cáo.
+- **Backend FastAPI:** cung cấp API chat, API upload, quản lý phiên trò chuyện và người dùng.
+- **Health Agent:** điều phối các công cụ như OCR, truy xuất tài liệu, lấy dữ liệu InBody đã cấu trúc, kiểm tra an toàn và gọi LLM sinh câu trả lời.
+- **OCR & Document Parser:** dùng PaddleOCR, OpenCV và Document Layout Analysis để đọc báo cáo InBody.
 - **Hybrid Retriever:** kết hợp vector search và BM25 để tìm tài liệu liên quan.
 - **Reranker:** xếp hạng lại tài liệu truy xuất để tăng độ chính xác ngữ cảnh.
 - **LLM Generator:** đánh giá dữ liệu InBody, tạo bản tóm tắt và sinh câu trả lời tiếng Việt dựa trên context RAG, hồ sơ người dùng và chính sách an toàn.
+- **Context Tools:** cung cấp dữ liệu InBody đã trích xuất, lịch sử tiến bộ, tài liệu liên quan và cảnh báo y tế cho LLM.
 - **Database:** lưu người dùng, lịch sử chat, lịch sử đo InBody và metadata tài liệu.
 - **Vector Database:** lưu embedding của tài liệu sức khỏe, dinh dưỡng, luyện tập và mô tả chỉ số InBody.
 
 ## VI. Luồng Hoạt Động
 
-### 1. Luồng Multi-Agent Chat MVP
-
-1. Người dùng hỏi tự nhiên, ví dụ: `Tôi nam, 72kg, cao 170cm, PBF 28%, mỡ nội tạng level 12. Tôi nên giảm mỡ hay tăng cơ trước và tập thế nào 3 buổi/tuần?`
-2. QuestionNormalizerAgent chuẩn hóa câu hỏi nếu có lịch sử hội thoại.
-3. SupervisorAgent chọn nhiều agent cùng lúc: InBodyAgent, NutritionAgent, TrainingAgent, RAGAgent.
-4. Các agent chuyên trách ghi kết quả vào shared state.
-5. SafetyAgent kiểm tra rủi ro y tế.
-6. ResponseComposerAgent tổng hợp thành câu trả lời cuối.
-7. API trả về `response.content` và `response.agent_trace` để frontend hiển thị flow.
-
-### 2. Luồng xử lý báo cáo InBody dự kiến
+### 1. Luồng xử lý báo cáo InBody
 
 1. Người dùng tải lên ảnh hoặc PDF báo cáo InBody.
 2. Hệ thống tiền xử lý ảnh: xoay, khử nhiễu, tăng tương phản, cắt vùng quan trọng.
 3. OCR trích xuất văn bản, bảng số và nhãn chỉ số.
 4. Document parser chuẩn hóa dữ liệu thành schema: BMI, SMM, BFM, PBF, visceral fat, weight, muscle-fat analysis.
 5. Dữ liệu đã cấu trúc được lưu vào database để dùng cho hỏi đáp và theo dõi tiến bộ.
-6. Luồng này chưa được expose qua backend API trong MVP hiện tại.
+6. Khi người dùng yêu cầu phân tích, LLM sử dụng dữ liệu InBody, lịch sử đo, context RAG và guardrail y tế để tạo nhận xét, đánh giá và bản tóm tắt.
+
+### 2. Luồng hỏi đáp Agent RAG
+
+1. Người dùng đặt câu hỏi, ví dụ: `Tôi nên giảm mỡ hay tăng cơ trước?`
+2. Query Rewriter viết lại câu hỏi để phù hợp truy xuất tài liệu.
+3. Retriever tìm kiến thức liên quan từ kho tài liệu sức khỏe, dinh dưỡng và luyện tập.
+4. Agent lấy dữ liệu InBody đã cấu trúc, lịch sử đo và dữ liệu cá nhân cần thiết.
+5. Safety Guardrail kiểm tra câu hỏi có rủi ro y tế hay không.
+6. LLM tạo câu trả lời có ngữ cảnh, dễ hiểu, có khuyến nghị hành động và cảnh báo phù hợp.
+7. Hệ thống lưu lịch sử chat và phản hồi.
 
 ## VII. Công Nghệ Sử Dụng
 
@@ -136,8 +124,7 @@ flowchart LR
 - **BM25:** tìm kiếm keyword truyền thống.
 - **Reranker:** xếp hạng lại kết quả truy xuất.
 - **Query Rewriter:** tối ưu câu hỏi trước khi retrieval.
-- **LangGraph Multi-Agent orchestration:** điều phối state, supervisor, specialist agents và trace.
-- **Agent trace:** ghi lại agent/action/status/summary để phục vụ debug và demo.
+- **Agent tool-calling:** điều phối OCR, lấy dữ liệu InBody đã cấu trúc, truy xuất tri thức và guardrail.
 
 ### OCR và xử lý tài liệu
 
@@ -163,8 +150,7 @@ LLL RAG/
 ├── backend/
 │   ├── src/
 │   │   ├── app.py                  # FastAPI application
-│   │   ├── agent.py                # Backward-compatible wrapper
-│   │   ├── agents/                 # LangGraph Multi-Agent RAG MVP
+│   │   ├── agent.py                # Health Agent orchestration
 │   │   ├── brain.py                # LLM chat logic
 │   │   ├── models.py               # Pydantic schemas
 │   │   ├── query_rewriter.py       # Query rewriting
@@ -172,9 +158,10 @@ LLL RAG/
 │   │   ├── vectorize.py            # Vector database operations
 │   │   ├── splitter.py             # Document chunking
 │   │   ├── summarizer.py           # Summarization
-│   │   ├── health_tools.py         # BMI/PBF/visceral fat/nutrition/training/safety
-│   │   ├── search.py               # Hybrid search
-│   │   └── tasks.py                # Celery tasks and indexing
+│   │   ├── inbody_parser.py        # OCR result parser and data normalizer
+│   │   ├── context_tools.py        # Retrieve structured InBody data for LLM
+│   │   ├── safety_guardrail.py     # Medical safety checks
+│   │   └── progress_tracker.py     # User progress analysis
 │   ├── data/
 │   ├── requirements.txt
 │   └── docker-compose.yml

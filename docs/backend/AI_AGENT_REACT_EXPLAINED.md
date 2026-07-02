@@ -1,97 +1,96 @@
-# Multi-Agent RAG MVP Explained
+# Giải Thích Health/InBody Agent
 
-Tài liệu này mô tả phần agent backend hiện tại của dự án Health/InBody Multi-Agent RAG MVP. Backend không còn là một router đơn chọn đúng một route, mà dùng một graph nhiều agent để xử lý câu hỏi phức hợp.
+Tài liệu này mô tả phần agent trong backend hiện tại của dự án Health/InBody Agent RAG. Vai trò chính của agent là điều phối giữa hỏi đáp RAG, health tools, web search và hội thoại thông thường.
 
-## 1. File chính
+## 1. File Liên Quan
 
-- `backend/src/agents/graph.py`: LangGraph Multi-Agent RAG MVP, entrypoint `multi_agent_handle`.
-- `backend/src/agents/state.py`: shared state và trace helpers.
-- `backend/src/agents/parsing.py`: helper trích xuất cân nặng, chiều cao, PBF, mỡ nội tạng, mục tiêu.
-- `backend/src/app.py`: FastAPI endpoint gọi multi-agent handler.
-- `backend/src/agent.py`: wrapper tương thích ngược cho code cũ.
+- `backend/src/agent.py`: hàm agent trả lời trực tiếp và tóm tắt danh sách công cụ.
+- `backend/src/tasks.py`: route câu hỏi, gọi RAG, gọi health tools hoặc web search.
+- `backend/src/brain.py`: phát hiện intent, phát hiện route, build prompt trả lời.
+- `backend/src/health_tools.py`: các công cụ tính toán sức khỏe.
+- `backend/src/tavily_tool.py`: tìm kiếm web cho câu hỏi cần dữ liệu mới.
 
-## 2. Agent trong MVP
+## 2. Các Route Chính
 
-| Agent | Vai trò |
-| --- | --- |
-| `QuestionNormalizerAgent` | Viết lại follow-up question thành câu hỏi độc lập |
-| `SupervisorAgent` | Chọn một hoặc nhiều agent chuyên trách |
-| `InBodyAgent` | Tính BMI, đánh giá PBF và mỡ nội tạng |
-| `RAGAgent` | Rewrite query, hybrid search, rerank tài liệu |
-| `NutritionAgent` | Gợi ý protein và calorie strategy |
-| `TrainingAgent` | Gợi ý lịch tập cơ bản |
-| `WebSearchAgent` | Tìm thông tin mới khi câu hỏi cần tính thời sự |
-| `SafetyAgent` | Luôn chạy guardrail y tế |
-| `ResponseComposerAgent` | Tổng hợp câu trả lời cuối |
+Backend phân loại câu hỏi vào 4 route:
 
-## 3. Shared State
+| Route | Khi dùng | Xử lý |
+| --- | --- | --- |
+| `health_rag` | Hỏi kiến thức InBody, BMI, PBF, SMM, BFM, dinh dưỡng, tập luyện | Rewrite query, hybrid search, rerank, LLM trả lời |
+| `agent_tools` | Cần tính toán hoặc đánh giá chỉ số cụ thể | Gọi tool BMI, PBF, mỡ nội tạng, protein, lịch tập, safety |
+| `web_search` | Cần thông tin mới, nghiên cứu/tin tức gần đây | Gọi Tavily rồi LLM tổng hợp |
+| `general_chat` | Chào hỏi, cảm ơn, câu hỏi ngoài phạm vi | Trả lời hội thoại an toàn |
 
-Các agent cùng đọc/ghi vào state:
+## 3. Health Tools
 
-```python
-{
-    "question": "...",
-    "history": [],
-    "standalone_question": "...",
-    "selected_agents": [],
-    "tool_results": [],
-    "retrieved_docs": [],
-    "safety_result": {},
-    "agent_trace": [],
-    "final_answer": ""
-}
-```
+Các tool hiện có:
 
-## 4. Luồng xử lý
+- `calculate_bmi(weight_kg, height_cm)`: tính BMI và phân loại cơ bản.
+- `evaluate_body_fat_percentage(pbf_percent, sex)`: đánh giá phần trăm mỡ cơ thể.
+- `evaluate_visceral_fat(visceral_fat_level)`: đánh giá mỡ nội tạng.
+- `suggest_nutrition_goal(goal, weight_kg, activity_level)`: gợi ý dinh dưỡng tham khảo.
+- `suggest_training_plan(goal, fitness_level, days_per_week)`: gợi ý lịch tập.
+- `check_medical_safety(question, conditions)`: phát hiện tình huống cần khuyến nghị gặp bác sĩ.
 
-```text
-normalize_question
-  -> supervisor
-  -> inbody_agent
-  -> nutrition_agent
-  -> training_agent
-  -> rag_agent
-  -> web_search_agent
-  -> general_chat_agent
-  -> safety_agent
-  -> response_composer
-```
+Các tool này phục vụ tư vấn tham khảo, không thay thế chuyên gia y tế.
 
-Các node domain agent chỉ thực sự xử lý khi tên agent có trong `selected_agents`. Cách này giữ graph đơn giản nhưng vẫn cho phép một câu hỏi gọi nhiều agent.
+## 4. Luồng `ai_agent_handle`
 
-## 5. Agent Trace
+Luồng xử lý đơn giản:
 
-Mỗi bước ghi trace dạng:
+1. Nhận câu hỏi và lịch sử hội thoại.
+2. Chuẩn hóa hoặc viết lại câu hỏi follow-up nếu cần.
+3. Phân loại route.
+4. Nếu là câu hỏi tính toán, gọi health tools.
+5. Nếu là câu hỏi kiến thức, gọi RAG pipeline.
+6. Nếu cần dữ liệu mới, gọi web search.
+7. Trả về câu trả lời tiếng Việt có cảnh báo an toàn phù hợp.
 
-```json
-{
-  "agent": "InBodyAgent",
-  "action": "evaluate_inbody_metrics",
-  "status": "success",
-  "summary": "Evaluated BMI, PBF, visceral fat."
-}
-```
+## 5. Ví Dụ
 
-Frontend hiển thị trace trong expander `Agent trace` để demo và debug.
-
-## 6. Ví dụ demo
-
-Input:
+### Câu hỏi dùng RAG
 
 ```text
-Tôi nam, 72kg, cao 170cm, PBF 28%, mỡ nội tạng level 12. Tôi nên giảm mỡ hay tăng cơ trước và tập thế nào 3 buổi/tuần?
+PBF cao có nguy hiểm không?
 ```
 
-Expected selected agents:
+Luồng:
 
 ```text
-InBodyAgent, NutritionAgent, TrainingAgent, RAGAgent
+detect_route -> health_rag
+rewrite_query -> hybrid_search -> rerank -> generate_health_answer
 ```
 
-SafetyAgent và ResponseComposerAgent luôn chạy sau đó.
+### Câu hỏi dùng tool
 
-## 7. Giới hạn MVP
+```text
+Tôi nặng 70kg cao 170cm thì BMI bao nhiêu?
+```
 
-- Chưa có upload/parse ảnh hoặc PDF InBody.
-- Supervisor MVP dùng keyword + route fallback để ổn định demo, chưa phải planner phức tạp.
-- Các endpoint `/tools/...` vẫn tồn tại để dev/debug, nhưng flow người dùng chính là `/chat/complete`.
+Luồng:
+
+```text
+detect_route -> agent_tools -> calculate_bmi
+```
+
+### Câu hỏi cần web search
+
+```text
+Có nghiên cứu mới nhất nào về mỡ nội tạng không?
+```
+
+Luồng:
+
+```text
+detect_route -> web_search -> tavily_search_health -> LLM summary
+```
+
+## 6. Guardrail Y Tế
+
+Agent cần tuân thủ các nguyên tắc:
+
+- Không chẩn đoán bệnh.
+- Không kê đơn thuốc hoặc liều thuốc.
+- Không thay thế bác sĩ, chuyên gia dinh dưỡng hoặc huấn luyện viên.
+- Khi có dấu hiệu nguy hiểm như đau ngực, khó thở, ngất, triệu chứng bất thường, bệnh nền phức tạp hoặc đang dùng thuốc, cần khuyên người dùng gặp chuyên gia y tế.
+- Khi thiếu dữ liệu cá nhân, trả lời ở mức tham khảo và nói rõ giới hạn.

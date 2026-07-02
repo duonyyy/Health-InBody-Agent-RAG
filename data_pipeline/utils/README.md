@@ -39,9 +39,7 @@ Output:
 - `data_pipeline/dataset/processed/foods_normalized.csv`
 - `data_pipeline/dataset/processed/ratings_normalized.csv`
 
-Dataset embedding se bo qua `ratings` va cac PDF placeholder chua extract text, sau do them mot so tai lieu noi bo ve InBody, dinh duong, tap luyen va an toan y te. Ratings duoc tach rieng cho Collaborative Filtering, khong dua vao vector database.
-
-Neu `pypdf` da duoc cai, `build_embedding_dataset.py` se extract text tu PDF vao `dataset/processed/extracted_text/` truoc khi merge sources.
+Dataset embedding se bo qua `ratings` va PDF placeholder, sau do them mot so tai lieu noi bo ve InBody, dinh duong, tap luyen va an toan y te. Ratings duoc tach rieng cho Collaborative Filtering, khong dua vao vector database.
 
 ## Index MVP Dataset Vao Backend/Qdrant
 

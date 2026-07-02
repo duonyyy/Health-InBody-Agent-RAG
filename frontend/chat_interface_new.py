@@ -227,39 +227,27 @@ def build_history() -> List[Dict[str, str]]:
     return history
 
 
-def extract_chat_response(data: Dict[str, Any]) -> Dict[str, Any]:
+def extract_chat_content(data: Dict[str, Any]) -> str:
     if "response" in data:
         response = data["response"]
         if isinstance(response, dict):
-            return {
-                "content": str(response.get("content") or response.get("answer") or ""),
-                "agent_trace": response.get("agent_trace") or [],
-                "selected_agents": response.get("selected_agents") or [],
-            }
-        return {"content": str(response), "agent_trace": [], "selected_agents": []}
+            return str(response.get("content") or response.get("answer") or "")
+        return str(response)
 
     if "answer" in data:
-        return {
-            "content": str(data["answer"]),
-            "agent_trace": data.get("agent_trace") or [],
-            "selected_agents": data.get("selected_agents") or [],
-        }
+        return str(data["answer"])
 
     task_result = data.get("task_result")
     if isinstance(task_result, dict):
-        return {
-            "content": str(task_result.get("content") or ""),
-            "agent_trace": task_result.get("agent_trace") or [],
-            "selected_agents": task_result.get("selected_agents") or [],
-        }
+        return str(task_result.get("content") or "")
     if isinstance(task_result, str):
-        return {"content": task_result, "agent_trace": [], "selected_agents": []}
+        return task_result
 
-    return {"content": "", "agent_trace": [], "selected_agents": []}
+    return ""
 
 
 @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=4))
-def send_chat_message(user_message: str, history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
+def send_chat_message(user_message: str, history: Optional[List[Dict[str, str]]] = None) -> str:
     payload = {
         "bot_id": BOT_ID,
         "user_id": st.session_state.user_id,
@@ -268,26 +256,10 @@ def send_chat_message(user_message: str, history: Optional[List[Dict[str, str]]]
         "sync_request": True,
     }
     data = request_json("POST", "/chat/complete", payload, timeout=REQUEST_TIMEOUT)
-    chat_response = extract_chat_response(data)
-    content = str(chat_response.get("content") or "").strip()
+    content = extract_chat_content(data).strip()
     if not content:
         raise requests.RequestException("Backend returned an empty answer")
-    chat_response["content"] = content
-    return chat_response
-
-
-def render_agent_trace(trace: List[Dict[str, Any]]) -> None:
-    if not trace:
-        return
-    with st.expander("Agent trace", expanded=False):
-        for index, item in enumerate(trace, start=1):
-            status = item.get("status", "unknown")
-            agent = item.get("agent", "Agent")
-            action = item.get("action", "")
-            summary = item.get("summary", "")
-            st.markdown(f"**{index}. {agent}** · `{status}` · `{action}`")
-            if summary:
-                st.caption(summary)
+    return content
 
 
 def call_tool(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -343,9 +315,9 @@ def render_sidebar() -> None:
                 st.error(f"Không tải được tools: {exc}")
 
         if st.session_state.last_agent_tools:
-            with st.expander("Agent capabilities", expanded=False):
-                for agent in st.session_state.last_agent_tools.get("agents", []):
-                    st.write(f"{agent.get('name')}: {agent.get('responsibility')}")
+            with st.expander("Agent routes", expanded=False):
+                for route in st.session_state.last_agent_tools.get("routes", []):
+                    st.write(route)
 
         st.divider()
         st.subheader("Phiên chat")
@@ -414,8 +386,6 @@ def render_chat_tab() -> None:
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
-            if message["role"] == "assistant":
-                render_agent_trace(message.get("agent_trace") or [])
             if message.get("timestamp"):
                 st.caption(message["timestamp"])
 
@@ -439,15 +409,11 @@ def render_chat_tab() -> None:
         with st.chat_message("assistant"):
             with st.spinner("Đang hỏi Health Agent..."):
                 try:
-                    chat_response = send_chat_message(prompt, history_before_turn)
-                    answer = chat_response["content"]
+                    answer = send_chat_message(prompt, history_before_turn)
                     st.markdown(answer)
-                    render_agent_trace(chat_response.get("agent_trace") or [])
                     assistant_message = {
                         "role": "assistant",
                         "content": answer,
-                        "agent_trace": chat_response.get("agent_trace") or [],
-                        "selected_agents": chat_response.get("selected_agents") or [],
                         "timestamp": now_label(),
                     }
                     st.caption(assistant_message["timestamp"])

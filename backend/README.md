@@ -1,6 +1,6 @@
 # Backend - Health/InBody Agent RAG
 
-Backend la dich vu FastAPI cho he thong Health/InBody Multi-Agent RAG MVP. Service nay phu trach nhan request chat, cho SupervisorAgent chon cac agent chuyen trach, truy xuat tai lieu tu Qdrant/BM25, goi health tools, chay safety guardrail va dung ResponseComposerAgent de sinh cau tra loi cuoi cung.
+Backend la dich vu FastAPI cho he thong Health/InBody Agent RAG. Service nay phu trach nhan request chat, dieu phoi route cau hoi, truy xuat tai lieu tu Qdrant/BM25, goi LLM sinh cau tra loi, va cung cap cac health tools co ban nhu tinh BMI, danh gia PBF, mo noi tang, dinh duong va lich tap.
 
 > Luu y y te: he thong chi cung cap thong tin tham khao ve suc khoe, InBody, dinh duong va tap luyen. He thong khong chan doan benh, khong ke don thuoc va khong thay the bac si.
 
@@ -10,8 +10,7 @@ Backend la dich vu FastAPI cho he thong Health/InBody Multi-Agent RAG MVP. Servi
 backend/
 ├── src/
 │   ├── app.py               # FastAPI routes
-│   ├── agent.py             # Backward-compatible wrapper cho multi-agent handler
-│   ├── agents/              # LangGraph Multi-Agent RAG MVP
+│   ├── agent.py             # Agent orchestration cho health tools/RAG
 │   ├── brain.py             # LLM provider, prompt, route detection, embedding wrapper
 │   ├── custom_embedding.py  # Client goi embed_serving API
 │   ├── search.py            # Hybrid search: BM25 + vector search + rerank
@@ -31,29 +30,13 @@ backend/
 
 ## 2. Luong Hoat Dong
 
-### Multi-Agent Chat RAG
+### Chat RAG
 
 1. Frontend goi `POST /chat/complete` hoac `POST /agent/answer`.
-2. `QuestionNormalizerAgent` viet lai cau hoi follow-up thanh cau hoi doc lap neu can.
-3. `SupervisorAgent` chon mot hoac nhieu agent chuyen trach: `InBodyAgent`, `RAGAgent`, `NutritionAgent`, `TrainingAgent`, `WebSearchAgent`, `GeneralChatAgent`.
-4. Cac agent duoc chon ghi ket qua vao shared state: tool results, retrieved docs, web context.
-5. `SafetyAgent` luon chay de kiem tra guardrail y te.
-6. `ResponseComposerAgent` tong hop ket qua agent, context RAG va safety note thanh cau tra loi tieng Viet.
-7. Ket qua tra ve frontend gom `response.content` va `response.agent_trace` de demo flow multi-agent.
-
-Vi du cau hoi phuc hop:
-
-```text
-Toi nam, 72kg, cao 170cm, PBF 28%, mo noi tang level 12.
-Toi nen giam mo hay tang co truoc va tap the nao 3 buoi/tuan?
-```
-
-Expected trace:
-
-```text
-QuestionNormalizerAgent -> SupervisorAgent -> InBodyAgent -> NutritionAgent
--> TrainingAgent -> RAGAgent -> SafetyAgent -> ResponseComposerAgent
-```
+2. Backend phan loai route: `health_rag`, `agent_tools`, `web_search`, `general_chat`.
+3. Voi `health_rag`, backend rewrite query, chay hybrid search, rerank documents.
+4. Backend goi LLM provider de sinh cau tra loi tieng Viet co guardrail y te.
+5. Ket qua tra ve frontend.
 
 ### Index Tai Lieu
 
@@ -182,7 +165,7 @@ Ten script con chu `mvp` de tuong thich tai lieu cu, nhung input mac dinh hien t
 | `POST` | `/chat/complete` | Chat endpoint chinh |
 | `GET` | `/chat/complete/{task_id}` | Lay ket qua Celery async |
 | `POST` | `/agent/answer` | Goi agent tra loi truc tiep |
-| `GET` | `/agent/tools` | Liet ke multi-agent capabilities va trace schema |
+| `GET` | `/agent/tools` | Liet ke health tools |
 
 Vi du:
 
@@ -191,28 +174,9 @@ curl -X POST http://localhost:8000/chat/complete \
   -H "Content-Type: application/json" \
   -d '{
     "user_id": "demo-user",
-    "user_message": "Toi nam, 72kg, cao 170cm, PBF 28%, mo noi tang level 12. Toi nen giam mo hay tang co truoc va tap the nao 3 buoi/tuan?",
+    "user_message": "BMI va PBF khac nhau nhu the nao?",
     "sync_request": true
   }'
-```
-
-Response rut gon:
-
-```json
-{
-  "response": {
-    "role": "assistant",
-    "content": "...",
-    "agent_trace": [
-      {
-        "agent": "SupervisorAgent",
-        "action": "select_agents",
-        "status": "success",
-        "summary": "Selected agents: InBodyAgent, NutritionAgent, TrainingAgent, RAGAgent"
-      }
-    ]
-  }
-}
 ```
 
 ### Retrieval va Indexing
@@ -290,3 +254,4 @@ Backend chi can field `embeddings`. `embedding_dim` nen trung voi `VECTOR_SIZE` 
 - Neu import dataset bi loi dimension, xoa/tai tao collection Qdrant voi dung `VECTOR_SIZE=1024`.
 - Neu BM25 chua co data sau khi restart, co the goi import/index lai hoac de backend load payload tu Qdrant khi search.
 - File `data_pipeline/dataset/processed/embedding_documents.jsonl` la corpus chinh; khong dung file `mvp_embedding_documents.jsonl` cu.
+
