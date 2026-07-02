@@ -58,158 +58,6 @@ logger = logging.getLogger(__name__)
 DEFAULT_COLLECTION_NAME = "nmk_chatbot_collection"
 
 
-def follow_up_question(history, question):
-    """Viet lai cau hoi follow-up thanh cau hoi doc lap."""
-    standalone_question = detect_user_intent(history, question)
-    logger.info("Standalone Health/InBody question: %s", standalone_question)
-    return standalone_question
-
-
-def _content_key(doc: Dict[str, Any]) -> str:
-    return str(doc.get("doc_id") or doc.get("content") or doc.get("title") or "")
-
-
-def retrieve_with_hybrid_search(queries: List[str], top_k: int = 5) -> List[Dict]:
-    """
-    Truy xuat tai lieu Health/InBody bang multi-query hybrid search.
-    """
-    all_docs = []
-    seen_keys = set()
-
-    for query in queries:
-        docs = hybrid_search(query, limit=top_k, use_rerank=False)
-        for doc in docs:
-            key = _content_key(doc)
-            if key and key not in seen_keys:
-                seen_keys.add(key)
-                doc["retrieval_query"] = query
-                all_docs.append(doc)
-
-    logger.info(
-        "Retrieved %s unique Health/InBody docs from %s queries",
-        len(all_docs),
-        len(queries),
-    )
-    return all_docs
-
-
-def _format_general_chat_prompt(history, question):
-    system_prompt = """Bạn là trợ lý AI thân thiện của hệ thống Health/InBody Agent RAG.
-Bạn có thể giúp người dùng hiểu chỉ số InBody, BMI, PBF, SMM, BFM, mỡ nội tạng,
-dinh dưỡng, tập luyện và các lưu ý an toàn sức khỏe ở mức tham khảo.
-Không chẩn đoán bệnh, không kê đơn thuốc và không thay thế bác sĩ."""
-
-    return [{"role": "system", "content": system_prompt}] + (history or []) + [
-        {"role": "user", "content": question}
-    ]
-
-
-def _agent_tools_answer(question: str) -> str:
-    """
-    Xu ly nhanh mot so cau hoi can tool tinh/danh gia.
-
-    Agent.py hien chua hoan thien, nen tasks dung heuristic de goi tool phu hop
-    cho cac demo Health/InBody co ban.
-    """
-    question_lower = question.lower()
-
-    if "đau ngực" in question_lower or "khó thở" in question_lower or "bệnh nền" in question_lower:
-        return str(check_medical_safety(question))
-
-    if "mỡ nội tạng" in question_lower or "visceral" in question_lower:
-        return (
-            "Bạn đang hỏi về mỡ nội tạng. "
-            "Hãy cung cấp visceral fat level trong báo cáo InBody để mình đánh giá chính xác hơn. "
-            + str(evaluate_visceral_fat(10))
-        )
-
-    if "pbf" in question_lower or "phần trăm mỡ" in question_lower:
-        return (
-            "Bạn đang hỏi về PBF. "
-            "Hãy cung cấp giá trị PBF (%) và giới tính để đánh giá sát hơn. "
-            + str(evaluate_body_fat_percentage(25))
-        )
-
-    if "protein" in question_lower:
-        return str(suggest_nutrition_goal("fat_loss", weight_kg=70))
-
-    if "lịch tập" in question_lower or "tập luyện" in question_lower:
-        return str(suggest_training_plan("fat_loss", fitness_level="beginner", days_per_week=3))
-
-    if "bmi" in question_lower:
-        return (
-            "Hãy cung cấp cân nặng và chiều cao để tính BMI chính xác. "
-            + str(calculate_bmi(weight_kg=70, height_cm=170))
-        )
-
-    return str(check_medical_safety(question))
-
-
-@shared_task()
-def bot_rag_answer_message(history, question):
-    """
-    Pipeline RAG cho Health/InBody:
-    1. Viet lai follow-up question.
-    2. Tao multi-query.
-    3. Hybrid search.
-    4. Rerank.
-    5. Sinh cau tra loi co guardrail y te.
-    """
-    standalone_question = follow_up_question(history, question)
-    query_variations = rewrite_query_to_multi_queries(standalone_question, num_queries=3)
-
-    retrieved_docs = retrieve_with_hybrid_search(query_variations, top_k=5)
-    ranked_docs = rerank_documents(retrieved_docs, standalone_question, top_n=5)
-
-    answer = generate_health_answer(
-        user_message=question,
-        docs=ranked_docs,
-        user_profile={},
-    )
-    logger.info("Generated Health/InBody RAG answer")
-    return answer
-
-
-@shared_task()
-def bot_route_answer_message(history, question):
-    """
-    Route cau hoi den RAG, health tools, web search hoac general chat.
-    """
-    route = detect_route(history, question)
-    logger.info("Selected Health/InBody route: %s", route)
-
-    if route == HEALTH_RAG_ROUTE:
-        return bot_rag_answer_message(history, question)
-
-    if route == AGENT_TOOLS_ROUTE:
-        standalone_question = follow_up_question(history, question)
-        return _agent_tools_answer(standalone_question)
-
-    if route == WEB_SEARCH_ROUTE:
-        standalone_question = follow_up_question(history, question)
-        search_results = tavily_search_health(standalone_question, max_results=5)
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "Bạn là trợ lý Health/InBody. Hãy tổng hợp thông tin web ở mức tham khảo, "
-                    "không chẩn đoán, không kê đơn và luôn nhắc gặp bác sĩ khi có dấu hiệu nguy hiểm."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Kết quả tìm kiếm:\n{search_results}\n\n"
-                    f"Câu hỏi: {question}\n\nHãy trả lời ngắn gọn, an toàn và có nguồn nếu có."
-                ),
-            },
-        ]
-        return openai_chat_complete(messages)
-
-    messages = _format_general_chat_prompt(history, question)
-    return vietnamese_llm_chat_complete(messages)
-
-
 def index_document_v2(
     id,
     question,
@@ -297,6 +145,97 @@ def index_health_documents(documents: List[Dict[str, Any]], collection_name=DEFA
     return {"indexed": len(statuses), "statuses": statuses}
 
 
+# ==========================================
+# CHAT HELPERS
+# ==========================================
+
+def _content_key(doc: Dict[str, Any]) -> str:
+    return str(doc.get("doc_id") or doc.get("content") or doc.get("title") or "")
+
+
+def follow_up_question(history, question):
+    """Viet lai cau hoi follow-up thanh cau hoi doc lap."""
+    standalone_question = detect_user_intent(history, question)
+    logger.info("Standalone Health/InBody question: %s", standalone_question)
+    return standalone_question
+
+
+def _format_general_chat_prompt(history, question):
+    system_prompt = """Bạn là trợ lý AI thân thiện của hệ thống Health/InBody Agent RAG.
+Bạn có thể giúp người dùng hiểu chỉ số InBody, BMI, PBF, SMM, BFM, mỡ nội tạng,
+dinh dưỡng, tập luyện và các lưu ý an toàn sức khỏe ở mức tham khảo.
+Không chẩn đoán bệnh, không kê đơn thuốc và không thay thế bác sĩ."""
+
+    return [{"role": "system", "content": system_prompt}] + (history or []) + [
+        {"role": "user", "content": question}
+    ]
+
+
+def retrieve_with_hybrid_search(queries: List[str], top_k: int = 5) -> List[Dict]:
+    """
+    Truy xuat tai lieu Health/InBody bang multi-query hybrid search.
+    """
+    all_docs = []
+    seen_keys = set()
+
+    for query in queries:
+        docs = hybrid_search(query, limit=top_k, use_rerank=False)
+        for doc in docs:
+            key = _content_key(doc)
+            if key and key not in seen_keys:
+                seen_keys.add(key)
+                doc["retrieval_query"] = query
+                all_docs.append(doc)
+
+    logger.info(
+        "Retrieved %s unique Health/InBody docs from %s queries",
+        len(all_docs),
+        len(queries),
+    )
+    return all_docs
+
+
+def _agent_tools_answer(question: str) -> str:
+    """
+    Xu ly nhanh mot so cau hoi can tool tinh/danh gia.
+
+    Agent.py hien chua hoan thien, nen tasks dung heuristic de goi tool phu hop
+    cho cac demo Health/InBody co ban.
+    """
+    question_lower = question.lower()
+
+    if "đau ngực" in question_lower or "khó thở" in question_lower or "bệnh nền" in question_lower:
+        return str(check_medical_safety(question))
+
+    if "mỡ nội tạng" in question_lower or "visceral" in question_lower:
+        return (
+            "Bạn đang hỏi về mỡ nội tạng. "
+            "Hãy cung cấp visceral fat level trong báo cáo InBody để mình đánh giá chính xác hơn. "
+            + str(evaluate_visceral_fat(10))
+        )
+
+    if "pbf" in question_lower or "phần trăm mỡ" in question_lower:
+        return (
+            "Bạn đang hỏi về PBF. "
+            "Hãy cung cấp giá trị PBF (%) và giới tính để đánh giá sát hơn. "
+            + str(evaluate_body_fat_percentage(25))
+        )
+
+    if "protein" in question_lower:
+        return str(suggest_nutrition_goal("fat_loss", weight_kg=70))
+
+    if "lịch tập" in question_lower or "tập luyện" in question_lower:
+        return str(suggest_training_plan("fat_loss", fitness_level="beginner", days_per_week=3))
+
+    if "bmi" in question_lower:
+        return (
+            "Hãy cung cấp cân nặng và chiều cao để tính BMI chính xác. "
+            + str(calculate_bmi(weight_kg=70, height_cm=170))
+        )
+
+    return str(check_medical_safety(question))
+
+
 def get_summarized_response(response):
     """
     Placeholder summarization hook.
@@ -304,6 +243,75 @@ def get_summarized_response(response):
     summarizer.py hien chua implement, nen tra ve response goc de tranh loi.
     """
     return response
+
+
+# ==========================================
+# CELERY CHAT TASKS
+# ==========================================
+
+@shared_task()
+def bot_rag_answer_message(history, question):
+    """
+    Pipeline RAG cho Health/InBody:
+    1. Viet lai follow-up question.
+    2. Tao multi-query.
+    3. Hybrid search.
+    4. Rerank.
+    5. Sinh cau tra loi co guardrail y te.
+    """
+    standalone_question = follow_up_question(history, question)
+    query_variations = rewrite_query_to_multi_queries(standalone_question, num_queries=3)
+
+    retrieved_docs = retrieve_with_hybrid_search(query_variations, top_k=5)
+    ranked_docs = rerank_documents(retrieved_docs, standalone_question, top_n=5)
+
+    answer = generate_health_answer(
+        user_message=question,
+        docs=ranked_docs,
+        user_profile={},
+    )
+    logger.info("Generated Health/InBody RAG answer")
+    return answer
+
+
+@shared_task()
+def bot_route_answer_message(history, question):
+    """
+    Route cau hoi den RAG, health tools, web search hoac general chat.
+    """
+    route = detect_route(history, question)
+    logger.info("Selected Health/InBody route: %s", route)
+
+    if route == HEALTH_RAG_ROUTE:
+        return bot_rag_answer_message(history, question)
+
+    if route == AGENT_TOOLS_ROUTE:
+        standalone_question = follow_up_question(history, question)
+        return _agent_tools_answer(standalone_question)
+
+    if route == WEB_SEARCH_ROUTE:
+        standalone_question = follow_up_question(history, question)
+        search_results = tavily_search_health(standalone_question, max_results=5)
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "Bạn là trợ lý Health/InBody. Hãy tổng hợp thông tin web ở mức tham khảo, "
+                    "không chẩn đoán, không kê đơn và luôn nhắc gặp bác sĩ khi có dấu hiệu nguy hiểm."
+                ),
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Kết quả tìm kiếm:\n{search_results}\n\n"
+                    f"Câu hỏi: {question}\n\nHãy trả lời ngắn gọn, an toàn và có nguồn nếu có."
+                ),
+            },
+        ]
+        return openai_chat_complete(messages)
+
+    messages = _format_general_chat_prompt(history, question)
+    return vietnamese_llm_chat_complete(messages)
 
 
 @shared_task()

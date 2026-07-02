@@ -1,0 +1,32 @@
+[browser]
+gatherUsageStats = false
+
+[theme]
+primaryColor = "#0f766e"
+backgroundColor = "#f7faf9"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#172033"
+font = "sans serif"
+
+[server]
+headless = true
+enableCORS = false
+enableXsrfProtection = false
+
+[client]
+showErrorDetails = false
+toolbarMode = "minimal"
+
+[runner]
+magicEnabled = false
+installTracer = false
+fixMatplotlib = true
+
+[mapbox]
+token = ""
+
+[deprecation]
+showPyplotGlobalUse = false
+
+[ui]
+hideTopBar = true
