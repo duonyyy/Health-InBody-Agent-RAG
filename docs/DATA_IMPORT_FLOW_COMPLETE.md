@@ -1,10 +1,10 @@
-# 📊 DATA IMPORT FLOW - Complete End-to-End Guide
+# DATA IMPORT FLOW - Health/InBody RAG Corpus
 
-## 🎯 Overview
+## Overview
 
-Đây là toàn bộ quy trình import dữ liệu pháp lý tiếng Việt từ file JSONL vào Qdrant vector database, với embedding semantic từ BAAI/bge-m3.
+Đây là quy trình import dữ liệu Health/InBody từ file JSONL đã xử lý vào Qdrant vector database, với embedding semantic từ BGE-M3/custom embedding service.
 
-**Input**: `train.jsonl` (Q&A pairs)  
+**Input hiện tại**: `data_pipeline/dataset/processed/embedding_documents.jsonl`  
 **Output**: Vectors lưu trong Qdrant + Search index  
 **Duration**: ~5-10 phút tùy dữ liệu
 
@@ -17,14 +17,14 @@
 │                   DATA IMPORT FLOW                          │
 └─────────────────────────────────────────────────────────────┘
 
-1. INPUT (train.jsonl)
+1. INPUT (embedding_documents.jsonl)
    ↓
-   {"question": "Luật nào...", "context": "Nội dung pháp lý..."}
-   {"question": "Quy định...", "context": "Chi tiết..."}
+   {"question": "BMI và PBF khác nhau như thế nào?", "content": "Nội dung sức khỏe/InBody..."}
+   {"title": "Mỡ nội tạng", "content": "Khuyến nghị dinh dưỡng và tập luyện..."}
    
 2. PARSE JSON
    ├─ Question (Câu hỏi)
-   ├─ Context (Tài liệu)
+   ├─ Content (Tài liệu)
    └─ ID (Document ID)
    ↓
    
@@ -53,7 +53,7 @@
    
 6. QDRANT INSERTION
    ├─ Connection: http://qdrant-db:6333
-   ├─ Collection: "llm" (1024-dim vectors)
+   ├─ Collection: "nmk_chatbot_collection" (1024-dim vectors)
    ├─ Distance: DOT (dot product)
    └─ Storage: qdrant_volume (persistent)
    ↓

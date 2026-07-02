@@ -1,208 +1,169 @@
-# Vietnamese Legal Chatbot Backend - Comprehensive Test Queries
+# Health/InBody Multi-Agent RAG MVP - Test Queries
 
-## 📋 Tổng quan
+## Tổng quan
 
-File này chứa các câu test query toàn diện cho hệ thống Vietnamese Legal Chatbot RAG System, bao gồm các tính năng:
+File này chứa các câu test dùng để demo và kiểm tra hệ thống Health/InBody Multi-Agent RAG MVP.
 
-- **Follow-up Questions & Query Rewriting** - Xử lý câu hỏi tiếp theo và viết lại truy vấn
-- **Route Detection** - Phân loại và định tuyến truy vấn (legal_rag, agent_tools, web_search, general_chat)
-- **Legal RAG** - Tìm kiếm và trả lời dựa trên cơ sở dữ liệu pháp luật
-- **Agent Tools** - Các công cụ tính toán và validation pháp lý
-- **Web Search** - Tìm kiếm thông tin mới trên web
-- **Multi-Query & Hybrid Search** - Tìm kiếm lai kết hợp semantic + keyword
+Mục tiêu test:
 
-## 🤖 1. Follow-up Questions & Query Rewriting
+- Kiểm tra `SupervisorAgent` chọn đúng một hoặc nhiều agent.
+- Kiểm tra `agent_trace` có thể chứng minh flow multi-agent.
+- Kiểm tra các agent chính: `InBodyAgent`, `RAGAgent`, `NutritionAgent`, `TrainingAgent`, `SafetyAgent`, `ResponseComposerAgent`.
+- Kiểm tra câu hỏi phức hợp gọi nhiều agent cùng lúc.
 
-### Câu hỏi gốc và follow-up
+## 1. InBodyAgent
+
+```json
+[
+  {
+    "query": "Tôi nặng 72kg cao 170cm, tính BMI giúp tôi",
+    "expected_agents": ["SupervisorAgent", "InBodyAgent", "SafetyAgent", "ResponseComposerAgent"],
+    "expected_tools": ["calculate_bmi"],
+    "description": "Tính BMI từ cân nặng và chiều cao"
+  },
+  {
+    "query": "PBF của tôi 28%, nam, chỉ số này có cao không?",
+    "expected_agents": ["SupervisorAgent", "InBodyAgent", "RAGAgent", "SafetyAgent", "ResponseComposerAgent"],
+    "expected_tools": ["evaluate_body_fat_percentage"],
+    "description": "Đánh giá phần trăm mỡ cơ thể"
+  },
+  {
+    "query": "Mỡ nội tạng level 12 có đáng lo không?",
+    "expected_agents": ["SupervisorAgent", "InBodyAgent", "RAGAgent", "SafetyAgent", "ResponseComposerAgent"],
+    "expected_tools": ["evaluate_visceral_fat"],
+    "description": "Đánh giá mỡ nội tạng từ level InBody"
+  }
+]
+```
+
+## 2. NutritionAgent và TrainingAgent
+
+```json
+[
+  {
+    "query": "Tôi 72kg, muốn giảm mỡ thì nên ăn bao nhiêu protein mỗi ngày?",
+    "expected_agents": ["SupervisorAgent", "NutritionAgent", "SafetyAgent", "ResponseComposerAgent"],
+    "expected_tools": ["suggest_nutrition_goal"],
+    "description": "Gợi ý protein và chiến lược calo"
+  },
+  {
+    "query": "Gợi ý lịch tập 3 buổi/tuần để giảm mỡ",
+    "expected_agents": ["SupervisorAgent", "TrainingAgent", "SafetyAgent", "ResponseComposerAgent"],
+    "expected_tools": ["suggest_training_plan"],
+    "description": "Gợi ý lịch tập theo tuần"
+  },
+  {
+    "query": "Tôi muốn tăng cơ, 65kg, nên ăn và tập thế nào 4 buổi/tuần?",
+    "expected_agents": ["SupervisorAgent", "NutritionAgent", "TrainingAgent", "RAGAgent", "SafetyAgent", "ResponseComposerAgent"],
+    "expected_tools": ["suggest_nutrition_goal", "suggest_training_plan"],
+    "description": "Câu hỏi phức hợp gọi nutrition, training và RAG"
+  }
+]
+```
+
+## 3. Multi-Agent Demo Query
+
+Câu này dùng tốt nhất khi demo trước hội đồng vì nó buộc hệ thống gọi nhiều agent:
 
 ```json
 {
-  "user_id": "followup_test_001",
-  "conversation_history": [
-    { "role": "user", "content": "Thủ tục ly hôn như thế nào?" },
-    {
-      "role": "assistant",
-      "content": "Theo Luật Hôn nhân và Gia đình 2014, thủ tục ly hôn gồm: 1. Nộp đơn ly hôn tại UBND xã/phường..."
-    }
+  "query": "Tôi nam, 72kg, cao 170cm, PBF 28%, mỡ nội tạng level 12. Tôi nên giảm mỡ hay tăng cơ trước và tập thế nào 3 buổi/tuần?",
+  "expected_agents": [
+    "QuestionNormalizerAgent",
+    "SupervisorAgent",
+    "InBodyAgent",
+    "NutritionAgent",
+    "TrainingAgent",
+    "RAGAgent",
+    "SafetyAgent",
+    "ResponseComposerAgent"
   ],
-  "user_message": "Còn chi phí thì sao?"
+  "expected_trace_min_length": 6,
+  "description": "Demo đầy đủ Multi-Agent RAG MVP"
 }
 ```
 
-### Test cases cho Query Rewriting
+Expected behavior:
+
+1. `SupervisorAgent` chọn nhiều agent, không chỉ một route.
+2. `InBodyAgent` tính BMI, đánh giá PBF và mỡ nội tạng.
+3. `NutritionAgent` đưa protein/calorie strategy.
+4. `TrainingAgent` đưa lịch tập 3 buổi/tuần.
+5. `RAGAgent` truy xuất tài liệu Health/InBody liên quan.
+6. `SafetyAgent` thêm guardrail y tế.
+7. `ResponseComposerAgent` tổng hợp câu trả lời cuối.
+
+## 4. SafetyAgent
 
 ```json
 [
   {
-    "context": "Người dùng vừa hỏi về thủ tục thành lập công ty",
-    "follow_up": "Còn điều kiện đăng ký thì sao?",
-    "expected_rewrite": "Điều kiện đăng ký thành lập doanh nghiệp theo pháp luật Việt Nam"
+    "query": "Tôi bị đau ngực khi tập cardio, có nên tiếp tục tập không?",
+    "expected_agents": ["SupervisorAgent", "TrainingAgent", "SafetyAgent", "ResponseComposerAgent"],
+    "expected_safety_risk": "urgent",
+    "description": "Triệu chứng nguy hiểm cần khuyến nghị gặp cơ sở y tế"
   },
   {
-    "context": "Thảo luận về hợp đồng lao động",
-    "follow_up": "Nó có hiệu lực bao lâu?",
-    "expected_rewrite": "Thời hạn hiệu lực của hợp đồng lao động theo Bộ luật Lao động"
-  },
-  {
-    "context": "Câu hỏi về thuế thu nhập cá nhân",
-    "follow_up": "Làm sao để khai báo đây?",
-    "expected_rewrite": "Cách thức khai báo thuế thu nhập cá nhân theo quy định"
-  },
-  {
-    "context": "Hỏi về quyền thừa kế",
-    "follow_up": "Có bao nhiêu hàng thừa kế vậy?",
-    "expected_rewrite": "Số hàng thừa kế theo Bộ luật Dân sự Việt Nam"
+    "query": "Tôi bị tiểu đường, muốn giảm mỡ nhanh thì có nên nhịn ăn không?",
+    "expected_agents": ["SupervisorAgent", "NutritionAgent", "RAGAgent", "SafetyAgent", "ResponseComposerAgent"],
+    "expected_safety_risk": "medical_caution",
+    "description": "Có bệnh nền, phải trả lời thận trọng"
   }
 ]
 ```
 
-## 🧭 2. Route Detection Tests
-
-### Legal RAG Route
+## 5. RAGAgent
 
 ```json
 [
   {
-    "query": "Quyền và nghĩa vụ của người lao động theo Bộ luật Lao động 2019",
-    "expected_route": "legal_rag",
-    "description": "Tra cứu văn bản pháp luật cụ thể"
+    "query": "BMI và PBF khác nhau như thế nào?",
+    "expected_agents": ["SupervisorAgent", "InBodyAgent", "RAGAgent", "SafetyAgent", "ResponseComposerAgent"],
+    "description": "Truy xuất kiến thức giải thích chỉ số"
   },
   {
-    "query": "Thủ tục đăng ký kết hôn tại UBND",
-    "expected_route": "legal_rag",
-    "description": "Thủ tục hành chính theo quy định"
-  },
-  {
-    "query": "Điều kiện để được ly hôn đơn phương",
-    "expected_route": "legal_rag",
-    "description": "Điều kiện pháp lý cụ thể"
-  },
-  {
-    "query": "Trách nhiệm hình sự của người chưa thành niên",
-    "expected_route": "legal_rag",
-    "description": "Quy định về trách nhiệm hình sự"
+    "query": "SMM thấp thì nên ưu tiên tập luyện kiểu gì?",
+    "expected_agents": ["SupervisorAgent", "InBodyAgent", "RAGAgent", "TrainingAgent", "SafetyAgent", "ResponseComposerAgent"],
+    "description": "Kết hợp kiến thức InBody và training"
   }
 ]
 ```
 
-### Agent Tools Route
+## 6. API Smoke Test
 
-```json
-[
-  {
-    "query": "Tính tiền phạt hợp đồng 500 triệu chậm 45 ngày với lãi suất 0.15% mỗi ngày",
-    "expected_route": "agent_tools",
-    "description": "Tính toán phạt hợp đồng"
-  },
-  {
-    "query": "Kiểm tra người sinh năm 2006 có đủ tuổi ký hợp đồng lao động không?",
-    "expected_route": "agent_tools",
-    "description": "Kiểm tra tuổi pháp lý"
-  },
-  {
-    "query": "Chia thừa kế cho 3 con với tài sản 2 tỷ đồng theo luật",
-    "expected_route": "agent_tools",
-    "description": "Tính toán chia thừa kế"
-  },
-  {
-    "query": "Công ty ABC có hợp lệ theo quy định đặt tên doanh nghiệp không?",
-    "expected_route": "agent_tools",
-    "description": "Kiểm tra quy tắc đặt tên"
-  }
-]
+```bash
+curl -X POST http://localhost:8000/chat/complete \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "demo-user",
+    "user_message": "Tôi nam, 72kg, cao 170cm, PBF 28%, mỡ nội tạng level 12. Tôi nên giảm mỡ hay tăng cơ trước và tập thế nào 3 buổi/tuần?",
+    "sync_request": true
+  }'
 ```
 
-### Web Search Route
-
-```json
-[
-  {
-    "query": "Luật Đất đai 2024 có những thay đổi gì mới nhất?",
-    "expected_route": "web_search",
-    "description": "Thông tin pháp luật mới"
-  },
-  {
-    "query": "Mức lương tối thiểu vùng năm 2024 hiện tại",
-    "expected_route": "web_search",
-    "description": "Thông tin cập nhật gần đây"
-  },
-  {
-    "query": "Vụ án tham nhũng ở Quảng Ninh vừa xét xử gần đây",
-    "expected_route": "web_search",
-    "description": "Tin tức pháp lý hiện tại"
-  }
-]
-```
-
-### General Chat Route
-
-```json
-[
-  {
-    "query": "Xin chào, bạn có thể giúp tôi được không?",
-    "expected_route": "general_chat",
-    "description": "Chào hỏi"
-  },
-  {
-    "query": "Cảm ơn bạn đã hỗ trợ",
-    "expected_route": "general_chat",
-    "description": "Cảm ơn"
-  },
-  {
-    "query": "Hôm nay thời tiết Hà Nội thế nào?",
-    "expected_route": "general_chat",
-    "description": "Chủ đề ngoài pháp luật"
-  }
-]
-```
-
-### Complex Legal Questions
-
-```json
-[
-  {
-    "query": "Người nước ngoài có thể sở hữu nhà ở Việt Nam không?",
-    "complexity": "high",
-    "expected_docs": ["Luật Nhà ở", "Luật Đầu tư", "Nghị định 99/2015"]
-  },
-  {
-    "query": "Điều kiện để được miễn thuế thu nhập doanh nghiệp",
-    "complexity": "medium",
-    "expected_docs": ["Luật Thuế TNDN", "Nghị định 218/2013"]
-  }
-]
-```
-
-## 🌐 5. Web Search Integration Tests
-
-### Tavily Search Tests
-
-```json
-[
-  {
-    "query": "Nghị định mới về giao thông 2024",
-    "search_type": "tavily_search_legal",
-    "expected_sources": ["thuvienphapluat.vn", "baochinhphu.vn"],
-    "expected_content": "Thông tin về văn bản pháp luật mới"
-  },
-  {
-    "query": "Lương tối thiểu vùng 1 năm 2024",
-    "search_type": "tavily_qna",
-    "expected_answer": "Mức lương tối thiểu cụ thể"
-  }
-]
-```
-
-### Search Result Integration
+Response cần có:
 
 ```json
 {
-  "query": "Luật Đất đai 2024 thay đổi gì",
-  "expected_flow": [
-    "1. Phát hiện từ khóa 'mới nhất', '2024' → route: web_search",
-    "2. Gọi tavily_search_legal()",
-    "3. Tổng hợp kết quả từ web",
-    "4. Tạo câu trả lời dựa trên thông tin tìm được"
-  ]
+  "response": {
+    "role": "assistant",
+    "content": "...",
+    "agent_trace": [
+      {
+        "agent": "SupervisorAgent",
+        "action": "select_agents",
+        "status": "success",
+        "summary": "Selected agents: InBodyAgent, NutritionAgent, TrainingAgent, RAGAgent"
+      }
+    ]
+  }
 }
 ```
+
+## 7. Acceptance Criteria
+
+- `/chat/complete` trả `response.content` không rỗng.
+- `/chat/complete` trả `response.agent_trace` là list.
+- Câu hỏi phức hợp phải có ít nhất `SupervisorAgent`, một domain agent, `SafetyAgent`, `ResponseComposerAgent`.
+- Người dùng không cần chọn tool thủ công trong frontend chat.
+- Các endpoint `/tools/...` vẫn hoạt động để dev/debug nhưng không phải flow chính của người dùng.
