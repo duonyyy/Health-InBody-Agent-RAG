@@ -1,262 +1,215 @@
-# Tài liệu Data Pipeline - Vietnamese Legal Chatbot RAG System
+# Data Pipeline Documentation - Health/InBody Multi-Agent RAG MVP
 
-## 📋 Tổng quan
+## Tổng quan
 
-Data Pipeline của hệ thống Vietnamese Legal Chatbot RAG có nhiệm vụ xử lý và chuẩn bị dữ liệu từ các nguồn khác nhau để phục vụ cho việc training và triển khai chatbot tư vấn pháp luật Việt Nam.
+`data_pipeline/` chuẩn bị corpus cho Health/InBody Multi-Agent RAG MVP. Pipeline hiện tại tập trung vào:
 
-## 🎯 Vấn đề cần giải quyết
+- Gom dữ liệu dinh dưỡng, thực phẩm, tài liệu fitness và các seed documents InBody.
+- Extract text từ PDF khi có `pypdf`.
+- Chuẩn hóa tài liệu RAG thành JSONL để backend index vào Qdrant/BM25.
+- Tách riêng dữ liệu recommender (`foods_normalized.csv`, `ratings_normalized.csv`) khỏi corpus RAG.
 
-### Bài toán chia dữ liệu
-Dữ liệu cần được chia thành **3 phần chính**:
+Pipeline hiện tại thuộc phạm vi Health/InBody Multi-Agent RAG MVP.
 
-1. **📚 Dữ liệu Finetune**: Để training mô hình hiểu và trả lời câu hỏi pháp luật
-2. **🔍 Dữ liệu Embedding**: Để tạo vector representations cho tìm kiếm ngữ nghĩa  
-3. **💾 Dữ liệu RAG**: Để xây dựng knowledge base cho hệ thống Retrieval-Augmented Generation
+## Cấu trúc chính
 
-### Nguồn dữ liệu
-Pipeline xử lý dữ liệu từ **nhiều nguồn khác nhau**:
-
-#### **Dữ liệu Finetune** (từ Hugging Face):
-1. **`phuocsang/hoidap-tvpl-20k`** - 20k cặp hỏi đáp pháp luật tiếng Việt (process_finetune_data.ipynb)
-2. **`huyhuy123/ViLQA`** - Vietnamese Legal Q&A dataset (process_finetune_data_2.ipynb)  
-3. **`chillies/vn-legal-conversation`** - Vietnamese legal conversation data (process_finetune_data_3.ipynb)
-
-#### **Dữ liệu RAG/Embedding** (từ Kaggle):
-- **`anti-ai/ViNLI-Zalo-supervised`** - Vietnamese legal corpus từ file `law_vi.jsonl.gz` (download_embed_data.ipynb)
-
-**Thách thức**: Dữ liệu từ nhiều nguồn khác nhau có format và cấu trúc khác nhau cần được tổng hợp và chuẩn hóa về một định dạng thống nhất.
-
-## 🔧 Chi tiết các module xử lý
-
-### 1. Module Xử lý Dữ liệu Finetune
-
-#### 📁 File: `process_finetune_data.ipynb`
-
-Đây là module quan trọng nhất trong pipeline, có nhiệm vụ chuyển đổi dữ liệu thô thành định dạng Q&A phù hợp cho việc training chatbot.
-
-#### 🔍 **Phân tích dữ liệu (Data Analysis)**
-
-**Hàm `analyze_text_quality(dataset_split, split_name)`**
-
-```python
-def analyze_text_quality(dataset_split, split_name):
-    """
-    Phân tích chất lượng text trong dataset
-    
-    Args:
-        dataset_split: Phần dữ liệu cần phân tích (train/test)
-        split_name: Tên của phần dữ liệu để hiển thị
-        
-    Returns:
-        dict: Thống kê chi tiết về chất lượng dữ liệu
-    """
+```text
+data_pipeline/
+├── configs/
+├── dataset/
+│   ├── raw/
+│   │   ├── source_manifest.json
+│   │   ├── foodrecordfinal/
+│   │   ├── ratings/
+│   │   ├── usda_fooddata/
+│   │   ├── foodinfo/
+│   │   └── fitness_documents/
+│   ├── processed/
+│   │   ├── all_raw_sources.jsonl
+│   │   ├── embedding_documents.jsonl
+│   │   ├── embedding_report.json
+│   │   ├── embedding_build_report.json
+│   │   ├── foods_normalized.csv
+│   │   ├── ratings_normalized.csv
+│   │   └── extracted_text/
+│   └── rag_documents/
+│       └── health_inbody_corpus.jsonl
+└── utils/
+    ├── merge_raw_sources.py
+    ├── prepare_embedding_dataset.py
+    ├── build_embedding_dataset.py
+    └── index_mvp_dataset.py
 ```
 
-**Ket qua**
-📈 Phân tích Dataset ViLQA (43588 samples):
-🔸 Độ dài câu hỏi:
-   - Trung bình: 75.7 ký tự
-   - Min: 0, Max: 263
-   - Median: 71.0
-🔸 Độ dài câu trả lời:
-   - Trung bình: 888.6 ký tự
-   - Min: 0, Max: 20674
-   - Median: 673.0
-🔸 Dữ liệu rỗng:
-   - Câu hỏi rỗng: 48
-   - Câu trả lời rỗng: 115
-🔸 Câu hỏi có dấu '?': 42502/43588 (97.5%)
+## Nguồn dữ liệu
 
-**Tại sao cần phân tích:**
-- Hiểu được đặc điểm của dữ liệu trước khi xử lý
-- Thiết lập các ngưỡng lọc dữ liệu hợp lý
-- Phát hiện các vấn đề tiềm ẩn trong dataset
+Nguồn được khai báo trong `data_pipeline/dataset/raw/source_manifest.json`:
 
-#### 🧹 **Làm sạch dữ liệu (Data Cleaning)**
+| Source | Vai trò | Đưa vào RAG? |
+| --- | --- | --- |
+| `foodrecordfinal_foods` | Món ăn, dinh dưỡng, content-based recommendation | Có |
+| `foodrecordfinal_ratings` | User-food ratings cho collaborative filtering | Không |
+| `usda_fooddata_foundation` | Dữ liệu dinh dưỡng tham khảo | Có |
+| `vietnam_food_composition_2007` | Bảng thành phần thực phẩm Việt Nam PDF | Có sau khi extract text |
+| `fitness_training_document` | Tài liệu tập luyện fitness PDF | Có sau khi extract text |
 
-**Hàm `clean_text(text)`**
+## Luồng build corpus
 
-```python
-def clean_text(text):
-    """
-    Làm sạch và chuẩn hóa text
-    
-    Args:
-        text (str): Text cần làm sạch
-        
-    Returns:
-        str: Text đã được làm sạch
-    """
+```text
+raw/source_manifest.json
+  -> extract_pdf_sources
+  -> merge_raw_sources.py
+  -> processed/all_raw_sources.jsonl
+  -> prepare_embedding_dataset.py
+  -> processed/embedding_documents.jsonl
+  -> rag_documents/health_inbody_corpus.jsonl
+  -> index_mvp_dataset.py
+  -> backend /documents/index
+  -> Qdrant + BM25
 ```
 
-**Các bước xử lý:**
-1. **Loại bỏ khoảng trắng thừa**: Sử dụng `" ".join(text.split())` để normalize spaces
-2. **Chuẩn hóa ký tự xuống dòng**: Thay thế `\n`, `\r`, `\t` bằng space
-3. **Trim space**: Loại bỏ space đầu và cuối chuỗi
+## Script chính
 
-**Tại sao cần làm sạch:**
-- Đảm bảo tính nhất quán trong format
-- Loại bỏ noise có thể ảnh hưởng đến chất lượng training
-- Chuẩn hóa để dễ dàng xử lý sau này
+### `merge_raw_sources.py`
 
-#### 🎯 **Lọc và xử lý dữ liệu (Data Filtering)**
+Gom các nguồn raw thành `processed/all_raw_sources.jsonl`.
 
-**Hàm `process_dataset(dataset_split, max_answer_length=5000)`**
+Đặc điểm:
 
-```python
-def process_dataset(dataset_split, max_answer_length=5000):
-    """
-    Xử lý dataset và lọc dữ liệu chất lượng
-    
-    Args:
-        dataset_split: Dataset cần xử lý
-        max_answer_length (int): Độ dài tối đa của câu trả lời
-        
-    Returns:
-        list: Danh sách các mẫu dữ liệu đã được lọc và xử lý
-    """
-```
-**ket qua**
-✅ Dataset processed: 43588 → 43420 (giữ lại 99.6%)
+- Không sửa dữ liệu trong `dataset/raw/`.
+- Ghi `domain=health_inbody`.
+- Tạo record cho foods, USDA, PDF extracted pages.
+- Ratings được merge thành interaction records nhưng sẽ bị loại khỏi RAG corpus ở bước sau.
 
-📊 Thống kê sau xử lý:
-- Tổng số mẫu chất lượng: 43420
+Chạy:
 
-🔸 Độ dài câu hỏi sau xử lý:
-   - Trung bình: 75.9 ký tự
-   - Min: 10, Max: 263
-🔸 Độ dài câu trả lời sau xử lý:
-   - Trung bình: 882.7 ký tự
-   - Min: 51, Max: 7981
-
-**Tiêu chí lọc:**
-- **Độ dài câu hỏi tối thiểu**: >= 10 ký tự (đảm bảo câu hỏi có ý nghĩa)
-- **Độ dài câu trả lời tối thiểu**: >= 50 ký tự (đảm bảo câu trả lời đầy đủ)
-- **Độ dài câu trả lời tối đa**: <= 5000 ký tự (tránh context quá dài)
-- **Format câu hỏi**: Phải kết thúc bằng dấu '?' (đảm bảo là câu hỏi thực sự)
-
-**Lý do các tiêu chí:**
-- Đảm bảo chất lượng dữ liệu training
-- Tránh overfitting với các mẫu không chuẩn
-- Tối ưu hóa hiệu suất training và inference
-
-### 2. Module Lưu trữ dữ liệu (Data Storage)
-
-#### 📦 **Định dạng lưu trữ đa dạng**
-
-Pipeline hỗ trợ **2 định dạng** chính để phù hợp với các mục đích training khác nhau:
-
-#### **Format 1: QA Format (Question-Answer)**
-
-**Hàm `save_jsonl(data, filepath)`**
-
-```python
-def save_jsonl(data, filepath):
-    """
-    Lưu dữ liệu dưới định dạng JSONL cơ bản
-    
-    Structure:
-    {
-        "question": "Câu hỏi pháp luật",
-        "answer": "Câu trả lời chi tiết"
-    }
-    """
+```bash
+python data_pipeline/utils/merge_raw_sources.py
 ```
 
-**Sử dụng cho:**
-- Traditional Q&A training
-- Simple fine-tuning approaches
-- Evaluation và testing
+### `prepare_embedding_dataset.py`
 
-#### **Format 2: Instruction Format**
+Lọc và chuẩn hóa documents sẵn sàng embedding.
 
-**Hàm `save_instruction_format(data, filepath)`**
+Chỉ giữ `content_type`:
 
-```python
-def save_instruction_format(data, filepath):
-    """
-    Lưu dữ liệu dưới định dạng instruction tuning
-    
-    Structure:
-    {
-        "instruction": "Trả lời câu hỏi pháp luật sau:",
-        "input": "Câu hỏi của user",
-        "output": "Câu trả lời mong muốn"
-    }
-    """
+- `nutrition`
+- `exercise`
+- `inbody_metric`
+- `medical_safety`
+- `general_health`
+
+Bỏ qua:
+
+- `recommender_interaction`
+- PDF placeholder chưa extract text
+- record có content quá ngắn
+
+Script cũng thêm seed documents nội bộ về BMI, PBF, SMM, BFM, mỡ nội tạng, dinh dưỡng, tập luyện và safety.
+Các seed documents này có metadata `source_name` và `source_url` để truy vết nguồn tham khảo trong demo RAG.
+
+### `build_embedding_dataset.py`
+
+Entry script nên dùng cho toàn pipeline.
+
+Chạy:
+
+```bash
+python data_pipeline/utils/build_embedding_dataset.py
 ```
 
-**Tại sao cần Instruction Format:**
-- **Tính nhất quán**: Mô hình học được cách tuân theo instructions
-- **Khả năng generalization**: Mô hình có thể áp dụng cho các loại instructions khác
-- **Chất lượng output**: Cải thiện độ chính xác và relevance của câu trả lời
-- **Alignment**: Đảm bảo mô hình tuân theo human preference
+Output:
 
-### 3. Module Metadata và Validation
+- `data_pipeline/dataset/processed/all_raw_sources.jsonl`
+- `data_pipeline/dataset/processed/embedding_documents.jsonl`
+- `data_pipeline/dataset/processed/embedding_report.json`
+- `data_pipeline/dataset/processed/embedding_build_report.json`
+- `data_pipeline/dataset/rag_documents/health_inbody_corpus.jsonl`
+- `data_pipeline/dataset/processed/foods_normalized.csv`
+- `data_pipeline/dataset/processed/ratings_normalized.csv`
 
-#### 📊 **Tạo Metadata**
+### `index_mvp_dataset.py`
 
-Pipeline tự động tạo metadata chi tiết bao gồm:
+Gửi corpus sang backend để index vào Qdrant/BM25.
+
+Backend cần chạy trước tại `http://localhost:8000`.
+
+```bash
+python data_pipeline/utils/index_mvp_dataset.py --batch-size 50
+```
+
+Test nhanh:
+
+```bash
+python data_pipeline/utils/index_mvp_dataset.py --limit 20 --batch-size 10
+```
+
+## Contract với backend
+
+Mỗi dòng trong `embedding_documents.jsonl` cần có:
 
 ```json
 {
-    "dataset_info": {
-        "source": "phuocsang/hoidap-tvpl-20k",
-        "description": "Vietnamese Legal Q&A Dataset processed for fine-tuning",
-        "total_samples": "Tổng số mẫu",
-        "train_samples": "Số mẫu train",
-        "test_samples": "Số mẫu test"
-    },
-    "processing_info": {
-        "filters_applied": ["Danh sách các bộ lọc đã áp dụng"],
-        "retention_rate": "Tỷ lệ dữ liệu được giữ lại"
-    },
-    "file_formats": {
-        "qa_format": "Mô tả format",
-        "instruction_format": "Mô tả format", 
-        "conversation_format": "Mô tả format"
-    }
+  "doc_id": "string",
+  "title": "string",
+  "content": "string",
+  "source": "string",
+  "content_type": "nutrition | exercise | inbody_metric | medical_safety | general_health",
+  "domain": "health_inbody",
+  "language": "vi | en",
+  "metadata": {}
 }
 ```
 
-#### ✅ **Validation dữ liệu**
+Backend endpoint:
 
-**Hàm `validate_jsonl_file(filepath, expected_count)`**
+```http
+POST /documents/index
+Content-Type: application/json
 
-```python
-def validate_jsonl_file(filepath, expected_count):
-    """
-    Kiểm tra tính toàn vẹn của file JSONL
-    
-    Validates:
-    - JSON format correctness
-    - Expected number of records
-    - File readability
-    """
+{
+  "collection_name": "nmk_chatbot_collection",
+  "documents": [...]
+}
 ```
 
-**Kiểm tra:**
-- Tính hợp lệ của JSON format
-- Số lượng records matches expected
-- Khả năng đọc file
-- Encoding UTF-8 đúng chuẩn
+## Trạng thái corpus hiện tại
 
-## 🔄 Workflow tổng thể
+Theo `embedding_build_report.json`:
 
+- Tổng documents RAG: `5345`.
+- `nutrition`: `4918`.
+- `exercise`: `407`.
+- `inbody_metric`: `15`.
+- `medical_safety`: `4`.
+- `general_health`: `1`.
+- Domain: `health_inbody`.
+- Validation: pass.
+- Foods normalized: `4000` rows.
+- Ratings normalized: `182631` rows.
+- Ratings bị loại khỏi RAG corpus vì là dữ liệu recommender interaction.
+
+Lưu ý phản biện: đây là corpus MVP, không phải clinical benchmark. Các tài liệu seed InBody/safety là tri thức được curate từ nguồn công khai và policy nội bộ để lấp khoảng trống dữ liệu cho demo; khi làm đánh giá học thuật nghiêm túc vẫn cần thêm tập câu hỏi chuẩn, tiêu chí relevance và kiểm chứng chuyên môn.
+
+## Vai trò trong Multi-Agent RAG
+
+Corpus này chủ yếu phục vụ `RAGAgent`:
+
+```text
+User question
+  -> SupervisorAgent
+  -> RAGAgent
+  -> hybrid_search / rerank
+  -> retrieved_docs
+  -> ResponseComposerAgent
 ```
-1. Load Dataset từ Hugging Face
-    ↓
-2. Phân tích chất lượng dữ liệu (Analysis)
-    ↓
-3. Làm sạch text (Cleaning) 
-    ↓
-4. Lọc theo tiêu chí chất lượng (Filtering)
-    ↓
-5. Chuyển đổi sang multiple formats (Transformation)
-    ↓
-6. Lưu trữ với metadata (Storage)
-    ↓
-7. Validation và quality check (Validation)
-```
 
-*Tài liệu này mô tả chi tiết architecture và implementation của Data Pipeline trong Vietnamese Legal Chatbot RAG System. Để biết thêm chi tiết về implementation cụ thể, vui lòng tham khảo source code trong thư mục `data_pipeline/`.*
+Các agent khác như `InBodyAgent`, `NutritionAgent`, `TrainingAgent` có thể dùng health tools trực tiếp; khi câu hỏi cần kiến thức nền hoặc giải thích sâu, `SupervisorAgent` chọn thêm `RAGAgent`.
+
+## Giới hạn hiện tại
+
+- Chưa có benchmark set riêng cho retrieval quality.
+- Chưa có InBody OCR sample dataset chính thức.
+- Chưa có dataset public lớn, sạch và chuẩn hóa riêng cho PBF/SMM/BFM/visceral fat bằng tiếng Việt.
+- Một phần lớn nutrition corpus đến từ món ăn/food database, cần kiểm soát nhiễu khi truy xuất.
+- Dữ liệu PDF phụ thuộc chất lượng `pypdf.extract_text`.

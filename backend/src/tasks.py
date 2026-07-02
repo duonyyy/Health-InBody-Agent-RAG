@@ -45,6 +45,7 @@ from query_rewriter import rewrite_query_to_multi_queries
 from rerank import rerank_documents
 from search import hybrid_search, initialize_search_index
 from tavily_tool import tavily_search_health
+from agents import multi_agent_handle
 
 try:
     from utils import setup_logging
@@ -317,11 +318,10 @@ def bot_route_answer_message(history, question):
 @shared_task()
 def llm_handle_message(bot_id, user_id, question):
     """
-    Main handler toi gian cho Health/InBody chat.
+    Main handler cho Health/InBody Multi-Agent RAG chat.
 
     DB layer hien con placeholder, nen task nay tra ve response truc tiep thay vi
     luu conversation vao database.
     """
     logger.info("Start Health/InBody message handling bot_id=%s user_id=%s", bot_id, user_id)
-    response = bot_route_answer_message([], question)
-    return {"role": "assistant", "content": response}
+    return multi_agent_handle(question, history=[])

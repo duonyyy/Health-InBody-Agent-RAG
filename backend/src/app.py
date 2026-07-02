@@ -11,7 +11,7 @@ except Exception:
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from agent import ai_agent_handle, get_agent_tools_summary
+from agents import get_multi_agent_summary, multi_agent_handle
 from cache import cache_health_check
 from health_tools import (
     calculate_bmi,
@@ -132,7 +132,7 @@ async def health():
         "service": "Health/InBody Agent RAG Backend",
         "cache": cache_health_check(),
         "search": get_search_stats(),
-        "agent": get_agent_tools_summary(),
+        "agent": get_multi_agent_summary(),
     }
 
 
@@ -153,10 +153,7 @@ async def complete(data: CompleteRequest):
 
     if data.sync_request:
         try:
-            if data.history:
-                response = ai_agent_handle(data.user_message, history=data.history)
-                return {"response": {"role": "assistant", "content": response}}
-            response = llm_handle_message(data.bot_id, data.user_id, data.user_message)
+            response = multi_agent_handle(data.user_message, history=data.history)
             return {"response": response}
         except Exception as e:
             logger.error("Chat sync failed: %s", e)
@@ -202,15 +199,18 @@ async def get_response(task_id: str):
 
 @app.post("/agent/answer")
 async def agent_answer(data: AgentRequest):
+    response = multi_agent_handle(data.question, history=data.history)
     return {
-        "answer": ai_agent_handle(data.question, history=data.history),
-        "agent": get_agent_tools_summary(),
+        "answer": response["content"],
+        "agent_trace": response.get("agent_trace", []),
+        "selected_agents": response.get("selected_agents", []),
+        "agent": get_multi_agent_summary(),
     }
 
 
 @app.get("/agent/tools")
 async def agent_tools():
-    return get_agent_tools_summary()
+    return get_multi_agent_summary()
 
 
 @app.post("/search")

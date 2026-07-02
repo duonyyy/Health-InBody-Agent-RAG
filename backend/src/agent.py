@@ -336,29 +336,13 @@ def _general_answer(history: Optional[List[Dict[str, str]]], question: str) -> s
 @shared_task()
 def ai_agent_handle(question: str, history: Optional[List[Dict[str, str]]] = None) -> str:
     """
-    Dieu phoi cau hoi Health/InBody qua tools, RAG, web search hoac general chat.
+    Backward-compatible wrapper for the Multi-Agent RAG MVP.
     """
     try:
-        standalone_question = detect_user_intent(history or [], question)
-        route = detect_route(history or [], standalone_question)
-        logger.info("[HEALTH_AGENT] route=%s question=%s", route, standalone_question)
+        from agents import multi_agent_handle
 
-        if route == AGENT_TOOLS_ROUTE:
-            return _format_tool_answer(
-                standalone_question,
-                _collect_tool_results(standalone_question),
-            )
-        if route == HEALTH_RAG_ROUTE:
-            return _rag_answer(standalone_question)
-        if route == WEB_SEARCH_ROUTE:
-            return _web_answer(standalone_question)
-        if route == GENERAL_CHAT_ROUTE:
-            return _general_answer(history or [], standalone_question)
-
-        return _format_tool_answer(
-            standalone_question,
-            _collect_tool_results(standalone_question),
-        )
+        response = multi_agent_handle(question, history=history)
+        return response.get("content", "")
     except Exception as e:
         logger.error("[HEALTH_AGENT] Error: %s", e)
         return (
@@ -368,26 +352,7 @@ def ai_agent_handle(question: str, history: Optional[List[Dict[str, str]]] = Non
 
 
 def get_agent_tools_summary() -> Dict:
-    """Thong tin cac capability cua Health Agent."""
-    return {
-        "domain": "health_inbody",
-        "routes": [
-            "agent_tools - tính/đánh giá BMI, PBF, mỡ nội tạng, dinh dưỡng, lịch tập, an toàn y tế",
-            "health_rag - truy xuất tài liệu sức khỏe/InBody nội bộ",
-            "web_search - tìm kiếm web bằng Tavily cho thông tin mới",
-            "general_chat - chào hỏi và hướng dẫn phạm vi hỗ trợ",
-        ],
-        "health_tools": [
-            "bmi_tool - Tính BMI từ cân nặng và chiều cao",
-            "body_fat_tool - Đánh giá PBF",
-            "visceral_fat_tool - Đánh giá mỡ nội tạng",
-            "nutrition_goal_tool - Gợi ý protein/calorie strategy",
-            "training_plan_tool - Gợi ý lịch tập cơ bản",
-            "medical_safety_tool - Kiểm tra cảnh báo y tế",
-        ],
-        "search_tools": [
-            "rag_search_tool - Hybrid search tài liệu Health/InBody",
-            "health_web_search_tool - Tavily web search",
-            "quick_answer_tool - Tavily Q&A",
-        ],
-    }
+    """Backward-compatible summary alias for the Multi-Agent RAG MVP."""
+    from agents import get_multi_agent_summary
+
+    return get_multi_agent_summary()

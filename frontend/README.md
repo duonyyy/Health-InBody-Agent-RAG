@@ -5,6 +5,7 @@ Frontend Streamlit cho backend FastAPI Health/InBody Agent RAG. Flow chính là 
 ## Tính năng chính
 
 - Chat tiếng Việt qua `POST /chat/complete` với `sync_request=true`.
+- Hiển thị `agent_trace` dưới câu trả lời để demo các agent đã chạy.
 - Gửi `history` hội thoại để backend định tuyến follow-up tốt hơn.
 - Tab `Dev tool test` chỉ để kiểm thử trực tiếp các endpoint tool khi debug backend.
 - Search tab gọi `POST /search` để kiểm tra corpus Health/InBody đã index.
