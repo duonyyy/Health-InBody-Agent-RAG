@@ -1,6 +1,5 @@
 """Các thao tác với vector database Qdrant."""
 import logging
-import os
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -13,10 +12,10 @@ from qdrant_client.models import (
     VectorParams,
 )
 
+from configs import DEFAULT_QDRANT_URL, DEFAULT_VECTOR_SIZE
+
 logger = logging.getLogger(__name__)
-QDRANT_URL = os.getenv("QDRANT_URL", "http://qdrant-db:6333")
-DEFAULT_VECTOR_SIZE = int(os.getenv("VECTOR_SIZE", "1024"))
-client = QdrantClient(url=QDRANT_URL)
+client = QdrantClient(url=DEFAULT_QDRANT_URL)
 
 
 def create_collection(name, vector_size=DEFAULT_VECTOR_SIZE):

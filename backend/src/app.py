@@ -1,6 +1,7 @@
 """FastAPI entrypoint cho Health/InBody Agent RAG backend."""
 import logging
 import time
+from datetime import date
 from typing import Any, Dict, List, Optional
 
 try:
@@ -8,11 +9,12 @@ try:
 except Exception:
     AsyncResult = None
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from agents import get_multi_agent_summary, multi_agent_handle
 from cache import cache_health_check
+from configs import DEFAULT_COLLECTION_NAME, DEFAULT_VECTOR_SIZE
 from health_tools import (
     calculate_bmi,
     check_medical_safety,
@@ -20,6 +22,13 @@ from health_tools import (
     evaluate_visceral_fat,
     suggest_nutrition_goal,
     suggest_training_plan,
+)
+from personalization import (
+    add_inbody_measurement,
+    get_user_profile,
+    list_inbody_measurements,
+    safe_build_personalization_context,
+    upsert_user_profile,
 )
 from search import get_search_stats, hybrid_search, initialize_search_index
 from summarizer import summarize_health_report, summarize_text
@@ -31,7 +40,6 @@ logger = logging.getLogger(__name__)
 
 TASK_TIMEOUT = 60
 POLLING_INTERVAL = 0.5
-DEFAULT_COLLECTION_NAME = "nmk_chatbot_collection"
 
 app = FastAPI(
     title="Health/InBody Agent RAG Backend",
@@ -54,6 +62,7 @@ class CompleteRequest(BaseModel):
 class AgentRequest(BaseModel):
     question: str
     history: Optional[List[Dict[str, str]]] = None
+    user_id: Optional[str] = None
 
 
 class SearchRequest(BaseModel):
@@ -64,7 +73,7 @@ class SearchRequest(BaseModel):
 
 class CollectionCreateRequest(BaseModel):
     collection_name: str = DEFAULT_COLLECTION_NAME
-    vector_size: int = Field(default=1024, ge=1)
+    vector_size: int = Field(default=DEFAULT_VECTOR_SIZE, ge=1)
 
 
 class DocumentCreateRequest(BaseModel):
@@ -116,6 +125,32 @@ class SafetyRequest(BaseModel):
     conditions: Optional[List[str]] = None
 
 
+class UserProfileRequest(BaseModel):
+    full_name: Optional[str] = None
+    email: Optional[str] = None
+    sex: Optional[str] = None
+    birth_year: Optional[int] = None
+    height_cm: Optional[float] = None
+    activity_level: Optional[str] = None
+    goal: Optional[str] = None
+    medical_conditions: Optional[str] = None
+
+
+class InBodyMeasurementRequest(BaseModel):
+    measurement_date: date
+    height_cm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    bmi: Optional[float] = None
+    smm_kg: Optional[float] = None
+    bfm_kg: Optional[float] = None
+    pbf_percent: Optional[float] = None
+    visceral_fat_level: Optional[float] = None
+    body_water_l: Optional[float] = None
+    recommendation_goal: Optional[str] = None
+    source_file: Optional[str] = None
+    raw_payload: Optional[Dict[str, Any]] = None
+
+
 @app.get("/")
 async def root():
     return {
@@ -136,6 +171,47 @@ async def health():
     }
 
 
+@app.get("/users/{user_id}/profile")
+async def user_profile(user_id: str):
+    try:
+        return get_user_profile(user_id, auto_create=True)
+    except Exception as e:
+        logger.error("Get user profile failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/users/{user_id}/profile")
+async def update_user_profile(user_id: str, data: UserProfileRequest):
+    try:
+        return upsert_user_profile(user_id, data.dict(exclude_unset=True))
+    except Exception as e:
+        logger.error("Update user profile failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/users/{user_id}/measurements")
+async def user_measurements(user_id: str, limit: int = Query(default=5, ge=1, le=50)):
+    try:
+        return {"measurements": list_inbody_measurements(user_id, limit=limit)}
+    except Exception as e:
+        logger.error("List user measurements failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/users/{user_id}/measurements")
+async def create_user_measurement(user_id: str, data: InBodyMeasurementRequest):
+    try:
+        return add_inbody_measurement(user_id, data.dict(exclude_unset=True))
+    except Exception as e:
+        logger.error("Create user measurement failed: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/users/{user_id}/personalization-context")
+async def user_personalization_context(user_id: str):
+    return safe_build_personalization_context(user_id)
+
+
 @app.post("/chat/complete")
 async def complete(data: CompleteRequest):
     if not data.user_id or not data.user_message:
@@ -153,7 +229,13 @@ async def complete(data: CompleteRequest):
 
     if data.sync_request:
         try:
-            response = multi_agent_handle(data.user_message, history=data.history)
+            personalization_context = safe_build_personalization_context(data.user_id)
+            response = multi_agent_handle(
+                data.user_message,
+                history=data.history,
+                user_id=data.user_id,
+                user_profile=personalization_context,
+            )
             return {"response": response}
         except Exception as e:
             logger.error("Chat sync failed: %s", e)
@@ -199,7 +281,15 @@ async def get_response(task_id: str):
 
 @app.post("/agent/answer")
 async def agent_answer(data: AgentRequest):
-    response = multi_agent_handle(data.question, history=data.history)
+    personalization_context = (
+        safe_build_personalization_context(data.user_id) if data.user_id else {}
+    )
+    response = multi_agent_handle(
+        data.question,
+        history=data.history,
+        user_id=data.user_id,
+        user_profile=personalization_context,
+    )
     return {
         "answer": response["content"],
         "agent_trace": response.get("agent_trace", []),

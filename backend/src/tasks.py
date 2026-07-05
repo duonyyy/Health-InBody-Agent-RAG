@@ -6,13 +6,21 @@ from typing import Any, Dict, List, Optional
 try:
     from celery import Celery
 
+    from configs import (
+        DEFAULT_CELERY_BROKER_URL,
+        DEFAULT_CELERY_RESULT_BACKEND,
+        DEFAULT_COLLECTION_NAME,
+    )
+
     celery_app = Celery(
         "health_inbody_tasks",
-        broker="redis://valkey-db:6379/0",
-        backend="redis://valkey-db:6379/0",
+        broker=DEFAULT_CELERY_BROKER_URL,
+        backend=DEFAULT_CELERY_RESULT_BACKEND,
     )
     shared_task = celery_app.task
 except Exception:
+    from configs import DEFAULT_COLLECTION_NAME
+
     celery_app = None
 
     def shared_task(*args, **kwargs):
@@ -46,6 +54,7 @@ from rerank import rerank_documents
 from search import hybrid_search, initialize_search_index
 from tavily_tool import tavily_search_health
 from agents import multi_agent_handle
+from personalization import safe_build_personalization_context
 
 try:
     from utils import setup_logging
@@ -55,8 +64,6 @@ except Exception:
     logging.basicConfig(level=logging.INFO)
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_COLLECTION_NAME = "nmk_chatbot_collection"
 
 
 def index_document_v2(
@@ -324,4 +331,10 @@ def llm_handle_message(bot_id, user_id, question):
     luu conversation vao database.
     """
     logger.info("Start Health/InBody message handling bot_id=%s user_id=%s", bot_id, user_id)
-    return multi_agent_handle(question, history=[])
+    personalization_context = safe_build_personalization_context(user_id)
+    return multi_agent_handle(
+        question,
+        history=[],
+        user_id=user_id,
+        user_profile=personalization_context,
+    )

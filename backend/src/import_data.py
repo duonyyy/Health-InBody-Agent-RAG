@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import sys
 import uuid
 from pathlib import Path
@@ -21,6 +20,7 @@ from typing import Any, Iterable
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from configs import DEFAULT_COLLECTION_NAME, DEFAULT_VECTOR_SIZE
 from utils import setup_logging
 
 try:
@@ -44,9 +44,6 @@ DEFAULT_DATA_FILE = (
     / "processed"
     / "embedding_documents.jsonl"
 )
-DEFAULT_COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "nmk_chatbot_collection")
-DEFAULT_VECTOR_SIZE = int(os.getenv("VECTOR_SIZE", "1024"))
-
 REQUIRED_FIELDS = {
     "doc_id",
     "title",

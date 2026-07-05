@@ -55,6 +55,7 @@ GENERAL_CHAT_AGENT = "GeneralChatAgent"
 SAFETY_AGENT = "SafetyAgent"
 RESPONSE_COMPOSER_AGENT = "ResponseComposerAgent"
 SUPERVISOR_AGENT = "SupervisorAgent"
+PERSONALIZATION_CONTEXT_AGENT = "PersonalizationContextAgent"
 
 
 def _to_json(data: Any) -> str:
@@ -63,6 +64,49 @@ def _to_json(data: Any) -> str:
 
 def _question(state: AgentState) -> str:
     return state.get("standalone_question") or state.get("question") or ""
+
+
+def _personalization_context(state: AgentState) -> Dict[str, Any]:
+    return state.get("personalization_context") or state.get("user_profile") or {}
+
+
+def _profile(state: AgentState) -> Dict[str, Any]:
+    return _personalization_context(state).get("profile") or {}
+
+
+def _latest_measurement(state: AgentState) -> Dict[str, Any]:
+    return (
+        state.get("latest_measurement")
+        or _personalization_context(state).get("latest_measurement")
+        or {}
+    )
+
+
+def _first_present(*values):
+    for value in values:
+        if value not in (None, ""):
+            return value
+    return None
+
+
+def _medical_conditions(state: AgentState) -> List[str]:
+    conditions = _profile(state).get("medical_conditions")
+    if not conditions:
+        return []
+    if isinstance(conditions, list):
+        return [str(item) for item in conditions if str(item).strip()]
+    return [item.strip() for item in str(conditions).split(",") if item.strip()]
+
+
+def _explicit_goal(question: str) -> Optional[str]:
+    text = (question or "").lower()
+    if "tăng cơ" in text or "muscle" in text:
+        return "muscle_gain"
+    if "duy trì" in text or "maintenance" in text:
+        return "maintenance"
+    if "giảm mỡ" in text or "fat loss" in text or "fat_loss" in text:
+        return "fat_loss"
+    return None
 
 
 def _ensure_agent(state: AgentState, agent_name: str) -> None:
@@ -190,8 +234,18 @@ def inbody_agent(state: AgentState) -> AgentState:
     results = list(state.get("tool_results") or [])
     added = []
 
-    weight = extract_weight_kg(question)
-    height = extract_height_cm(question)
+    profile = _profile(state)
+    latest = _latest_measurement(state)
+
+    weight = _first_present(
+        extract_weight_kg(question),
+        latest.get("weight_kg"),
+    )
+    height = _first_present(
+        extract_height_cm(question),
+        latest.get("height_cm"),
+        profile.get("height_cm"),
+    )
     if weight and height:
         result = calculate_bmi(weight, height)
         results.append({"agent": INBODY_AGENT, "tool": "calculate_bmi", "result": result})
@@ -209,9 +263,12 @@ def inbody_agent(state: AgentState) -> AgentState:
         )
         added.append("BMI needs more info")
 
-    pbf = extract_pbf(question)
+    pbf = _first_present(extract_pbf(question), latest.get("pbf_percent"))
     if pbf is not None:
-        result = evaluate_body_fat_percentage(pbf, extract_sex(question))
+        result = evaluate_body_fat_percentage(
+            pbf,
+            _first_present(extract_sex(question), profile.get("sex")),
+        )
         results.append({"agent": INBODY_AGENT, "tool": "evaluate_body_fat_percentage", "result": result})
         added.append("PBF")
     elif "pbf" in text or "phần trăm mỡ" in text:
@@ -227,7 +284,10 @@ def inbody_agent(state: AgentState) -> AgentState:
         )
         added.append("PBF needs more info")
 
-    visceral_fat = extract_visceral_fat(question)
+    visceral_fat = _first_present(
+        extract_visceral_fat(question),
+        latest.get("visceral_fat_level"),
+    )
     if visceral_fat is not None:
         result = evaluate_visceral_fat(visceral_fat)
         results.append({"agent": INBODY_AGENT, "tool": "evaluate_visceral_fat", "result": result})
@@ -261,9 +321,12 @@ def nutrition_agent(state: AgentState) -> AgentState:
         return state
 
     question = _question(state)
-    weight = extract_weight_kg(question) or 70
-    goal = infer_goal(question)
-    result = suggest_nutrition_goal(goal, weight)
+    profile = _profile(state)
+    latest = _latest_measurement(state)
+    weight = _first_present(extract_weight_kg(question), latest.get("weight_kg")) or 70
+    goal = _first_present(_explicit_goal(question), latest.get("recommendation_goal"), profile.get("goal")) or infer_goal(question)
+    activity_level = profile.get("activity_level") or "moderate"
+    result = suggest_nutrition_goal(goal, weight, activity_level)
     results = list(state.get("tool_results") or [])
     results.append({"agent": NUTRITION_AGENT, "tool": "suggest_nutrition_goal", "result": result})
     state["tool_results"] = results
@@ -282,7 +345,9 @@ def training_agent(state: AgentState) -> AgentState:
         return state
 
     question = _question(state)
-    goal = infer_goal(question)
+    profile = _profile(state)
+    latest = _latest_measurement(state)
+    goal = _first_present(_explicit_goal(question), latest.get("recommendation_goal"), profile.get("goal")) or infer_goal(question)
     days = infer_days_per_week(question)
     result = suggest_training_plan(goal, fitness_level="beginner", days_per_week=days)
     results = list(state.get("tool_results") or [])
@@ -389,7 +454,7 @@ def general_chat_agent(state: AgentState) -> AgentState:
 
 def safety_agent(state: AgentState) -> AgentState:
     question = _question(state)
-    safety = check_medical_safety(question)
+    safety = check_medical_safety(question, _medical_conditions(state))
     state["safety_result"] = safety
     append_trace(
         state,
@@ -423,6 +488,9 @@ def _fallback_answer(state: AgentState) -> str:
         chunks.append("Kết quả công cụ:\n{}".format(_to_json(state["tool_results"])))
     if state.get("retrieved_docs"):
         chunks.append("Đã truy xuất {} tài liệu liên quan để tham khảo.".format(len(state["retrieved_docs"])))
+    context = _personalization_context(state)
+    if context.get("has_profile") or context.get("has_latest_measurement"):
+        chunks.append("Đã dùng hồ sơ/lần đo InBody gần nhất để cá nhân hóa khi câu hỏi thiếu dữ liệu.")
     safety = state.get("safety_result") or {}
     if safety:
         chunks.append("Lưu ý an toàn: {}".format(safety.get("disclaimer", "Thông tin chỉ mang tính tham khảo.")))
@@ -434,6 +502,7 @@ def _fallback_answer(state: AgentState) -> str:
 def response_composer_agent(state: AgentState) -> AgentState:
     question = _question(state)
     selected = state.get("selected_agents") or []
+    personalization = _personalization_context(state)
     messages = [
         {
             "role": "system",
@@ -449,10 +518,12 @@ def response_composer_agent(state: AgentState) -> AgentState:
                 f"Câu hỏi người dùng:\n{question}\n\n"
                 f"Agent đã chạy:\n{', '.join(selected)}\n\n"
                 f"Kết quả tool/agent:\n{_to_json(state.get('tool_results') or [])}\n\n"
+                f"Hồ sơ cá nhân hóa hiện có:\n{_to_json(personalization)}\n\n"
                 f"Safety result:\n{_to_json(state.get('safety_result') or {})}\n\n"
                 f"Tài liệu RAG:\n{_format_docs(state.get('retrieved_docs') or [])}\n\n"
                 "Yêu cầu: trả lời ngắn gọn nhưng đủ ý, nói rõ dữ liệu còn thiếu nếu có, "
-                "nêu hành động thực tế, và thêm lưu ý an toàn y tế."
+                "nêu dữ liệu cá nhân hóa nào đã dùng nếu phù hợp, nêu hành động thực tế, "
+                "và thêm lưu ý an toàn y tế."
             ),
         },
     ]
@@ -539,17 +610,44 @@ def _run_sequential(state: AgentState) -> AgentState:
     return state
 
 
-def multi_agent_handle(question: str, history: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
+def multi_agent_handle(
+    question: str,
+    history: Optional[List[Dict[str, str]]] = None,
+    user_id: Optional[str] = None,
+    user_profile: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Run the Health/InBody Multi-Agent RAG graph and return answer plus trace."""
     global _COMPILED_GRAPH
+    personalization_context = user_profile or {}
     initial_state: AgentState = {
+        "user_id": user_id,
         "question": question,
         "history": history or [],
+        "user_profile": personalization_context,
+        "personalization_context": personalization_context,
+        "latest_measurement": personalization_context.get("latest_measurement", {}),
         "tool_results": [],
         "retrieved_docs": [],
         "agent_trace": [],
         "errors": [],
     }
+
+    if personalization_context.get("error"):
+        append_trace(
+            initial_state,
+            PERSONALIZATION_CONTEXT_AGENT,
+            "load_user_context",
+            "warning",
+            "Personalization context was unavailable; continued without saved profile data.",
+        )
+    elif personalization_context.get("has_profile") or personalization_context.get("has_latest_measurement"):
+        append_trace(
+            initial_state,
+            PERSONALIZATION_CONTEXT_AGENT,
+            "load_user_context",
+            "success",
+            "Loaded saved user profile and/or latest InBody measurement.",
+        )
 
     try:
         if StateGraph is not None:
@@ -588,6 +686,7 @@ def multi_agent_handle(question: str, history: Optional[List[Dict[str, str]]] = 
         "tool_results": final_state.get("tool_results") or [],
         "retrieved_docs": final_state.get("retrieved_docs") or [],
         "safety_result": final_state.get("safety_result") or {},
+        "personalization_context": final_state.get("personalization_context") or {},
         "errors": final_state.get("errors") or [],
     }
 
@@ -598,6 +697,10 @@ def get_multi_agent_summary() -> Dict[str, Any]:
         "orchestration": "LangGraph Multi-Agent RAG MVP",
         "entrypoint": "multi_agent_handle",
         "agents": [
+            {
+                "name": PERSONALIZATION_CONTEXT_AGENT,
+                "responsibility": "Load saved user profile and latest InBody measurement for personalization.",
+            },
             {
                 "name": SUPERVISOR_AGENT,
                 "responsibility": "Select one or more specialist agents from the user question.",

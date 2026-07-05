@@ -4,8 +4,12 @@ from typing import Any, Dict, List, Optional, TypedDict
 
 
 class AgentState(TypedDict, total=False):
+    user_id: Optional[str]
     question: str
     history: List[Dict[str, str]]
+    user_profile: Dict[str, Any]
+    personalization_context: Dict[str, Any]
+    latest_measurement: Dict[str, Any]
     standalone_question: str
     selected_agents: List[str]
     tool_results: List[Dict[str, Any]]

@@ -6,12 +6,12 @@ import re
 from collections import Counter
 from typing import Any, Dict, List, Optional, Tuple
 
+from configs import DEFAULT_COLLECTION_NAME
 from query_rewriter import expand_health_query
 from rerank import rerank_documents
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "nmk_chatbot_collection")
 DEFAULT_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "10"))
 DEFAULT_DENSE_WEIGHT = float(os.getenv("DENSE_WEIGHT", "0.6"))
 DEFAULT_BM25_WEIGHT = float(os.getenv("BM25_WEIGHT", "0.4"))

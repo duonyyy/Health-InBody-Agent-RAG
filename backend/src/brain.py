@@ -452,18 +452,19 @@ def generate_health_answer(
     return openai_chat_complete(messages)
 
 
-def get_financial_tools():
+def get_health_tools():
     """
-    Backward-compatible placeholder from old prototype.
+    Return tool definitions for the Health/InBody domain.
 
-    New code should use health_tools and agent_tools route.
+    Tool execution is handled by health_tools.py and the multi-agent graph; this
+    function remains as a small compatibility hook for modules that expect a
+    tool-list provider.
     """
-    logger.warning("get_financial_tools is deprecated; use health_tools instead")
     return []
 
 
-def get_financial_agent_answer(messages, model="gpt-4o", tools=None):
-    logger.warning("get_financial_agent_answer is deprecated")
+def get_health_agent_answer(messages, model=None, tools=None):
+    """Generate a Health/InBody agent answer with the configured LLM provider."""
     return openai_chat_complete(messages, model=model, raw=True)
 
 
@@ -484,6 +485,6 @@ def convert_tool_calls_to_json(tool_calls):
     }
 
 
-def get_financial_agent_handle(messages, model="gpt-4o", tools=None):
-    logger.warning("get_financial_agent_handle is deprecated")
+def get_health_agent_handle(messages, model=None, tools=None):
+    """Generate a Health/InBody agent response with the configured LLM provider."""
     return openai_chat_complete(messages, model=model)

@@ -5,8 +5,10 @@ from contextlib import contextmanager
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-DEFAULT_DATABASE_URL = (
-    "postgresql+psycopg2://health_user:health_password@postgres-db:5432/health_inbody"
+from configs import (
+    DEFAULT_CELERY_BROKER_URL,
+    DEFAULT_CELERY_RESULT_BACKEND,
+    DEFAULT_DATABASE_URL,
 )
 
 DATABASE_URL = os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
@@ -66,6 +68,8 @@ def get_celery_app(name="health_inbody_tasks"):
     """
     from celery import Celery
 
-    broker_url = os.environ.get("CELERY_BROKER_URL", "redis://valkey-db:6379/0")
-    result_backend = os.environ.get("CELERY_RESULT_BACKEND", broker_url)
-    return Celery(name, broker=broker_url, backend=result_backend)
+    return Celery(
+        name,
+        broker=DEFAULT_CELERY_BROKER_URL,
+        backend=DEFAULT_CELERY_RESULT_BACKEND,
+    )
