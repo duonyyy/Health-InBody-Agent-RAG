@@ -1,14 +1,16 @@
 # Embed Serving
 
-`embed_serving/` cung cap mot REST API nho gon de sinh embedding cho he thong RAG. Service nay load model `BAAI/bge-m3` bang `sentence-transformers`, chay tren CPU va expose cac endpoint de backend goi khi index du lieu hoac semantic search.
+`embed_serving/` cung cap mot REST API nho gon de sinh embedding cho he thong RAG. Service load model duoc cau hinh qua `MODEL_PATH`, chay tren CPU mac dinh va expose cac endpoint de backend goi khi index du lieu hoac semantic search.
 
 ## Cau truc folder
 
 ```text
 embed_serving/
 ├── .env.serving.template           # Mau bien moi truong
-├── docker-compose.serving.yml      # Compose de chay service
+├── docker-compose.serving.yml      # Compose CPU mac dinh
+├── docker-compose.gpu.yml          # Override CUDA/FP16
 ├── Dockerfile.cpu-serving          # Docker image cho CPU serving
+├── Dockerfile.gpu-serving          # Docker image cho CUDA serving
 ├── requirements_serving.txt        # Python dependencies
 ├── GPU_CPU_DEPLOYMENT_GUIDE.md     # Ghi chu deployment
 └── scripts/
@@ -91,6 +93,19 @@ Sau khi chay, service se san sang tai:
 http://localhost:5001
 ```
 
+GPU chi nen bat sau khi CUDA smoke test thanh cong:
+
+```bash
+docker compose \
+  -f docker-compose.serving.yml \
+  -f docker-compose.gpu.yml \
+  up --build
+```
+
+Tren may hien tai, CPU `ENCODE_BATCH_SIZE=8` duoc chon tu benchmark cung 32
+doan van: 3.20 text/giay so voi 1.79 text/giay o batch 2. Can benchmark lai
+neu doi CPU, model hoac do dai corpus.
+
 ## Bien moi truong
 
 | Bien | Mac dinh | Y nghia |
@@ -101,6 +116,9 @@ http://localhost:5001
 | `API_PORT` | `5000` | Port trong process/container |
 | `DEBUG` | `false` | Bat/tat Flask debug |
 | `MAX_BATCH_SIZE` | `32` | So text toi da moi request |
+| `ENCODE_BATCH_SIZE` | `8` tren CPU | Batch noi bo cua `SentenceTransformer.encode` |
+| `EMBEDDING_DEVICE` | `cpu` | `cpu`, `cuda` hoac `auto` |
+| `EMBEDDING_DTYPE` | `float32` tren CPU | `float32`, hoac `float16` khi dung CUDA |
 
 ## API contract
 

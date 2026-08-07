@@ -2,6 +2,8 @@
 import json
 import logging
 import os
+import re
+import unicodedata
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -10,15 +12,49 @@ from custom_embedding import get_custom_embedding
 
 logger = logging.getLogger(__name__)
 
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 
-LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "ollama").lower()
+def _env_optional_bool(name: str, default: Optional[bool] = None) -> Optional[bool]:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    normalized = value.strip().lower()
+    if normalized in {"", "auto", "default", "none"}:
+        return None
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(
+        f"{name} must be one of auto, true, or false; received {value!r}"
+    )
+
+
+def _normalize_match_text(text: str) -> str:
+    normalized = unicodedata.normalize("NFD", (text or "").lower())
+    without_marks = "".join(
+        char for char in normalized if unicodedata.category(char) != "Mn"
+    )
+    return re.sub(r"\s+", " ", without_marks.replace("đ", "d")).strip()
+
+
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "").strip()
+
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "none").lower()
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:3b")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "").strip()
+OLLAMA_THINK = _env_optional_bool("OLLAMA_THINK", None)
 LLM_TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0.2"))
 LLM_MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "1024"))
 LLM_TIMEOUT = int(os.environ.get("LLM_TIMEOUT", "60"))
+LLM_ROUTER_MAX_TOKENS = int(os.environ.get("LLM_ROUTER_MAX_TOKENS", "16"))
+LLM_ROUTER_TIMEOUT = int(os.environ.get("LLM_ROUTER_TIMEOUT", "8"))
+LLM_NORMALIZE_MAX_TOKENS = int(os.environ.get("LLM_NORMALIZE_MAX_TOKENS", "96"))
+LLM_NORMALIZE_TIMEOUT = int(os.environ.get("LLM_NORMALIZE_TIMEOUT", "10"))
+LLM_REWRITE_MAX_TOKENS = int(os.environ.get("LLM_REWRITE_MAX_TOKENS", "128"))
+LLM_REWRITE_TIMEOUT = int(os.environ.get("LLM_REWRITE_TIMEOUT", "15"))
+LLM_COMPOSER_MAX_TOKENS = int(os.environ.get("LLM_COMPOSER_MAX_TOKENS", "400"))
+LLM_COMPOSER_TIMEOUT = int(os.environ.get("LLM_COMPOSER_TIMEOUT", "30"))
 
 VIETNAMESE_LLM_API_URL = os.environ.get("VIETNAMESE_LLM_API_URL")
 
@@ -32,6 +68,40 @@ VALID_ROUTES = {
     WEB_SEARCH_ROUTE,
     GENERAL_CHAT_ROUTE,
 }
+
+
+def get_llm_runtime_config() -> Dict[str, Any]:
+    """Return non-secret model/runtime policy for health checks and diagnostics."""
+    if LLM_PROVIDER == "openai":
+        model = OPENAI_MODEL or "not-configured"
+    elif LLM_PROVIDER in {"custom", "vietnamese_llm"}:
+        model = "custom-api"
+    else:
+        model = OLLAMA_MODEL or "not-configured"
+
+    return {
+        "provider": LLM_PROVIDER,
+        "model": model,
+        "ollama_think": "auto" if OLLAMA_THINK is None else OLLAMA_THINK,
+        "task_budgets": {
+            "router": {
+                "max_tokens": LLM_ROUTER_MAX_TOKENS,
+                "timeout_seconds": LLM_ROUTER_TIMEOUT,
+            },
+            "normalize": {
+                "max_tokens": LLM_NORMALIZE_MAX_TOKENS,
+                "timeout_seconds": LLM_NORMALIZE_TIMEOUT,
+            },
+            "rewrite": {
+                "max_tokens": LLM_REWRITE_MAX_TOKENS,
+                "timeout_seconds": LLM_REWRITE_TIMEOUT,
+            },
+            "composer": {
+                "max_tokens": LLM_COMPOSER_MAX_TOKENS,
+                "timeout_seconds": LLM_COMPOSER_TIMEOUT,
+            },
+        },
+    }
 
 
 def get_openai_client():
@@ -62,12 +132,18 @@ def _normalize_messages(messages=()) -> List[Dict[str, str]]:
 
 def _chat_with_ollama(
     messages=(),
-    model: str = OLLAMA_MODEL,
+    model: Optional[str] = None,
     temperature: float = LLM_TEMPERATURE,
     max_tokens: int = LLM_MAX_TOKENS,
+    think: Optional[bool] = OLLAMA_THINK,
+    timeout: int = LLM_TIMEOUT,
 ) -> str:
+    selected_model = (model or OLLAMA_MODEL).strip()
+    if not selected_model:
+        raise RuntimeError("OLLAMA_MODEL is not configured")
+
     payload = {
-        "model": model,
+        "model": selected_model,
         "messages": _normalize_messages(messages),
         "stream": False,
         "options": {
@@ -75,19 +151,30 @@ def _chat_with_ollama(
             "num_predict": max_tokens,
         },
     }
+    if think is not None:
+        payload["think"] = think
     response = requests.post(
         f"{OLLAMA_BASE_URL.rstrip('/')}/api/chat",
         json=payload,
-        timeout=LLM_TIMEOUT,
+        timeout=timeout,
     )
     response.raise_for_status()
     data = response.json()
-    return data.get("message", {}).get("content", "").strip()
+    message = data.get("message", {})
+    content = str(message.get("content") or "").strip()
+    if not content:
+        if message.get("thinking"):
+            raise RuntimeError(
+                "LLM returned thinking output without final content; adjust "
+                "OLLAMA_THINK or the task token budget for the configured model"
+            )
+        raise RuntimeError("LLM returned an empty response")
+    return content
 
 
 def _chat_with_openai(
     messages=(),
-    model: str = OPENAI_MODEL,
+    model: Optional[str] = None,
     temperature: float = LLM_TEMPERATURE,
     max_tokens: int = LLM_MAX_TOKENS,
     raw: bool = False,
@@ -95,9 +182,12 @@ def _chat_with_openai(
     client = get_openai_client()
     if client is None:
         raise RuntimeError("OPENAI_API_KEY is not configured")
+    selected_model = (model or OPENAI_MODEL).strip()
+    if not selected_model:
+        raise RuntimeError("OPENAI_MODEL is not configured")
 
     response = client.chat.completions.create(
-        model=model,
+        model=selected_model,
         messages=_normalize_messages(messages),
         temperature=temperature,
         max_tokens=max_tokens,
@@ -136,6 +226,8 @@ def openai_chat_complete(
     raw: bool = False,
     temperature: float = LLM_TEMPERATURE,
     max_tokens: int = LLM_MAX_TOKENS,
+    think: Optional[bool] = OLLAMA_THINK,
+    timeout: int = LLM_TIMEOUT,
 ):
     """
     Ham chat completion dung chung cho cac module cu.
@@ -170,6 +262,8 @@ def openai_chat_complete(
             model=model or OLLAMA_MODEL,
             temperature=temperature,
             max_tokens=max_tokens,
+            think=think,
+            timeout=timeout,
         )
     except Exception as e:
         logger.warning("Primary LLM provider failed: %s", e)
@@ -184,7 +278,13 @@ def openai_chat_complete(
         raise
 
 
-def vietnamese_llm_chat_complete(messages=(), temperature=0.2, max_tokens=1024):
+def vietnamese_llm_chat_complete(
+    messages=(),
+    temperature=0.2,
+    max_tokens=LLM_MAX_TOKENS,
+    think: Optional[bool] = OLLAMA_THINK,
+    timeout: int = LLM_TIMEOUT,
+):
     """
     Goi LLM tieng Viet cho Health/InBody chatbot.
 
@@ -194,10 +294,12 @@ def vietnamese_llm_chat_complete(messages=(), temperature=0.2, max_tokens=1024):
         messages=messages,
         temperature=temperature,
         max_tokens=max_tokens,
+        think=think,
+        timeout=timeout,
     )
 
 
-def get_embedding(text, model=None):
+def get_embedding(text, model=None, timeout=None):
     """
     Lay embedding cho truy xuat tai lieu Health/InBody.
 
@@ -211,7 +313,7 @@ def get_embedding(text, model=None):
         cleaned = text.replace("\n", " ").strip()
 
     logger.info("Generating embedding for Health/InBody text")
-    return get_custom_embedding(cleaned)
+    return get_custom_embedding(cleaned, timeout=timeout)
 
 
 def gen_doc_prompt(docs):
@@ -298,7 +400,12 @@ Câu hỏi đã viết lại:"""
     ]
 
     try:
-        rephrased = openai_chat_complete(messages).strip()
+        rephrased = openai_chat_complete(
+            messages,
+            temperature=0.0,
+            max_tokens=LLM_NORMALIZE_MAX_TOKENS,
+            timeout=LLM_NORMALIZE_TIMEOUT,
+        ).strip()
         return rephrased or message
     except Exception as e:
         logger.error("Error rephrasing Health/InBody question: %s", e)
@@ -306,7 +413,7 @@ Câu hỏi đã viết lại:"""
 
 
 def _keyword_route(message: str) -> str:
-    message_lower = (message or "").lower()
+    message_lower = _normalize_match_text(message)
 
     general_keywords = ["xin chào", "hello", "hi", "cảm ơn", "thanks", "bạn là ai"]
     web_keywords = ["mới nhất", "gần đây", "hôm nay", "năm 2026", "vừa công bố"]
@@ -339,13 +446,26 @@ def _keyword_route(message: str) -> str:
         "protein",
     ]
 
-    if any(keyword in message_lower for keyword in general_keywords):
+    def contains_any(keywords):
+        for keyword in keywords:
+            normalized_keyword = _normalize_match_text(keyword)
+            if len(normalized_keyword) <= 2:
+                if re.search(
+                    rf"(?<!\w){re.escape(normalized_keyword)}(?!\w)",
+                    message_lower,
+                ):
+                    return True
+            elif normalized_keyword in message_lower:
+                return True
+        return False
+
+    if contains_any(general_keywords):
         return GENERAL_CHAT_ROUTE
-    if any(keyword in message_lower for keyword in web_keywords):
+    if contains_any(web_keywords):
         return WEB_SEARCH_ROUTE
-    if any(keyword in message_lower for keyword in tool_keywords):
+    if contains_any(tool_keywords):
         return AGENT_TOOLS_ROUTE
-    if any(keyword in message_lower for keyword in rag_keywords):
+    if contains_any(rag_keywords):
         return HEALTH_RAG_ROUTE
     return GENERAL_CHAT_ROUTE
 
@@ -398,7 +518,12 @@ Route:"""
     ]
 
     try:
-        route = openai_chat_complete(messages, max_tokens=20).strip().lower()
+        route = openai_chat_complete(
+            messages,
+            temperature=0.0,
+            max_tokens=LLM_ROUTER_MAX_TOKENS,
+            timeout=LLM_ROUTER_TIMEOUT,
+        ).strip().lower()
         for valid_route in VALID_ROUTES:
             if valid_route in route:
                 return valid_route

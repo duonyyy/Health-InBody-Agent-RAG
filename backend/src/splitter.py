@@ -1,6 +1,7 @@
 """Tach tai lieu suc khoe/InBody thanh cac chunk cho pipeline RAG."""
 import logging
 import re
+from functools import lru_cache
 from typing import Any, Dict, List, Optional, TypedDict
 
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -169,6 +170,7 @@ def _enrich_chunks_node(state: SplitterState) -> SplitterState:
     return {**state, "chunks": chunks}
 
 
+@lru_cache(maxsize=1)
 def build_splitter_graph():
     """
     Tao LangGraph dieu phoi cac buoc tach chunk.

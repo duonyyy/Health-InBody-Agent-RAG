@@ -39,6 +39,7 @@ credentials/
 # Logs and runtime files
 *.log
 logs/
+pytest-cache-files-*/
 *.tmp
 *.temp
 *.bak
@@ -57,6 +58,8 @@ postgres_data/
 qdrant_volume/
 valkey_data/
 worker_volume/
+backend/artifacts/
+backend/data/generated/
 
 # Embedding model weights and generated serving assets
 embed_serving/models/
@@ -64,6 +67,9 @@ embed_serving/logs/
 
 # Large/raw/generated datasets
 dataset/
+dataset.txt
+*.jsonl
+!backend/data/train_qa_format.jsonl
 data_pipeline/dataset/raw/**
 !data_pipeline/dataset/raw/README.md
 data_pipeline/dataset/processed/**
@@ -77,10 +83,13 @@ data_pipeline/logs/
 !data_pipeline/configs/README.md
 !data_pipeline/utils/README.md
 
+# Local test/runtime reports
+test-results/
+coverage.xml
+
 # Node/frontend dependencies if added later
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
-

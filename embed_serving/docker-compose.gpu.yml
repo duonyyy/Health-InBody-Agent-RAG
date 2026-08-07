@@ -1,0 +1,22 @@
+version: "3.8"
+
+# GPU override. Use together with docker-compose.serving.yml only after the
+# Docker/WSL CUDA smoke test succeeds.
+services:
+  embedding-api:
+    image: nmk-health-embedding:gpu
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu-serving
+    environment:
+      EMBEDDING_DEVICE: cuda
+      EMBEDDING_DTYPE: float16
+      ENCODE_BATCH_SIZE: 2
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities:
+                - gpu

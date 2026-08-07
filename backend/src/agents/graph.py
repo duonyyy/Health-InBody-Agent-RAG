@@ -2,6 +2,8 @@
 
 import json
 import logging
+import os
+import time
 from typing import Any, Dict, List, Optional
 
 try:
@@ -14,6 +16,8 @@ from brain import (
     AGENT_TOOLS_ROUTE,
     GENERAL_CHAT_ROUTE,
     HEALTH_RAG_ROUTE,
+    LLM_COMPOSER_MAX_TOKENS,
+    LLM_COMPOSER_TIMEOUT,
     WEB_SEARCH_ROUTE,
     detect_route,
     detect_user_intent,
@@ -41,6 +45,7 @@ from .parsing import (
     extract_weight_kg,
     infer_days_per_week,
     infer_goal,
+    normalize_match_text,
 )
 from .state import AgentState, append_error, append_trace
 
@@ -57,6 +62,31 @@ RESPONSE_COMPOSER_AGENT = "ResponseComposerAgent"
 SUPERVISOR_AGENT = "SupervisorAgent"
 PERSONALIZATION_CONTEXT_AGENT = "PersonalizationContextAgent"
 
+AGENT_REQUEST_TIMEOUT_SECONDS = float(
+    os.getenv("AGENT_REQUEST_TIMEOUT_SECONDS", "30")
+)
+AGENT_COMPOSER_RESERVE_SECONDS = float(
+    os.getenv("AGENT_COMPOSER_RESERVE_SECONDS", "10")
+)
+RAG_EMBEDDING_TIMEOUT_SECONDS = float(
+    os.getenv("RAG_EMBEDDING_TIMEOUT_SECONDS", "10")
+)
+QDRANT_SEARCH_RESERVE_SECONDS = float(
+    os.getenv("QDRANT_SEARCH_RESERVE_SECONDS", "5")
+)
+RAG_MAX_RETRIEVAL_QUERIES = max(
+    1,
+    int(os.getenv("RAG_MAX_RETRIEVAL_QUERIES", "1")),
+)
+RAG_COMPOSER_MAX_DOCS = max(
+    1,
+    int(os.getenv("RAG_COMPOSER_MAX_DOCS", "3")),
+)
+RAG_COMPOSER_MAX_CHARS_PER_DOC = max(
+    200,
+    int(os.getenv("RAG_COMPOSER_MAX_CHARS_PER_DOC", "700")),
+)
+
 
 def _to_json(data: Any) -> str:
     return json.dumps(data, ensure_ascii=False, indent=2)
@@ -64,6 +94,27 @@ def _to_json(data: Any) -> str:
 
 def _question(state: AgentState) -> str:
     return state.get("standalone_question") or state.get("question") or ""
+
+
+def _remaining_seconds(state: AgentState) -> float:
+    deadline = state.get("deadline_monotonic")
+    if deadline is None:
+        return AGENT_REQUEST_TIMEOUT_SECONDS
+    return max(0.0, float(deadline) - time.monotonic())
+
+
+def _bounded_timeout(
+    state: AgentState,
+    configured_timeout: float,
+    reserve_seconds: float = 0.0,
+) -> float:
+    return max(
+        0.0,
+        min(
+            float(configured_timeout),
+            _remaining_seconds(state) - float(reserve_seconds),
+        ),
+    )
 
 
 def _personalization_context(state: AgentState) -> Dict[str, Any]:
@@ -99,12 +150,12 @@ def _medical_conditions(state: AgentState) -> List[str]:
 
 
 def _explicit_goal(question: str) -> Optional[str]:
-    text = (question or "").lower()
-    if "tăng cơ" in text or "muscle" in text:
+    text = normalize_match_text(question)
+    if "tang co" in text or "muscle" in text:
         return "muscle_gain"
-    if "duy trì" in text or "maintenance" in text:
+    if "duy tri" in text or "maintenance" in text:
         return "maintenance"
-    if "giảm mỡ" in text or "fat loss" in text or "fat_loss" in text:
+    if "giam mo" in text or "fat loss" in text or "fat_loss" in text:
         return "fat_loss"
     return None
 
@@ -117,8 +168,223 @@ def _ensure_agent(state: AgentState, agent_name: str) -> None:
 
 
 def _has_any(text: str, keywords: List[str]) -> bool:
-    text_lower = (text or "").lower()
-    return any(keyword in text_lower for keyword in keywords)
+    normalized_text = normalize_match_text(text)
+    return any(normalize_match_text(keyword) in normalized_text for keyword in keywords)
+
+
+def _urgent_answer() -> str:
+    return (
+        "Các dấu hiệu bạn mô tả có thể cần được đánh giá y tế khẩn cấp. "
+        "Hãy dừng tập ngay, nghỉ ở nơi an toàn và liên hệ cơ sở cấp cứu/y tế gần nhất. "
+        "Nếu triệu chứng đang tiếp diễn, nặng lên hoặc bạn ở một mình, hãy nhờ người khác hỗ trợ; "
+        "không tự tiếp tục tập hoặc tự lái xe khi đang choáng, đau ngực hay khó thở. "
+        "Thông tin này chỉ nhằm cảnh báo an toàn, không phải chẩn đoán."
+    )
+
+
+def _apply_urgent_fast_path(state: AgentState, safety: Dict[str, Any]) -> AgentState:
+    state["selected_agents"] = [SAFETY_AGENT]
+    state["safety_result"] = safety
+    state["final_answer"] = _urgent_answer()
+    state["fast_path"] = "urgent_safety"
+    append_trace(
+        state,
+        SAFETY_AGENT,
+        "urgent_safety_fast_path",
+        "success",
+        "Returned deterministic urgent guidance without LLM or retrieval.",
+    )
+    return state
+
+
+def _try_general_fast_path(state: AgentState) -> Optional[AgentState]:
+    question = _question(state)
+    text = normalize_match_text(question)
+    greeting_patterns = [
+        "xin chao",
+        "chao ban",
+        "hello",
+        "hi",
+        "cam on",
+        "ban la ai",
+        "ban giup duoc gi",
+        "co the giup gi",
+    ]
+    if not any(
+        re_pattern in f" {text} "
+        if len(re_pattern) > 2
+        else f" {re_pattern} " in f" {text} "
+        for re_pattern in greeting_patterns
+    ):
+        return None
+
+    state["selected_agents"] = [GENERAL_CHAT_AGENT]
+    state["final_answer"] = (
+        "Xin chào! Mình có thể giúp bạn tính và giải thích BMI, PBF, mỡ nội tạng, "
+        "tham khảo mục tiêu dinh dưỡng và xây lịch tập cơ bản. "
+        "Bạn có thể nhập trực tiếp các chỉ số, ví dụ: “Tôi nặng 72 kg, cao 170 cm, "
+        "BMI của tôi là bao nhiêu?”. Thông tin chỉ mang tính tham khảo và không thay thế bác sĩ."
+    )
+    state["fast_path"] = "general_chat"
+    append_trace(
+        state,
+        SAFETY_AGENT,
+        "precheck_medical_safety",
+        "success",
+        "Safety risk level: low.",
+    )
+    append_trace(
+        state,
+        GENERAL_CHAT_AGENT,
+        "general_chat_fast_path",
+        "success",
+        "Returned deterministic greeting and capability summary.",
+    )
+    append_trace(
+        state,
+        RESPONSE_COMPOSER_AGENT,
+        "compose_template_answer",
+        "success",
+        "Rendered a deterministic Vietnamese greeting.",
+    )
+    return state
+
+
+def _try_inbody_fast_path(state: AgentState) -> Optional[AgentState]:
+    """Return deterministic InBody calculations when no broader advice is requested."""
+    question = _question(state)
+    text = normalize_match_text(question)
+    if _has_any(
+        text,
+        [
+            "protein",
+            "calo",
+            "dinh duong",
+            "an uong",
+            "khau phan",
+            "lich tap",
+            "tap luyen",
+            "cardio",
+            "khang luc",
+            "giam mo",
+            "tang co",
+            "thuc don",
+        ],
+    ):
+        return None
+
+    latest = _latest_measurement(state)
+    profile = _profile(state)
+    results: List[Dict[str, Any]] = []
+    answer_lines: List[str] = []
+
+    weight = _first_present(extract_weight_kg(question), latest.get("weight_kg"))
+    height = _first_present(
+        extract_height_cm(question),
+        latest.get("height_cm"),
+        profile.get("height_cm"),
+    )
+    if "bmi" in text and weight and height:
+        result = calculate_bmi(weight, height)
+        if not result.get("error"):
+            labels = {
+                "underweight": "thiếu cân",
+                "normal": "trong ngưỡng tham khảo",
+                "overweight_risk": "tiền thừa cân theo ngưỡng châu Á",
+                "overweight": "thừa cân",
+                "obesity": "béo phì",
+            }
+            results.append(
+                {"agent": INBODY_AGENT, "tool": "calculate_bmi", "result": result}
+            )
+            answer_lines.append(
+                f"- BMI của bạn là **{result['bmi']:.2f}**, thuộc nhóm "
+                f"**{labels.get(result['category'], result['category'])}**."
+            )
+
+    pbf = _first_present(extract_pbf(question), latest.get("pbf_percent"))
+    if pbf is not None and _has_any(text, ["pbf", "phan tram mo", "mo co the"]):
+        result = evaluate_body_fat_percentage(
+            pbf,
+            _first_present(extract_sex(question), profile.get("sex")),
+        )
+        if not result.get("error"):
+            labels = {
+                "low": "thấp",
+                "normal": "trong ngưỡng tham khảo",
+                "high": "cao",
+                "very_high": "rất cao",
+            }
+            results.append(
+                {
+                    "agent": INBODY_AGENT,
+                    "tool": "evaluate_body_fat_percentage",
+                    "result": result,
+                }
+            )
+            answer_lines.append(
+                f"- PBF **{result['pbf_percent']}%** được phân loại **"
+                f"{labels.get(result['category'], result['category'])}** "
+                f"theo giới tính `{result['sex']}`."
+            )
+
+    visceral_fat = _first_present(
+        extract_visceral_fat(question),
+        latest.get("visceral_fat_level"),
+    )
+    if visceral_fat is not None and _has_any(text, ["mo noi tang", "visceral"]):
+        result = evaluate_visceral_fat(visceral_fat)
+        if not result.get("error"):
+            labels = {
+                "normal": "trong ngưỡng tham khảo",
+                "elevated": "hơi cao",
+                "high": "cao",
+            }
+            results.append(
+                {
+                    "agent": INBODY_AGENT,
+                    "tool": "evaluate_visceral_fat",
+                    "result": result,
+                }
+            )
+            answer_lines.append(
+                f"- Mỡ nội tạng level **{result['visceral_fat_level']}** được đánh giá "
+                f"**{labels.get(result['risk'], result['risk'])}**."
+            )
+
+    if not results:
+        return None
+
+    answer_lines.append(
+        "\nCác chỉ số trên chỉ dùng để sàng lọc/tham khảo; nên đọc cùng thành phần cơ thể, "
+        "tiền sử sức khỏe và triệu chứng thực tế."
+    )
+    append_trace(
+        state,
+        SAFETY_AGENT,
+        "precheck_medical_safety",
+        "success",
+        "Safety risk level: low.",
+    )
+    state["selected_agents"] = [INBODY_AGENT]
+    state["tool_results"] = results
+    state["final_answer"] = "\n".join(answer_lines)
+    state["fast_path"] = "inbody_tools"
+    append_trace(
+        state,
+        INBODY_AGENT,
+        "deterministic_inbody_fast_path",
+        "success",
+        "Returned explicit InBody calculations without LLM or retrieval.",
+    )
+    append_trace(
+        state,
+        RESPONSE_COMPOSER_AGENT,
+        "compose_template_answer",
+        "success",
+        "Rendered a deterministic Vietnamese answer from tool results.",
+    )
+    return state
 
 
 def normalize_question_agent(state: AgentState) -> AgentState:
@@ -150,7 +416,7 @@ def normalize_question_agent(state: AgentState) -> AgentState:
 
 def supervisor_agent(state: AgentState) -> AgentState:
     question = _question(state)
-    text = question.lower()
+    text = normalize_match_text(question)
     selected: List[str] = []
 
     has_metrics = any(
@@ -187,8 +453,10 @@ def supervisor_agent(state: AgentState) -> AgentState:
             "mỡ nội tạng",
             "dinh dưỡng",
             "tập luyện",
-            "nên",
+            "giải thích",
+            "ý nghĩa",
             "khác nhau",
+            "là gì",
         ],
     ):
         selected.append(RAG_AGENT)
@@ -368,18 +636,47 @@ def rag_agent(state: AgentState) -> AgentState:
         return state
 
     question = _question(state)
-    try:
-        queries = rewrite_query_to_multi_queries(question, num_queries=3)
-    except Exception as exc:
-        logger.warning("Query rewrite failed: %s", exc)
-        queries = [question]
-        append_error(state, f"Query rewrite failed: {exc}")
+    queries = [question]
+    if RAG_MAX_RETRIEVAL_QUERIES > 1:
+        rewrite_timeout = _bounded_timeout(
+            state,
+            LLM_REWRITE_TIMEOUT,
+            AGENT_COMPOSER_RESERVE_SECONDS
+            + QDRANT_SEARCH_RESERVE_SECONDS
+            + RAG_EMBEDDING_TIMEOUT_SECONDS,
+        )
+        if rewrite_timeout >= 1:
+            try:
+                queries = rewrite_query_to_multi_queries(
+                    question,
+                    num_queries=RAG_MAX_RETRIEVAL_QUERIES,
+                    timeout=rewrite_timeout,
+                )
+            except Exception as exc:
+                logger.warning("Query rewrite failed: %s", exc)
+                append_error(state, f"Query rewrite failed: {exc}")
 
     docs: List[Dict[str, Any]] = []
     seen = set()
     for query in queries:
+        embedding_timeout = _bounded_timeout(
+            state,
+            RAG_EMBEDDING_TIMEOUT_SECONDS,
+            AGENT_COMPOSER_RESERVE_SECONDS + QDRANT_SEARCH_RESERVE_SECONDS,
+        )
+        if embedding_timeout < 1:
+            append_error(
+                state,
+                "RAG retrieval skipped because the request deadline was nearly exhausted",
+            )
+            break
         try:
-            for doc in hybrid_search(query, limit=5, use_rerank=False):
+            for doc in hybrid_search(
+                query,
+                limit=5,
+                use_rerank=False,
+                embedding_timeout=embedding_timeout,
+            ):
                 key = str(doc.get("doc_id") or doc.get("content") or doc.get("title") or "")
                 if key and key not in seen:
                     seen.add(key)
@@ -453,8 +750,10 @@ def general_chat_agent(state: AgentState) -> AgentState:
 
 
 def safety_agent(state: AgentState) -> AgentState:
-    question = _question(state)
-    safety = check_medical_safety(question, _medical_conditions(state))
+    safety = state.get("safety_result")
+    if not safety:
+        question = _question(state)
+        safety = check_medical_safety(question, _medical_conditions(state))
     state["safety_result"] = safety
     append_trace(
         state,
@@ -470,24 +769,38 @@ def _format_docs(docs: List[Dict[str, Any]]) -> str:
     if not docs:
         return "Không có tài liệu truy xuất phù hợp hoặc hệ thống search chưa sẵn sàng."
     lines = []
-    for index, doc in enumerate(docs, start=1):
+    for index, doc in enumerate(docs[:RAG_COMPOSER_MAX_DOCS], start=1):
         source = doc.get("source") or doc.get("source_file") or "unknown"
         title = doc.get("question") or doc.get("title") or f"Tài liệu {index}"
         content = doc.get("content") or doc.get("page_content") or ""
-        lines.append(f"[{index}] Nguồn: {source}\nChủ đề: {title}\nNội dung: {content[:1200]}")
+        lines.append(
+            f"[{index}] Nguồn: {source}\n"
+            f"Chủ đề: {title}\n"
+            f"Nội dung: {content[:RAG_COMPOSER_MAX_CHARS_PER_DOC]}"
+        )
     return "\n\n".join(lines)
 
 
 def _fallback_answer(state: AgentState) -> str:
-    question = _question(state)
     chunks = [
-        "Mình đã xử lý câu hỏi theo luồng Multi-Agent RAG MVP.",
-        f"Câu hỏi: {question}",
+        "Mình chưa thể hoàn tất phần diễn giải tự động trong thời gian cho phép."
     ]
     if state.get("tool_results"):
-        chunks.append("Kết quả công cụ:\n{}".format(_to_json(state["tool_results"])))
+        missing_inputs = []
+        for tool_result in state["tool_results"]:
+            result = tool_result.get("result") or {}
+            if isinstance(result, dict) and result.get("need_more_info"):
+                message = result.get("message")
+                if message and message not in missing_inputs:
+                    missing_inputs.append(message)
+        if missing_inputs:
+            chunks.append("Dữ liệu còn thiếu:\n- " + "\n- ".join(missing_inputs))
     if state.get("retrieved_docs"):
-        chunks.append("Đã truy xuất {} tài liệu liên quan để tham khảo.".format(len(state["retrieved_docs"])))
+        chunks.append(
+            "Hệ thống đã tìm thấy {} tài liệu liên quan nhưng chưa tự tổng hợp "
+            "để tránh diễn giải sai khi mô hình bị timeout. Bạn có thể thử lại "
+            "hoặc hỏi ngắn hơn.".format(len(state["retrieved_docs"]))
+        )
     context = _personalization_context(state)
     if context.get("has_profile") or context.get("has_latest_measurement"):
         chunks.append("Đã dùng hồ sơ/lần đo InBody gần nhất để cá nhân hóa khi câu hỏi thiếu dữ liệu.")
@@ -527,7 +840,18 @@ def response_composer_agent(state: AgentState) -> AgentState:
             ),
         },
     ]
+    composer_status = "success"
+    composer_summary = "Composed final response from agent outputs."
+    composer_timeout = _bounded_timeout(
+        state,
+        LLM_COMPOSER_TIMEOUT,
+        reserve_seconds=0.25,
+    )
     try:
+        if composer_timeout < 1:
+            raise TimeoutError(
+                "Request deadline exhausted before response composition"
+            )
         if GENERAL_CHAT_AGENT in selected and len(selected) == 1:
             final_answer = vietnamese_llm_chat_complete(
                 [
@@ -540,22 +864,30 @@ def response_composer_agent(state: AgentState) -> AgentState:
                     }
                 ]
                 + (state.get("history") or [])
-                + [{"role": "user", "content": question}]
+                + [{"role": "user", "content": question}],
+                max_tokens=min(256, LLM_COMPOSER_MAX_TOKENS),
+                timeout=composer_timeout,
             )
         else:
-            final_answer = openai_chat_complete(messages)
+            final_answer = openai_chat_complete(
+                messages,
+                max_tokens=LLM_COMPOSER_MAX_TOKENS,
+                timeout=composer_timeout,
+            )
     except Exception as exc:
         logger.warning("Response composition LLM failed: %s", exc)
         append_error(state, f"Response composition failed: {exc}")
         final_answer = _fallback_answer(state)
+        composer_status = "warning"
+        composer_summary = "LLM failed; returned deterministic safe fallback."
 
     state["final_answer"] = final_answer
     append_trace(
         state,
         RESPONSE_COMPOSER_AGENT,
         "compose_final_answer",
-        "success",
-        "Composed final response from agent outputs.",
+        composer_status,
+        composer_summary,
     )
     return state
 
@@ -610,6 +942,23 @@ def _run_sequential(state: AgentState) -> AgentState:
     return state
 
 
+def _response_from_state(state: AgentState) -> Dict[str, Any]:
+    errors = state.get("errors") or []
+    return {
+        "role": "assistant",
+        "content": state.get("final_answer") or _fallback_answer(state),
+        "status": "degraded" if errors else "ok",
+        "fast_path": state.get("fast_path"),
+        "agent_trace": state.get("agent_trace") or [],
+        "selected_agents": state.get("selected_agents") or [],
+        "tool_results": state.get("tool_results") or [],
+        "retrieved_docs": state.get("retrieved_docs") or [],
+        "safety_result": state.get("safety_result") or {},
+        "personalization_context": state.get("personalization_context") or {},
+        "errors": errors,
+    }
+
+
 def multi_agent_handle(
     question: str,
     history: Optional[List[Dict[str, str]]] = None,
@@ -630,6 +979,9 @@ def multi_agent_handle(
         "retrieved_docs": [],
         "agent_trace": [],
         "errors": [],
+        "deadline_monotonic": (
+            time.monotonic() + AGENT_REQUEST_TIMEOUT_SECONDS
+        ),
     }
 
     if personalization_context.get("error"):
@@ -648,6 +1000,19 @@ def multi_agent_handle(
             "success",
             "Loaded saved user profile and/or latest InBody measurement.",
         )
+
+    safety = check_medical_safety(question, _medical_conditions(initial_state))
+    initial_state["safety_result"] = safety
+    if safety.get("risk_level") == "urgent":
+        return _response_from_state(_apply_urgent_fast_path(initial_state, safety))
+
+    general_fast_path_state = _try_general_fast_path(initial_state)
+    if general_fast_path_state is not None:
+        return _response_from_state(general_fast_path_state)
+
+    fast_path_state = _try_inbody_fast_path(initial_state)
+    if fast_path_state is not None:
+        return _response_from_state(fast_path_state)
 
     try:
         if StateGraph is not None:
@@ -678,17 +1043,7 @@ def multi_agent_handle(
         initial_state["final_answer"] = _fallback_answer(initial_state)
         final_state = initial_state
 
-    return {
-        "role": "assistant",
-        "content": final_state.get("final_answer") or _fallback_answer(final_state),
-        "agent_trace": final_state.get("agent_trace") or [],
-        "selected_agents": final_state.get("selected_agents") or [],
-        "tool_results": final_state.get("tool_results") or [],
-        "retrieved_docs": final_state.get("retrieved_docs") or [],
-        "safety_result": final_state.get("safety_result") or {},
-        "personalization_context": final_state.get("personalization_context") or {},
-        "errors": final_state.get("errors") or [],
-    }
+    return _response_from_state(final_state)
 
 
 def get_multi_agent_summary() -> Dict[str, Any]:
@@ -696,6 +1051,14 @@ def get_multi_agent_summary() -> Dict[str, Any]:
         "domain": "health_inbody",
         "orchestration": "LangGraph Multi-Agent RAG MVP",
         "entrypoint": "multi_agent_handle",
+        "runtime_budget": {
+            "request_timeout_seconds": AGENT_REQUEST_TIMEOUT_SECONDS,
+            "composer_reserve_seconds": AGENT_COMPOSER_RESERVE_SECONDS,
+            "rag_max_retrieval_queries": RAG_MAX_RETRIEVAL_QUERIES,
+            "rag_embedding_timeout_seconds": RAG_EMBEDDING_TIMEOUT_SECONDS,
+            "rag_composer_max_docs": RAG_COMPOSER_MAX_DOCS,
+            "rag_composer_max_chars_per_doc": RAG_COMPOSER_MAX_CHARS_PER_DOC,
+        },
         "agents": [
             {
                 "name": PERSONALIZATION_CONTEXT_AGENT,

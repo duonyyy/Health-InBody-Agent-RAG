@@ -17,8 +17,10 @@ class AgentState(TypedDict, total=False):
     safety_result: Dict[str, Any]
     agent_trace: List[Dict[str, str]]
     final_answer: str
+    fast_path: str
     route: str
     errors: List[str]
+    deadline_monotonic: float
 
 
 def append_trace(

@@ -93,7 +93,7 @@ def _clean_query_line(line: str) -> str:
     return line.strip()
 
 
-def _chat_complete(messages: List[dict]) -> str:
+def _chat_complete(messages: List[dict], timeout: float | None = None) -> str:
     """
     Goi ham chat completion cua backend neu da duoc implement.
 
@@ -101,9 +101,18 @@ def _chat_complete(messages: List[dict]) -> str:
     query_rewriter van import/test duoc va tu fallback khi LLM chua san sang.
     """
     try:
-        from brain import openai_chat_complete
+        from brain import (
+            LLM_REWRITE_MAX_TOKENS,
+            LLM_REWRITE_TIMEOUT,
+            openai_chat_complete,
+        )
 
-        return openai_chat_complete(messages)
+        return openai_chat_complete(
+            messages,
+            temperature=0.0,
+            max_tokens=LLM_REWRITE_MAX_TOKENS,
+            timeout=timeout or LLM_REWRITE_TIMEOUT,
+        )
     except Exception as e:
         logger.warning("Chat completion is not available for query rewriting: %s", e)
         raise
@@ -151,7 +160,10 @@ def expand_legal_query(query: str) -> str:
 
 
 def rewrite_query_to_multi_queries(
-    original_query: str, num_queries: int = 3, use_expansion: bool = True
+    original_query: str,
+    num_queries: int = 3,
+    use_expansion: bool = True,
+    timeout: float | None = None,
 ) -> List[str]:
     """
     Viet lai mot cau hoi suc khoe/InBody thanh nhieu truy van retrieval.
@@ -208,7 +220,7 @@ Bây giờ hãy tạo {num_queries} câu truy vấn cho câu hỏi gốc trên:"
     logger.info("Rewriting health query: %s", original_query)
 
     try:
-        response = _chat_complete(messages)
+        response = _chat_complete(messages, timeout=timeout)
         queries = []
 
         for line in response.strip().split("\n"):

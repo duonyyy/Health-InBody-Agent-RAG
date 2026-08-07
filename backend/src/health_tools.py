@@ -315,19 +315,19 @@ def check_medical_safety(question: str, conditions: Optional[List[str]] = None) 
 
         if any(keyword in text for keyword in urgent_keywords):
             risk_level = "urgent"
-            action = "Khuyen nghi nguoi dung lien he cap cuu hoac co so y te ngay."
+            action = "Khuyến nghị người dùng liên hệ cấp cứu hoặc cơ sở y tế ngay."
         elif conditions or any(keyword in text for keyword in medical_keywords):
             risk_level = "medical_caution"
-            action = "Tra loi o muc tham khao va khuyen nghi hoi bac si/chuyen gia khi can."
+            action = "Trả lời ở mức tham khảo và khuyến nghị hỏi bác sĩ/chuyên gia khi cần."
         else:
             risk_level = "low"
-            action = "Co the tra loi ve suc khoe, dinh duong, tap luyen o muc tham khao."
+            action = "Có thể trả lời về sức khỏe, dinh dưỡng, tập luyện ở mức tham khảo."
 
         result = {
             "risk_level": risk_level,
             "conditions": conditions,
             "recommended_action": action,
-            "disclaimer": "Thong tin chi mang tinh tham khao, khong thay the chan doan hoac dieu tri y khoa.",
+            "disclaimer": "Thông tin chỉ mang tính tham khảo, không thay thế chẩn đoán hoặc điều trị y khoa.",
         }
         logger.info("[TOOL] Medical safety checked: %s", result)
         return result

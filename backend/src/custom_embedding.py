@@ -59,7 +59,10 @@ class CustomEmbeddingService:
             return False
 
     def get_embedding(
-        self, text: Union[str, List[str]], batch_size: int = 32
+        self,
+        text: Union[str, List[str]],
+        batch_size: int = 32,
+        timeout: float | None = None,
     ) -> Union[List[float], List[List[float]]]:
         """
         Generate embeddings for text(s)
@@ -86,7 +89,7 @@ class CustomEmbeddingService:
             response = requests.post(
                 self.embedding_endpoint,
                 json={"texts": texts, "batch_size": batch_size},
-                timeout=self.timeout,
+                timeout=timeout or self.timeout,
             )
 
             if response.status_code != 200:
@@ -165,7 +168,9 @@ def get_embedding_service() -> CustomEmbeddingService:
 
 
 def get_custom_embedding(
-    text: Union[str, List[str]], batch_size: int = 32
+    text: Union[str, List[str]],
+    batch_size: int = 32,
+    timeout: float | None = None,
 ) -> Union[List[float], List[List[float]]]:
     """
     Convenience function to get embeddings from custom model
@@ -178,7 +183,7 @@ def get_custom_embedding(
         Embedding vector(s)
     """
     service = get_embedding_service()
-    return service.get_embedding(text, batch_size)
+    return service.get_embedding(text, batch_size, timeout=timeout)
 
 
 def get_custom_similarity(texts1: List[str], texts2: List[str]) -> List[List[float]]:

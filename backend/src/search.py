@@ -225,7 +225,7 @@ def bm25_search(query: str, limit: int = DEFAULT_TOP_K) -> List[Dict]:
     return [doc for doc, _ in scored_docs[:limit]]
 
 
-def _get_embedding(query: str):
+def _get_embedding(query: str, timeout: float | None = None):
     """
     Lay embedding neu backend da implement.
 
@@ -235,7 +235,7 @@ def _get_embedding(query: str):
     try:
         from brain import get_embedding
 
-        return get_embedding(query)
+        return get_embedding(query, timeout=timeout)
     except Exception as e:
         logger.warning("Embedding is not available, vector search skipped: %s", e)
         return None
@@ -245,11 +245,12 @@ def vector_search_fallback(
     query: str,
     limit: int = DEFAULT_TOP_K,
     filters: Optional[Dict[str, Any]] = None,
+    embedding_timeout: float | None = None,
 ) -> List[Dict]:
     """
     Tim kiem vector trong Qdrant neu embedding service va vector store san sang.
     """
-    vector = _get_embedding(query)
+    vector = _get_embedding(query, timeout=embedding_timeout)
     if vector is None:
         return []
 
@@ -354,6 +355,7 @@ def hybrid_search(
     limit: int = DEFAULT_TOP_K,
     filters: Optional[Dict[str, Any]] = None,
     use_rerank: bool = True,
+    embedding_timeout: float | None = None,
 ) -> List[Dict]:
     """
     Tim kiem hybrid cho Health/InBody RAG.
@@ -373,6 +375,7 @@ def hybrid_search(
         expanded_query,
         limit=limit * 2,
         filters=filters,
+        embedding_timeout=embedding_timeout,
     )
 
     if bm25_results or vector_results:

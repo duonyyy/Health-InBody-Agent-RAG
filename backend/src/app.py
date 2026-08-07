@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from agents import get_multi_agent_summary, multi_agent_handle
+from brain import get_llm_runtime_config
 from cache import cache_health_check
 from configs import DEFAULT_COLLECTION_NAME, DEFAULT_VECTOR_SIZE
 from health_tools import (
@@ -53,20 +54,20 @@ app = FastAPI(
 
 class CompleteRequest(BaseModel):
     bot_id: Optional[str] = "health-inbody-agent"
-    user_id: str
-    user_message: str
+    user_id: str = Field(min_length=1)
+    user_message: str = Field(min_length=1)
     history: Optional[List[Dict[str, str]]] = None
     sync_request: Optional[bool] = True
 
 
 class AgentRequest(BaseModel):
-    question: str
+    question: str = Field(min_length=1)
     history: Optional[List[Dict[str, str]]] = None
     user_id: Optional[str] = None
 
 
 class SearchRequest(BaseModel):
-    query: str
+    query: str = Field(min_length=1)
     limit: int = Field(default=5, ge=1, le=20)
     use_rerank: bool = True
 
@@ -95,22 +96,22 @@ class SummaryRequest(BaseModel):
 
 
 class BmiRequest(BaseModel):
-    weight_kg: float
-    height_cm: float
+    weight_kg: float = Field(gt=0, le=500)
+    height_cm: float = Field(ge=30, le=300)
 
 
 class PbfRequest(BaseModel):
-    pbf_percent: float
+    pbf_percent: float = Field(ge=0, le=100)
     sex: Optional[str] = None
 
 
 class VisceralFatRequest(BaseModel):
-    visceral_fat_level: float
+    visceral_fat_level: float = Field(ge=0, le=100)
 
 
 class NutritionRequest(BaseModel):
     goal: str = "fat_loss"
-    weight_kg: float
+    weight_kg: float = Field(gt=0, le=500)
     activity_level: str = "moderate"
 
 
@@ -121,7 +122,7 @@ class TrainingRequest(BaseModel):
 
 
 class SafetyRequest(BaseModel):
-    question: str
+    question: str = Field(min_length=1)
     conditions: Optional[List[str]] = None
 
 
@@ -167,6 +168,7 @@ async def health():
         "service": "Health/InBody Agent RAG Backend",
         "cache": cache_health_check(),
         "search": get_search_stats(),
+        "llm": get_llm_runtime_config(),
         "agent": get_multi_agent_summary(),
     }
 
@@ -229,12 +231,17 @@ async def complete(data: CompleteRequest):
 
     if data.sync_request:
         try:
+            request_started = time.perf_counter()
             personalization_context = safe_build_personalization_context(data.user_id)
             response = multi_agent_handle(
                 data.user_message,
                 history=data.history,
                 user_id=data.user_id,
                 user_profile=personalization_context,
+            )
+            response["latency_ms"] = round(
+                (time.perf_counter() - request_started) * 1000,
+                2,
             )
             return {"response": response}
         except Exception as e:
@@ -281,6 +288,7 @@ async def get_response(task_id: str):
 
 @app.post("/agent/answer")
 async def agent_answer(data: AgentRequest):
+    request_started = time.perf_counter()
     personalization_context = (
         safe_build_personalization_context(data.user_id) if data.user_id else {}
     )
@@ -292,8 +300,14 @@ async def agent_answer(data: AgentRequest):
     )
     return {
         "answer": response["content"],
+        "status": response.get("status", "ok"),
+        "fast_path": response.get("fast_path"),
+        "latency_ms": round((time.perf_counter() - request_started) * 1000, 2),
         "agent_trace": response.get("agent_trace", []),
         "selected_agents": response.get("selected_agents", []),
+        "tool_results": response.get("tool_results", []),
+        "safety_result": response.get("safety_result", {}),
+        "errors": response.get("errors", []),
         "agent": get_multi_agent_summary(),
     }
 

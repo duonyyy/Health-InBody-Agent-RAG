@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""
-Flask API đơn giản để serving embedding model trên CPU
-Endpoints: /health, /embed, /similarity
-"""
+"""Health/InBody embedding API for explicit CPU or CUDA deployments."""
 
 import logging
 import os
+import threading
 import time
 from typing import Any, Dict, List
 
@@ -26,31 +24,94 @@ app = Flask(__name__)
 # Global model variable
 model = None
 model_loaded = False
+model_device = "cpu"
+model_dtype = "float32"
+inference_lock = threading.Lock()
+
+# The API can receive up to MAX_BATCH_SIZE texts, while this value controls how
+# many texts SentenceTransformer processes concurrently on the selected device.
+# A conservative default of 2 is suitable for a 4 GB RTX 3050 Laptop GPU.
+ENCODE_BATCH_SIZE = int(os.getenv("ENCODE_BATCH_SIZE", "2"))
+MAX_BATCH_SIZE = int(os.getenv("MAX_BATCH_SIZE", "32"))
+REQUESTED_DEVICE = os.getenv("EMBEDDING_DEVICE", "auto").strip().lower()
+REQUESTED_DTYPE = os.getenv("EMBEDDING_DTYPE", "auto").strip().lower()
+
+
+def _resolve_device() -> str:
+    if REQUESTED_DEVICE not in {"auto", "cpu", "cuda"}:
+        raise ValueError("EMBEDDING_DEVICE must be auto, cpu, or cuda")
+    if REQUESTED_DEVICE == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError(
+            "EMBEDDING_DEVICE=cuda but torch.cuda.is_available() is false"
+        )
+    if REQUESTED_DEVICE == "auto":
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    return REQUESTED_DEVICE
+
+
+def _resolve_dtype(device: str) -> str:
+    if REQUESTED_DTYPE not in {"auto", "float16", "float32"}:
+        raise ValueError("EMBEDDING_DTYPE must be auto, float16, or float32")
+    if REQUESTED_DTYPE == "auto":
+        return "float16" if device == "cuda" else "float32"
+    if REQUESTED_DTYPE == "float16" and device != "cuda":
+        raise ValueError("float16 embedding is only supported on CUDA")
+    return REQUESTED_DTYPE
+
+
+def _embedding_dimension() -> int | None:
+    if model is None:
+        return None
+    getter = getattr(model, "get_embedding_dimension", None)
+    if getter is None:
+        getter = getattr(model, "get_sentence_embedding_dimension", None)
+    return int(getter()) if getter else None
 
 
 def load_model():
     """Load embedding model"""
-    global model, model_loaded
+    global model, model_loaded, model_device, model_dtype
 
     model_path = os.getenv("MODEL_PATH", "./models")
 
     logger.info(f"📥 Loading model from: {model_path}")
 
     try:
-        # Force CPU usage
-        device = "cpu"
-        logger.info(f"💻 Using device: {device}")
+        if ENCODE_BATCH_SIZE < 1 or ENCODE_BATCH_SIZE > MAX_BATCH_SIZE:
+            raise ValueError(
+                "ENCODE_BATCH_SIZE must be between 1 and MAX_BATCH_SIZE"
+            )
 
-        # Load model
-        model = SentenceTransformer(model_path, device=device)
+        device = _resolve_device()
+        dtype = _resolve_dtype(device)
+
+        if device == "cuda":
+            model = SentenceTransformer(model_path, device="cpu")
+            if dtype == "float16":
+                model.half()
+            model.to("cuda")
+        else:
+            model = SentenceTransformer(model_path, device="cpu")
+        model_device = device
+        model_dtype = dtype
 
         # Test model with dummy text
-        test_embedding = model.encode(["test"], show_progress_bar=False)
+        test_embedding = model.encode(
+            ["test"],
+            batch_size=1,
+            show_progress_bar=False,
+        )
         embedding_dim = test_embedding.shape[1]
 
         model_loaded = True
         logger.info(f"✅ Model loaded successfully!")
         logger.info(f"📊 Embedding dimension: {embedding_dim}")
+        logger.info(
+            "⚙️ Device: %s, dtype: %s, encode batch size: %s",
+            model_device,
+            model_dtype,
+            ENCODE_BATCH_SIZE,
+        )
 
         return True
 
@@ -66,12 +127,19 @@ def health():
     status = {
         "status": "healthy" if model_loaded else "unhealthy",
         "model_loaded": model_loaded,
-        "device": "cpu",
+        "device": model_device,
+        "requested_device": REQUESTED_DEVICE,
+        "dtype": model_dtype,
+        "encode_batch_size": ENCODE_BATCH_SIZE,
+        "max_batch_size": MAX_BATCH_SIZE,
+        "torch_version": torch.__version__,
+        "torch_cuda_version": torch.version.cuda,
+        "cuda_available": torch.cuda.is_available(),
         "timestamp": time.time(),
     }
 
     if model_loaded and model is not None:
-        status["embedding_dim"] = model.get_sentence_embedding_dimension()
+        status["embedding_dim"] = _embedding_dimension()
 
     return jsonify(status), 200 if model_loaded else 503
 
@@ -99,18 +167,21 @@ def embed():
             return jsonify({"error": "'texts' must be a non-empty list"}), 400
 
         # Limit batch size
-        max_batch_size = int(os.getenv("MAX_BATCH_SIZE", "32"))
-        if len(texts) > max_batch_size:
+        if len(texts) > MAX_BATCH_SIZE:
             return (
-                jsonify({"error": f"Batch size exceeds limit. Max: {max_batch_size}"}),
+                jsonify({"error": f"Batch size exceeds limit. Max: {MAX_BATCH_SIZE}"}),
                 400,
             )
 
         # Generate embeddings
         start_time = time.time()
-        embeddings = model.encode(
-            texts, batch_size=16, show_progress_bar=False, convert_to_numpy=True
-        )
+        with inference_lock:
+            embeddings = model.encode(
+                texts,
+                batch_size=ENCODE_BATCH_SIZE,
+                show_progress_bar=False,
+                convert_to_numpy=True,
+            )
         inference_time = time.time() - start_time
 
         # Convert to list for JSON serialization
@@ -159,23 +230,29 @@ def similarity():
             return jsonify({"error": "Input lists cannot be empty"}), 400
 
         # Limit batch size
-        max_batch_size = int(os.getenv("MAX_BATCH_SIZE", "32"))
-        if len(texts1) > max_batch_size or len(texts2) > max_batch_size:
+        if len(texts1) > MAX_BATCH_SIZE or len(texts2) > MAX_BATCH_SIZE:
             return (
-                jsonify({"error": f"Batch size exceeds limit. Max: {max_batch_size}"}),
+                jsonify({"error": f"Batch size exceeds limit. Max: {MAX_BATCH_SIZE}"}),
                 400,
             )
 
         # Generate embeddings
         start_time = time.time()
 
-        embeddings1 = model.encode(
-            texts1, batch_size=16, show_progress_bar=False, convert_to_numpy=True
-        )
+        with inference_lock:
+            embeddings1 = model.encode(
+                texts1,
+                batch_size=ENCODE_BATCH_SIZE,
+                show_progress_bar=False,
+                convert_to_numpy=True,
+            )
 
-        embeddings2 = model.encode(
-            texts2, batch_size=16, show_progress_bar=False, convert_to_numpy=True
-        )
+            embeddings2 = model.encode(
+                texts2,
+                batch_size=ENCODE_BATCH_SIZE,
+                show_progress_bar=False,
+                convert_to_numpy=True,
+            )
 
         # Calculate cosine similarity
         # Normalize vectors

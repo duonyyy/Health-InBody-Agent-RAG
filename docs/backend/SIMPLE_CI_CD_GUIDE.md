@@ -106,10 +106,10 @@ File `.env` trong `backend/` nên có các biến phù hợp:
 
 ```env
 QDRANT_URL=http://qdrant-db:6333
-QDRANT_COLLECTION_NAME=nmk_chatbot_collection
+QDRANT_COLLECTION_NAME=nmk_chatbot_active
 VECTOR_SIZE=1024
 CUSTOM_EMBEDDING_API_URL=http://host.docker.internal:5001
-DATABASE_URL=postgresql+psycopg2://health_user:health_password@postgres-db:5432/health_inbody
+DATABASE_URL=postgresql+psycopg2://health_user:change-me@postgres-db:5432/health_inbody
 LLM_PROVIDER=none
 ```
 
@@ -184,4 +184,3 @@ docker compose up --build
 ```
 
 Nếu collection Qdrant sai dimension, cần tạo lại collection với `VECTOR_SIZE=1024` và import dataset lại.
-
