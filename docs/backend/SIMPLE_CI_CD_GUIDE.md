@@ -37,7 +37,7 @@ Chạy backend local:
 cd backend
 pip install -r requirements.txt
 cd src
-uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+uvicorn api.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 Kiểm tra:

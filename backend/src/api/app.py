@@ -421,4 +421,4 @@ async def import_data_endpoint(data: DocumentsIndexRequest):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("app:app", host="0.0.0.0", port=8000, workers=1, log_level="info")
+    uvicorn.run("api.app:app", host="0.0.0.0", port=8000, workers=1, log_level="info")

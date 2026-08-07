@@ -9,7 +9,7 @@ services:
     build: .
     hostname: chatbot-api
     container_name: chatbot-api
-    command: uvicorn app:app --host 0.0.0.0 --port 8000 --workers 2 --log-level info
+    command: uvicorn api.app:app --host 0.0.0.0 --port 8000 --workers 2 --log-level info
     restart: always
     env_file:
       - .env
@@ -38,7 +38,7 @@ services:
     build: .
     hostname: chatbot-worker
     container_name: chatbot-worker
-    command: celery -A tasks.celery_app worker --loglevel=debug --logfile=/var/logs/celery.log
+    command: celery -A jobs.tasks.celery_app worker --loglevel=debug --logfile=/var/logs/celery.log
     restart: always
     env_file:
       - .env
