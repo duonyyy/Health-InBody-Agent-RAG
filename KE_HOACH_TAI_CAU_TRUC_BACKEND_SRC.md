@@ -333,3 +333,4 @@ Tái cấu trúc chỉ được coi là hoàn tất khi:
 |---|---|---|---:|---|---|---|
 | 07/08/2026 | 0 | Baseline trước tái cấu trúc; HEAD `b6b5da9` | 23 passed | Backend/embedding healthy | Alias `nmk_chatbot_active`, 23.608 point, green | Đạt; chưa di chuyển logic |
 | 07/08/2026 | 1 | Tạo package shell và `__init__.py`; không đổi entrypoint/logic | 23 passed; container import/compile đạt | Backend healthy | Qdrant không đổi | Đạt; host thiếu `psycopg2`/`qdrant_client`, đã xác nhận bằng container runtime |
+| 07/08/2026 | 2 | `app`, `configs`, `cache`, `utils` chuyển vào `api/` và `core/`; root wrapper giữ entrypoint | 23 passed; import/compile đạt | Backend healthy | Alias/point count không đổi | Đạt; chưa tách router vật lý |
