@@ -54,7 +54,7 @@ def session_scope():
 
 def init_db():
     """Create ORM tables if they do not exist."""
-    import models  # noqa: F401
+    import persistence.models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
 

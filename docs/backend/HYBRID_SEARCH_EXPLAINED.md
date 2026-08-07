@@ -137,7 +137,7 @@ data_pipeline/dataset/processed/embedding_documents.jsonl
 Backend import file này bằng:
 
 ```bash
-python backend/src/import_data.py
+python backend/src/pipelines/import_data.py
 ```
 
 Hoặc gửi qua API:
@@ -168,4 +168,3 @@ curl -X POST http://localhost:8000/search \
     "use_rerank": true
   }'
 ```
-

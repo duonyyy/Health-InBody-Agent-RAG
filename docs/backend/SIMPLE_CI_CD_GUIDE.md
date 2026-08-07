@@ -18,7 +18,7 @@ Pipeline tối thiểu nên đảm bảo:
 Chạy từ thư mục gốc project:
 
 ```bash
-python backend/src/import_data.py --dry-run
+python backend/src/pipelines/import_data.py --dry-run
 ```
 
 Kỳ vọng:
@@ -140,7 +140,7 @@ python data_pipeline/utils/build_embedding_dataset.py
 Import trực tiếp:
 
 ```bash
-python backend/src/import_data.py
+python backend/src/pipelines/import_data.py
 ```
 
 Hoặc import qua API:
@@ -152,7 +152,7 @@ python data_pipeline/utils/index_mvp_dataset.py --batch-size 50
 ## 7. Checklist CI Tối Thiểu
 
 ```bash
-python backend/src/import_data.py --dry-run
+python backend/src/pipelines/import_data.py --dry-run
 docker compose -f backend/docker-compose.yml config
 docker compose -f backend/docker-compose.yml build
 ```

@@ -233,7 +233,7 @@ def _get_embedding(query: str, timeout: float | None = None):
     embedding service chua san sang.
     """
     try:
-        from brain import get_embedding
+        from llm.client import get_embedding
 
         return get_embedding(query, timeout=timeout)
     except Exception as e:

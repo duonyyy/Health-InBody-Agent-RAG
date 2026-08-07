@@ -1,7 +1,7 @@
 """
 Backward-compatible imports for the old legal_tools module name.
 
-New code should import these helpers from health_tools instead.
+New code should import these helpers from health.tools instead.
 """
 
 from health.tools import (  # noqa: F401

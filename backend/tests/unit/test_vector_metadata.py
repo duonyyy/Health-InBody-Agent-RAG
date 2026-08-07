@@ -1,4 +1,4 @@
-from vector_metadata import detect_content_type, prepare_vector_payload
+from rag.vector_metadata import detect_content_type, prepare_vector_payload
 
 
 def test_curated_content_type_is_not_overwritten_by_chunk_keywords():

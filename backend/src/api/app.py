@@ -13,10 +13,10 @@ from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from agents import get_multi_agent_summary, multi_agent_handle
-from brain import get_llm_runtime_config
-from cache import cache_health_check
-from configs import DEFAULT_COLLECTION_NAME, DEFAULT_VECTOR_SIZE
-from health_tools import (
+from llm.client import get_llm_runtime_config
+from core.cache import cache_health_check
+from core.config import DEFAULT_COLLECTION_NAME, DEFAULT_VECTOR_SIZE
+from health.tools import (
     calculate_bmi,
     check_medical_safety,
     evaluate_body_fat_percentage,
@@ -24,17 +24,17 @@ from health_tools import (
     suggest_nutrition_goal,
     suggest_training_plan,
 )
-from personalization import (
+from persistence.personalization import (
     add_inbody_measurement,
     get_user_profile,
     list_inbody_measurements,
     safe_build_personalization_context,
     upsert_user_profile,
 )
-from search import get_search_stats, hybrid_search, initialize_search_index
-from summarizer import summarize_health_report, summarize_text
-from tasks import index_document_v2, index_health_documents, llm_handle_message
-from utils import setup_logging
+from rag.search import get_search_stats, hybrid_search, initialize_search_index
+from llm.summarizer import summarize_health_report, summarize_text
+from jobs.tasks import index_document_v2, index_health_documents, llm_handle_message
+from core.utils import setup_logging
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -328,7 +328,7 @@ async def search_endpoint(data: SearchRequest):
 @app.post("/collection/create")
 async def create_vector_collection(data: CollectionCreateRequest):
     try:
-        from vectorize import create_collection
+        from rag.qdrant.client import create_collection
 
         create_status = create_collection(data.collection_name, data.vector_size)
         return {"status": create_status is not None, "result": str(create_status)}

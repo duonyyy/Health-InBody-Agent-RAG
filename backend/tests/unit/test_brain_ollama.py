@@ -1,4 +1,4 @@
-import brain
+from llm import client as brain
 import pytest
 
 

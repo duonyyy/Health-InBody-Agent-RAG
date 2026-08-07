@@ -20,32 +20,20 @@ Backend thực hiện các chức năng chính:
 ```text
 backend/
 ├── src/
+│   ├── api/                   # FastAPI app, routes và request schemas
 │   ├── agents/                # LangGraph Multi-Agent
 │   │   ├── __init__.py        #   Export multi_agent_handle, get_multi_agent_summary
 │   │   ├── graph.py           #   Định nghĩa toàn bộ Agent nodes và LangGraph edges
 │   │   ├── state.py           #   AgentState TypedDict, append_trace/append_error
 │   │   └── parsing.py         #   Extract chỉ số (weight, height, PBF...) từ câu hỏi
-│   ├── app.py                 # Khởi tạo FastAPI và toàn bộ REST Endpoints
-│   ├── agent.py               # Wrapper tương thích ngược cho multi-agent handler
-│   ├── brain.py               # Xử lý LLM (Ollama/OpenAI), prompt, detect intent/route
-│   ├── cache.py               # Cache utilities dùng Redis/Valkey
-│   ├── configs.py             # Hằng số dùng chung (collection name, vector size, DB URL)
-│   ├── custom_embedding.py    # Client kết nối tới service embed_serving (BGE-M3)
-│   ├── database.py            # Kết nối PostgreSQL bằng SQLAlchemy
-│   ├── health_tools.py        # Logic tính BMI, PBF, mỡ nội tạng, dinh dưỡng, tập luyện, safety
-│   ├── import_data.py         # Script nạp corpus từ data_pipeline vào Qdrant
-│   ├── legal_tools.py         # Re-export tương thích ngược từ health_tools
-│   ├── models.py              # Pydantic schemas + SQLAlchemy ORM models
-│   ├── personalization.py     # Quản lý hồ sơ người dùng và lịch sử đo InBody
-│   ├── query_rewriter.py      # Viết lại câu hỏi, mở rộng từ khóa y tế cho RAG
-│   ├── rerank.py              # Xếp hạng lại tài liệu truy xuất (Cohere/fallback)
-│   ├── search.py              # Hybrid search logic (Qdrant vector + BM25 + Rerank)
-│   ├── splitter.py            # Tách document thành chunks cho indexing
-│   ├── summarizer.py          # Tóm tắt văn bản / báo cáo sức khỏe bằng LLM
-│   ├── tasks.py               # Tác vụ nền (Celery), indexing tài liệu
-│   ├── tavily_tool.py         # Tìm kiếm web sức khỏe qua Tavily API
-│   ├── utils.py               # Logging có màu, generate request ID
-│   └── vectorize.py           # Thao tác với Vector DB Qdrant (create/upsert/search)
+│   ├── core/                  # Config, cache, logging và tiện ích dùng chung
+│   ├── health/                # Health tools và safety/legal tools
+│   ├── integrations/          # Tavily và dịch vụ bên ngoài
+│   ├── jobs/                  # Celery tasks
+│   ├── llm/                   # LLM client, embedding và summarizer
+│   ├── persistence/           # PostgreSQL models, database, personalization
+│   ├── pipelines/             # Import/reuse vector pipelines
+│   └── rag/                   # Retrieval, chunking, rerank và Qdrant client
 ├── data/
 ├── .dockerignore
 ├── .env.example               # Mẫu biến môi trường

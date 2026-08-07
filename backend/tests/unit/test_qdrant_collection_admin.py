@@ -2,7 +2,7 @@ import argparse
 
 import pytest
 
-from collection_naming import validate_collection_name
+from rag.qdrant.naming import validate_collection_name
 
 
 def test_versioned_collection_name_validation():

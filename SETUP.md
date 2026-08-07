@@ -139,7 +139,7 @@ Sau đó copy file JSONL vào container backend và chạy importer:
 ```powershell
 docker cp data_pipeline\dataset\processed\embedding_documents.jsonl chatbot-api:/tmp/embedding_documents.jsonl
 cd backend
-docker compose exec chatbot-api python src/import_data.py `
+docker compose exec chatbot-api python src/pipelines/import_data.py `
   --data-file /tmp/embedding_documents.jsonl `
   --collection nmk_chatbot_collection_v20260730_bge_m3_1024 `
   --corpus-version 2026-07-30-v2 `

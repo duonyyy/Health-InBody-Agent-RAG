@@ -101,7 +101,7 @@ def _chat_complete(messages: List[dict], timeout: float | None = None) -> str:
     query_rewriter van import/test duoc va tu fallback khi LLM chua san sang.
     """
     try:
-        from brain import (
+        from llm.client import (
             LLM_REWRITE_MAX_TOKENS,
             LLM_REWRITE_TIMEOUT,
             openai_chat_complete,

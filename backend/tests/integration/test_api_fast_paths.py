@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 
 pytest.importorskip("psycopg2", reason="Integration API tests require backend DB driver")
 
-from app import app
+from api.app import app
 
 
 client = TestClient(app)

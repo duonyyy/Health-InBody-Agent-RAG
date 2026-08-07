@@ -12,7 +12,7 @@ except Exception:  # pragma: no cover - fallback keeps local dev usable without 
     END = "__end__"
     StateGraph = None
 
-from brain import (
+from llm.client import (
     AGENT_TOOLS_ROUTE,
     GENERAL_CHAT_ROUTE,
     HEALTH_RAG_ROUTE,
@@ -24,7 +24,7 @@ from brain import (
     openai_chat_complete,
     vietnamese_llm_chat_complete,
 )
-from health_tools import (
+from health.tools import (
     calculate_bmi,
     check_medical_safety,
     evaluate_body_fat_percentage,
@@ -32,10 +32,10 @@ from health_tools import (
     suggest_nutrition_goal,
     suggest_training_plan,
 )
-from query_rewriter import rewrite_query_to_multi_queries
-from rerank import rerank_documents
-from search import hybrid_search
-from tavily_tool import tavily_search_health
+from rag.query_rewriter import rewrite_query_to_multi_queries
+from rag.rerank import rerank_documents
+from rag.search import hybrid_search
+from integrations.tavily import tavily_search_health
 
 from .parsing import (
     extract_height_cm,

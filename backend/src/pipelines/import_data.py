@@ -127,14 +127,14 @@ def get_embedding_safe(
     text: str | list[str],
 ) -> list[float] | list[list[float]]:
     """Lazy import embedding để dry-run không cần đủ backend dependencies."""
-    from brain import get_embedding
+    from llm.client import get_embedding
 
     return get_embedding(text)
 
 
 def add_vector_safe(collection_name: str, vectors: dict[str, Any], batch_size: int):
     """Lazy import Qdrant writer."""
-    from vectorize import add_vector
+    from rag.qdrant.client import add_vector
 
     try:
         return add_vector(
@@ -151,28 +151,28 @@ def add_vector_safe(collection_name: str, vectors: dict[str, Any], batch_size: i
 
 def create_collection_safe(collection_name: str, vector_size: int):
     """Lazy import Qdrant collection creator."""
-    from vectorize import create_collection
+    from rag.qdrant.client import create_collection
 
     return create_collection(collection_name, vector_size=vector_size)
 
 
 def ensure_payload_indexes_safe(collection_name: str):
     """Lazy import Qdrant payload-index setup."""
-    from vectorize import ensure_payload_indexes
+    from rag.qdrant.client import ensure_payload_indexes
 
     return ensure_payload_indexes(collection_name, raise_on_error=True)
 
 
 def get_collection_point_ids_safe(collection_name: str) -> set[str]:
     """Lazy import point-ID scan used by resumable/missing-only imports."""
-    from vectorize import get_collection_point_ids
+    from rag.qdrant.client import get_collection_point_ids
 
     return get_collection_point_ids(collection_name)
 
 
 def initialize_search_index_safe(documents: list[dict[str, Any]]):
     """Lazy import BM25 search indexer."""
-    from search import initialize_search_index
+    from rag.search import initialize_search_index
 
     return initialize_search_index(documents)
 

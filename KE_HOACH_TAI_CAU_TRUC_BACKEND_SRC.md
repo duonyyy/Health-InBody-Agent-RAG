@@ -19,10 +19,6 @@ LLM, retrieval hoặc dữ liệu Qdrant nếu phase đó chưa được kiểm 
 ```text
 backend/src/
 ├── __init__.py
-├── app.py                         # wrapper tạm: uvicorn app:app
-├── tasks.py                       # wrapper tạm cho Celery
-├── agent.py                       # wrapper/legacy tạm
-│
 ├── api/
 │   ├── __init__.py
 │   ├── app.py                     # FastAPI app và lifecycle
@@ -339,3 +335,4 @@ Tái cấu trúc chỉ được coi là hoàn tất khi:
 | 07/08/2026 | 5 | Health, persistence và Tavily chuyển vào package tương ứng; root module alias giữ API cũ | 23 passed; import/compile đạt | Backend healthy; safety HTTP urgent đạt | Qdrant không đổi | Đạt; lần smoke đầu dùng sai field `text` nên 422, chạy lại đúng `question` đạt |
 | 07/08/2026 | 6 | Celery tasks và import/reuse pipelines chuyển vào `jobs/` và `pipelines/`; root CLI wrapper giữ tương thích | 23 passed; worker import/CLI help/compile đạt | Backend healthy | Alias 23.608 point, green, optimizer ok; không có import process | Đạt; chưa chạy bulk import |
 | 07/08/2026 | 7 | Docker API dùng `api.app:app`, worker dùng `jobs.tasks.celery_app`; recreate riêng API/worker | HTTP greeting/BMI/safety/nutrition/exercise/search đạt; invalid BMI 422 | Runtime thật healthy; process đúng entrypoint mới | Alias 23.608 point, green, optimizer ok | Đạt; Qdrant/embedding/database không restart |
+| 07/08/2026 | 8 | Xóa toàn bộ compatibility wrapper và `agent.py` legacy; cập nhật README, CLI path và test import | 23 passed; package import/compile/CLI đạt | Runtime healthy sau recreate; HTTP greeting/BMI/safety đạt | Alias 23.608 point, green, optimizer ok | Đạt; root `src` chỉ còn `__init__.py` |

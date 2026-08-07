@@ -76,8 +76,8 @@ def index_document_v2(
     """
     Tach, embed va upsert mot tai lieu Health/InBody vao Qdrant.
     """
-    from splitter import split_document
-    from vectorize import add_vector
+    from rag.splitter import split_document
+    from rag.qdrant.client import add_vector
 
     text = f"{question or ''}\n{content or ''}".strip()
     chunks = split_document(

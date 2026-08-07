@@ -37,7 +37,7 @@ Chỉ tiếp tục khi không có process `import_data.py` và Qdrant
 ## 2. Tạo collection phiên bản mới
 
 ```powershell
-docker exec chatbot-api python src/qdrant_collection_admin.py create `
+docker exec chatbot-api python src/rag/qdrant/collection_admin.py create `
   --collection nmk_chatbot_collection_v20260730_bge_m3_1024 `
   --vector-size 1024
 ```
@@ -49,7 +49,7 @@ Nếu client timeout nhưng collection đã xuất hiện phía server, không c
 `create` mù. Kiểm tra collection rồi hoàn tất index idempotent:
 
 ```powershell
-docker exec chatbot-api python src/qdrant_collection_admin.py ensure-indexes `
+docker exec chatbot-api python src/rag/qdrant/collection_admin.py ensure-indexes `
   --collection nmk_chatbot_collection_v20260730_bge_m3_1024
 ```
 
@@ -60,7 +60,7 @@ docker cp `
   "data_pipeline/dataset/processed/embedding_documents.jsonl" `
   "chatbot-api:/tmp/embedding_documents.jsonl"
 
-docker exec chatbot-api python src/import_data.py `
+docker exec chatbot-api python src/pipelines/import_data.py `
   --data-file /tmp/embedding_documents.jsonl `
   --collection nmk_chatbot_collection_v20260730_bge_m3_1024 `
   --dry-run
@@ -75,7 +75,7 @@ lại benchmark cũ.
 ## 4. Import thật và ghi manifest
 
 ```powershell
-docker exec chatbot-api python src/import_data.py `
+docker exec chatbot-api python src/pipelines/import_data.py `
   --data-file /tmp/embedding_documents.jsonl `
   --collection nmk_chatbot_collection_v20260730_bge_m3_1024 `
   --skip-collection-create `
@@ -92,7 +92,7 @@ Nếu `fatal_error` xuất hiện, importer dừng thay vì tiếp tục báo ti
 và chạy lại với dòng kế tiếp:
 
 ```powershell
-docker exec chatbot-api python src/import_data.py `
+docker exec chatbot-api python src/pipelines/import_data.py `
   --data-file /tmp/embedding_documents.jsonl `
   --collection nmk_chatbot_collection_v20260730_bge_m3_1024 `
   --skip-collection-create `
@@ -110,7 +110,7 @@ và chạy lại từ đầu vì collection mới dùng stable ID.
 ## 5. Gate trước khi chuyển alias
 
 ```powershell
-docker exec chatbot-api python src/qdrant_collection_admin.py verify `
+docker exec chatbot-api python src/rag/qdrant/collection_admin.py verify `
   --collection nmk_chatbot_collection_v20260730_bge_m3_1024 `
   --expected-points 23608 `
   --expected-vector-size 1024
@@ -129,7 +129,7 @@ Không chuyển alias chỉ vì collection có trạng thái `green`.
 ## 6. Chuyển alias nguyên tử
 
 ```powershell
-docker exec chatbot-api python src/qdrant_collection_admin.py activate-alias `
+docker exec chatbot-api python src/rag/qdrant/collection_admin.py activate-alias `
   --collection nmk_chatbot_collection_v20260730_bge_m3_1024 `
   --alias nmk_chatbot_active `
   --expected-points 23608

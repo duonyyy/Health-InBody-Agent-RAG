@@ -1,6 +1,6 @@
 from pathlib import Path
 
-import import_data
+from pipelines import import_data
 
 
 def _record(doc_id: str) -> dict:

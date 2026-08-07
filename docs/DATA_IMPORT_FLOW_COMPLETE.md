@@ -75,7 +75,7 @@
 ### **STEP 1: File Input & Validation**
 
 ```python
-# Location: backend/src/import_data.py
+# Location: backend/src/pipelines/import_data.py
 # Function: import_qa_data()
 
 DATA_FILE_PATH = "/usr/src/app/data/train.jsonl"
@@ -107,7 +107,7 @@ logger.info(f"📊 File size: {file_size / (1024*1024):.2f} MB")
 
 ```python
 # Import function từ backend/src/vectorize.py
-from vectorize import create_collection
+from rag.qdrant.client import create_collection
 
 # Collection configuration
 create_collection(
@@ -134,7 +134,7 @@ qdrant-db:
 ### **STEP 3: Read JSONL Line by Line**
 
 ```python
-# backend/src/import_data.py - Main loop
+# backend/src/pipelines/import_data.py - Main loop
 
 success_count = 0
 error_count = 0
@@ -223,7 +223,7 @@ Chunk 3: "Điều khoản về giảng dạy..."
 
 ```python
 # Import từ backend/src/brain.py
-from brain import get_embedding
+from llm.client import get_embedding
 
 for node in nodes:
     # Get embedding from custom service
@@ -290,7 +290,7 @@ def embed():
 ### **STEP 6: Batch Collection & Metadata Attachment**
 
 ```python
-# backend/src/import_data.py
+# backend/src/pipelines/import_data.py
 
 # Create unique ID for chunk
 point_id = idx * 1000 + chunk_idx
@@ -387,9 +387,9 @@ volumes:
 ### **STEP 8: Search Index Initialization**
 
 ```python
-# backend/src/import_data.py
+# backend/src/pipelines/import_data.py
 
-from search import initialize_search_index
+from rag.search import initialize_search_index
 
 # Collect documents
 documents_for_search = [
@@ -566,7 +566,7 @@ After import:
 ## 🔗 Related Files
 
 **Core Files**:
-- [backend/src/import_data.py](../backend/src/import_data.py) - Main import script
+- [backend/src/pipelines/import_data.py](../backend/src/pipelines/import_data.py) - Main import script
 - [backend/src/splitter.py](../backend/src/splitter.py) - Document chunking
 - [backend/src/vectorize.py](../backend/src/vectorize.py) - Qdrant operations
 - [backend/src/brain.py](../backend/src/brain.py) - Embedding retrieval
