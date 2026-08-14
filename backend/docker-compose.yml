@@ -9,7 +9,7 @@ services:
     build: .
     hostname: chatbot-api
     container_name: chatbot-api
-    command: uvicorn api.app:app --host 0.0.0.0 --port 8000 --workers 2 --log-level info
+    command: /bin/sh -c 'uvicorn api.app:app --host 0.0.0.0 --port 8000 --workers "$${API_WORKERS:-1}" --log-level info'
     restart: always
     env_file:
       - .env
@@ -23,6 +23,9 @@ services:
       - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL in backend/.env}
       - LLM_PROVIDER=${LLM_PROVIDER:-none}
       - OLLAMA_THINK=${OLLAMA_THINK:-auto}
+      - API_WORKERS=${API_WORKERS:-1}
+      - BM25_AUTOLOAD=${BM25_AUTOLOAD:-true}
+      - BM25_SNAPSHOT_PATH=${BM25_SNAPSHOT_PATH:-/usr/src/app/data/generated/bm25_snapshot.json.gz}
     volumes:
       - .:/usr/src/app/
     ports:

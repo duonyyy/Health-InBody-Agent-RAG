@@ -32,6 +32,11 @@ def _block_llm_and_retrieval(monkeypatch):
         "rerank_documents",
         _must_not_run("rerank_documents"),
     )
+    monkeypatch.setattr(
+        graph,
+        "tavily_search_health",
+        _must_not_run("tavily_search_health"),
+    )
 
 
 def test_urgent_safety_returns_without_llm_or_retrieval(monkeypatch):
@@ -47,6 +52,8 @@ def test_urgent_safety_returns_without_llm_or_retrieval(monkeypatch):
     assert result["safety_result"]["risk_level"] == "urgent"
     assert "dừng tập ngay" in result["content"].lower()
     assert result["retrieved_docs"] == []
+    assert result["evidence"] == []
+    assert result["evidence_status"] == "not_required"
     assert result["errors"] == []
 
 
@@ -63,6 +70,7 @@ def test_bmi_returns_without_llm_or_retrieval(monkeypatch):
     assert result["tool_results"][0]["result"]["bmi"] == 24.91
     assert "24.91" in result["content"]
     assert result["retrieved_docs"] == []
+    assert result["evidence_status"] == "not_required"
     assert result["errors"] == []
 
 

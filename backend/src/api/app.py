@@ -1,5 +1,7 @@
 """FastAPI entrypoint cho Health/InBody Agent RAG backend."""
 import logging
+import asyncio
+import os
 import time
 from datetime import date
 from typing import Any, Dict, List, Optional
@@ -31,7 +33,12 @@ from persistence.personalization import (
     safe_build_personalization_context,
     upsert_user_profile,
 )
-from rag.search import get_search_stats, hybrid_search, initialize_search_index
+from rag.search import (
+    get_search_stats,
+    hybrid_search,
+    initialize_search_index,
+    load_search_snapshot,
+)
 from llm.summarizer import summarize_health_report, summarize_text
 from jobs.tasks import index_document_v2, index_health_documents, llm_handle_message
 from core.utils import setup_logging
@@ -50,6 +57,16 @@ app = FastAPI(
         "hybrid search, indexing và summarization."
     ),
 )
+
+
+@app.on_event("startup")
+def load_bm25_snapshot_on_startup():
+    """Load the versioned local BM25 snapshot without blocking dense fallback."""
+    if os.getenv("BM25_AUTOLOAD", "true").strip().lower() not in {"1", "true", "yes", "on"}:
+        logger.info("BM25 snapshot autoload is disabled")
+        return
+    if not load_search_snapshot():
+        logger.warning("BM25 snapshot unavailable; continuing with dense retrieval")
 
 
 class CompleteRequest(BaseModel):
@@ -179,7 +196,7 @@ async def user_profile(user_id: str):
         return get_user_profile(user_id, auto_create=True)
     except Exception as e:
         logger.error("Get user profile failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unable to load user profile")
 
 
 @app.put("/users/{user_id}/profile")
@@ -188,7 +205,7 @@ async def update_user_profile(user_id: str, data: UserProfileRequest):
         return upsert_user_profile(user_id, data.dict(exclude_unset=True))
     except Exception as e:
         logger.error("Update user profile failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unable to update user profile")
 
 
 @app.get("/users/{user_id}/measurements")
@@ -197,7 +214,7 @@ async def user_measurements(user_id: str, limit: int = Query(default=5, ge=1, le
         return {"measurements": list_inbody_measurements(user_id, limit=limit)}
     except Exception as e:
         logger.error("List user measurements failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unable to list user measurements")
 
 
 @app.post("/users/{user_id}/measurements")
@@ -206,7 +223,7 @@ async def create_user_measurement(user_id: str, data: InBodyMeasurementRequest):
         return add_inbody_measurement(user_id, data.dict(exclude_unset=True))
     except Exception as e:
         logger.error("Create user measurement failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unable to create user measurement")
 
 
 @app.get("/users/{user_id}/personalization-context")
@@ -223,8 +240,7 @@ async def complete(data: CompleteRequest):
         )
 
     logger.info(
-        "Chat request user_id=%s bot_id=%s sync=%s",
-        data.user_id,
+        "Chat request received bot_id=%s sync=%s",
         data.bot_id,
         data.sync_request,
     )
@@ -246,7 +262,7 @@ async def complete(data: CompleteRequest):
             return {"response": response}
         except Exception as e:
             logger.error("Chat sync failed: %s", e)
-            raise HTTPException(status_code=500, detail=str(e))
+            raise HTTPException(status_code=500, detail="Unable to complete chat request")
 
     if not hasattr(llm_handle_message, "delay"):
         raise HTTPException(
@@ -270,13 +286,8 @@ async def get_response(task_id: str):
 
         if task_status == "PENDING":
             if time.time() - start_time > TASK_TIMEOUT:
-                return {
-                    "task_id": task_id,
-                    "task_status": task_result.status,
-                    "task_result": task_result.result,
-                    "error_message": "Service timeout, please retry",
-                }
-            time.sleep(POLLING_INTERVAL)
+                raise HTTPException(status_code=504, detail="Task result timed out; please retry")
+            await asyncio.sleep(POLLING_INTERVAL)
             continue
 
         return {
@@ -306,6 +317,10 @@ async def agent_answer(data: AgentRequest):
         "agent_trace": response.get("agent_trace", []),
         "selected_agents": response.get("selected_agents", []),
         "tool_results": response.get("tool_results", []),
+        "retrieved_docs": response.get("retrieved_docs", []),
+        "citations": response.get("evidence", []),
+        "evidence_status": response.get("evidence_status", "not_required"),
+        "limitations": response.get("limitations", []),
         "safety_result": response.get("safety_result", {}),
         "errors": response.get("errors", []),
         "agent": get_multi_agent_summary(),
@@ -334,7 +349,7 @@ async def create_vector_collection(data: CollectionCreateRequest):
         return {"status": create_status is not None, "result": str(create_status)}
     except Exception as e:
         logger.error("Create collection failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unable to create collection")
 
 
 @app.post("/document/create")
@@ -362,7 +377,7 @@ async def create_document(data: DocumentCreateRequest):
         return {"status": True, "index_status": index_status}
     except Exception as e:
         logger.error("Create/index document failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unable to create or index document")
 
 
 @app.post("/documents/index")
@@ -372,7 +387,7 @@ async def index_documents(data: DocumentsIndexRequest):
         return {"status": True, "result": result}
     except Exception as e:
         logger.error("Batch index failed: %s", e)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unable to index documents")
 
 
 @app.post("/summarize")

@@ -40,6 +40,7 @@ def test_ollama_payload_disables_thinking_and_uses_task_timeout(monkeypatch):
     assert result == "general_chat"
     assert captured["json"]["think"] is False
     assert captured["json"]["options"]["num_predict"] == 16
+    assert captured["json"]["options"]["num_ctx"] == brain.OLLAMA_NUM_CTX
     assert captured["timeout"] == 8
 
 

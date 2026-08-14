@@ -184,9 +184,21 @@ Không gắn nhãn `82% chính xác` cho câu trả lời. Score retrieval/reran
 
 ## Deliverables P0
 
-- [ ] API evidence contract và UI nguồn tham khảo.
-- [ ] Metadata schema + validation ingestion.
-- [ ] BM25 đủ corpus, index status/version.
-- [ ] Intent filters và normalization tiếng Việt.
-- [ ] Safety precheck/fast-path được test.
-- [ ] Bộ benchmark và báo cáo P0 theo tài liệu evaluation.
+- [x] UI nguồn tham khảo (đã kiểm thử bằng Streamlit/Docker; chất lượng hiển thị còn phụ thuộc metadata corpus).
+- [x] Metadata schema + strict opt-in validation ingestion; active corpus vẫn chưa backfill provenance nên production gate còn fail.
+- [x] BM25 đủ 23.608 document, snapshot/version và health status sau restart; runtime index vẫn in-memory theo process.
+- [x] Intent filter `medical_safety` cho dense/BM25 và normalization tiếng Việt có dấu/không dấu; vẫn cần eval suite rộng.
+- [x] Safety precheck/fast-path được test ở unit level.
+- [x] Bộ golden HTTP smoke 6 ca và báo cáo P0; hai lượt cuối 6/6, vẫn cần clinical/human-review và load test trước production.
+
+### Cập nhật source P0 — 14/08/2026
+
+- Backend trả `evidence`, `evidence_status` và `limitations`; citation ID do backend tạo từ retrieved document, citation số không hợp lệ từ composer bị loại.
+- `medical_caution` retrieval được filter `content_type=medical_safety` ở cả Qdrant và BM25; candidate filter chạy trước BM25 scoring.
+- Urgent/BMI fast-path có regression test chặn LLM, query rewrite, hybrid search, reranker và Tavily; safety mở rộng case choáng/lơ mơ và đau khớp kéo dài.
+- BM25 bootstrap scroll hết Qdrant và persist snapshot JSON-gzip theo corpus version; API autoload đủ 23.608 document sau restart. Index runtime vẫn process-local nên API mặc định 1 worker.
+- Intent filter theo specialist đã được áp dụng trước rerank; composite intent dùng OR-filter Qdrant/BM25.
+- Tokenizer BM25 chuẩn hóa tiếng Việt có dấu/không dấu; filtered corpus nhỏ được phép bỏ vector khi BM25 đã phủ toàn bộ candidate để tránh CPU contention.
+- Qwen3:8b giữ model/provider qua env; `OLLAMA_NUM_CTX=2048` và composer prompt không lặp excerpt. Hai golden suite cuối đều 6/6, lượt cuối RAG khoảng 16,9–18,9 giây.
+- Audit 23.608 point cho thấy production metadata gate vẫn fail; không được suy diễn provenance từ tên file.
+- Kết quả runtime, lịch sử timeout, giới hạn dữ liệu và go/no-go nằm tại `docs/P0_TRUST_RAG_SAFETY_REPORT_2026-08-14.md`.

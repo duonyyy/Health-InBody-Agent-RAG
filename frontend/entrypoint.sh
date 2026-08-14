@@ -14,9 +14,6 @@ export API_BASE_URL=${API_BASE_URL:-http://chatbot-api:8000}
 mkdir -p /usr/src/app/logs
 mkdir -p /usr/src/app/data
 
-# Set permissions
-chmod -R 755 /usr/src/app
-
 # Function to check if backend is ready
 check_backend() {
     echo "Checking backend availability at $API_BASE_URL..."
@@ -41,8 +38,9 @@ check_backend() {
 # Wait for backend (optional - comment out if not needed)
 # check_backend
 
-# Install any additional requirements if requirements.txt has been updated
-if [ -f requirements.txt ]; then
+# Dependencies are baked into the image. Runtime installation is an explicit
+# escape hatch only, because network/package failures must not block startup.
+if [ "${INSTALL_RUNTIME_REQUIREMENTS:-false}" = "true" ] && [ -f requirements.txt ]; then
     echo "Installing/updating Python packages..."
     pip install --no-cache-dir -r requirements.txt
 fi

@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -63,13 +64,13 @@ SUPERVISOR_AGENT = "SupervisorAgent"
 PERSONALIZATION_CONTEXT_AGENT = "PersonalizationContextAgent"
 
 AGENT_REQUEST_TIMEOUT_SECONDS = float(
-    os.getenv("AGENT_REQUEST_TIMEOUT_SECONDS", "30")
+    os.getenv("AGENT_REQUEST_TIMEOUT_SECONDS", "50")
 )
 AGENT_COMPOSER_RESERVE_SECONDS = float(
-    os.getenv("AGENT_COMPOSER_RESERVE_SECONDS", "10")
+    os.getenv("AGENT_COMPOSER_RESERVE_SECONDS", "15")
 )
 RAG_EMBEDDING_TIMEOUT_SECONDS = float(
-    os.getenv("RAG_EMBEDDING_TIMEOUT_SECONDS", "10")
+    os.getenv("RAG_EMBEDDING_TIMEOUT_SECONDS", "15")
 )
 QDRANT_SEARCH_RESERVE_SECONDS = float(
     os.getenv("QDRANT_SEARCH_RESERVE_SECONDS", "5")
@@ -187,6 +188,11 @@ def _apply_urgent_fast_path(state: AgentState, safety: Dict[str, Any]) -> AgentS
     state["safety_result"] = safety
     state["final_answer"] = _urgent_answer()
     state["fast_path"] = "urgent_safety"
+    state["evidence"] = []
+    state["evidence_status"] = "not_required"
+    state["limitations"] = [
+        "Đây là cảnh báo an toàn khẩn cấp, không phải chẩn đoán y khoa."
+    ]
     append_trace(
         state,
         SAFETY_AGENT,
@@ -226,6 +232,9 @@ def _try_general_fast_path(state: AgentState) -> Optional[AgentState]:
         "BMI của tôi là bao nhiêu?”. Thông tin chỉ mang tính tham khảo và không thay thế bác sĩ."
     )
     state["fast_path"] = "general_chat"
+    state["evidence"] = []
+    state["evidence_status"] = "not_required"
+    state["limitations"] = []
     append_trace(
         state,
         SAFETY_AGENT,
@@ -370,6 +379,11 @@ def _try_inbody_fast_path(state: AgentState) -> Optional[AgentState]:
     state["tool_results"] = results
     state["final_answer"] = "\n".join(answer_lines)
     state["fast_path"] = "inbody_tools"
+    state["evidence"] = []
+    state["evidence_status"] = "not_required"
+    state["limitations"] = [
+        "Kết quả là phép tính sàng lọc; cần đọc cùng PBF, SMM, triệu chứng và tiền sử sức khỏe."
+    ]
     append_trace(
         state,
         INBODY_AGENT,
@@ -403,7 +417,7 @@ def normalize_question_agent(state: AgentState) -> AgentState:
     except Exception as exc:
         logger.warning("Question normalization failed: %s", exc)
         state["standalone_question"] = question
-        append_error(state, f"Question normalization failed: {exc}")
+        append_error(state, "Question normalization is temporarily unavailable")
         append_trace(
             state,
             "QuestionNormalizerAgent",
@@ -467,7 +481,7 @@ def supervisor_agent(state: AgentState) -> AgentState:
         except Exception as exc:
             logger.warning("Route detection failed: %s", exc)
             route = GENERAL_CHAT_ROUTE
-            append_error(state, f"Route detection failed: {exc}")
+            append_error(state, "Route detection is temporarily unavailable")
         state["route"] = route
         if route == HEALTH_RAG_ROUTE:
             selected.append(RAG_AGENT)
@@ -482,6 +496,19 @@ def supervisor_agent(state: AgentState) -> AgentState:
     for agent_name in selected:
         if agent_name not in deduped:
             deduped.append(agent_name)
+
+    if (state.get("safety_result") or {}).get("risk_level") == "medical_caution":
+        # A symptom, medication or known condition must not be turned into an
+        # automated nutrition/training plan. Retrieve only safety context; the
+        # SafetyAgent and composer will preserve the cautionary response.
+        deduped = [RAG_AGENT]
+        append_trace(
+            state,
+            SAFETY_AGENT,
+            "restrict_medical_caution_route",
+            "warning",
+            "Restricted routing to medical-safety retrieval; skipped plan and web agents.",
+        )
     state["selected_agents"] = deduped
     append_trace(
         state,
@@ -631,6 +658,76 @@ def training_agent(state: AgentState) -> AgentState:
     return state
 
 
+def _build_evidence(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Create stable, backend-owned citation objects from retrieved documents."""
+    evidence: List[Dict[str, Any]] = []
+    for index, doc in enumerate(docs, start=1):
+        document_id = doc.get("document_id") or doc.get("doc_id") or doc.get("id")
+        content = doc.get("content") or doc.get("page_content") or ""
+        if not document_id or not content:
+            continue
+        evidence.append(
+            {
+                "id": index,
+                "document_id": str(document_id),
+                "title": doc.get("title") or doc.get("question") or f"Tài liệu {index}",
+                "source": doc.get("source") or doc.get("source_file") or "unknown",
+                "source_url": doc.get("source_url"),
+                "publisher": doc.get("publisher"),
+                "source_tier": doc.get("source_tier"),
+                "published_at": doc.get("published_at"),
+                "reviewed_at": doc.get("reviewed_at"),
+                "content_type": doc.get("content_type"),
+                "excerpt": content[:RAG_COMPOSER_MAX_CHARS_PER_DOC],
+                "retrieval_score": doc.get("similarity_score", doc.get("hybrid_score")),
+                "rerank_score": doc.get("rerank_score"),
+            }
+        )
+    return evidence
+
+
+def _set_evidence_state(state: AgentState, docs: List[Dict[str, Any]]) -> None:
+    evidence = _build_evidence(docs)
+    state["evidence"] = evidence
+    limitations = list(state.get("limitations") or [])
+    if evidence:
+        state["evidence_status"] = "supported"
+    elif docs:
+        state["evidence_status"] = "partial"
+        limitations.append(
+            "Tài liệu truy xuất thiếu document ID hoặc nội dung nên không thể tạo citation kiểm chứng được."
+        )
+    else:
+        state["evidence_status"] = "insufficient"
+        limitations.append(
+            "Không tìm thấy tài liệu phù hợp trong kho tri thức hiện có."
+        )
+    state["limitations"] = limitations
+
+
+def _retrieval_filters(state: AgentState) -> Optional[Dict[str, Any]]:
+    """Constrain retrieval to the content types selected by the supervisor."""
+    safety = state.get("safety_result") or {}
+    if safety.get("risk_level") in {"urgent", "medical_caution"}:
+        return {"content_type": "medical_safety"}
+
+    selected_agents = set(state.get("selected_agents") or [])
+    content_types = [
+        content_type
+        for agent, content_type in (
+            (INBODY_AGENT, "inbody_metric"),
+            (NUTRITION_AGENT, "nutrition"),
+            (TRAINING_AGENT, "exercise"),
+        )
+        if agent in selected_agents
+    ]
+    if len(content_types) == 1:
+        return {"content_type": content_types[0]}
+    if content_types:
+        return {"content_type": content_types}
+    return None
+
+
 def rag_agent(state: AgentState) -> AgentState:
     if RAG_AGENT not in state.get("selected_agents", []):
         return state
@@ -654,10 +751,11 @@ def rag_agent(state: AgentState) -> AgentState:
                 )
             except Exception as exc:
                 logger.warning("Query rewrite failed: %s", exc)
-                append_error(state, f"Query rewrite failed: {exc}")
+                append_error(state, "Query rewrite is temporarily unavailable")
 
     docs: List[Dict[str, Any]] = []
     seen = set()
+    filters = _retrieval_filters(state)
     for query in queries:
         embedding_timeout = _bounded_timeout(
             state,
@@ -674,6 +772,7 @@ def rag_agent(state: AgentState) -> AgentState:
             for doc in hybrid_search(
                 query,
                 limit=5,
+                filters=filters,
                 use_rerank=False,
                 embedding_timeout=embedding_timeout,
             ):
@@ -683,18 +782,19 @@ def rag_agent(state: AgentState) -> AgentState:
                     doc["retrieval_query"] = query
                     docs.append(doc)
         except Exception as exc:
-            logger.warning("Hybrid search failed for query '%s': %s", query, exc)
-            append_error(state, f"Hybrid search failed: {exc}")
+            logger.warning("Hybrid search failed: %s", exc)
+            append_error(state, "Knowledge retrieval is temporarily unavailable")
             break
 
     try:
         docs = rerank_documents(docs, question, top_n=5) if docs else []
     except Exception as exc:
         logger.warning("Rerank failed: %s", exc)
-        append_error(state, f"Rerank failed: {exc}")
+        append_error(state, "Result reranking is temporarily unavailable")
         docs = docs[:5]
 
     state["retrieved_docs"] = docs
+    _set_evidence_state(state, docs)
     append_trace(
         state,
         RAG_AGENT,
@@ -724,7 +824,7 @@ def web_search_agent(state: AgentState) -> AgentState:
         )
     except Exception as exc:
         logger.warning("Web search failed: %s", exc)
-        append_error(state, f"Web search failed: {exc}")
+        append_error(state, "Web search is temporarily unavailable")
         append_trace(
             state,
             WEB_SEARCH_AGENT,
@@ -781,6 +881,34 @@ def _format_docs(docs: List[Dict[str, Any]]) -> str:
     return "\n\n".join(lines)
 
 
+def _format_evidence(evidence: List[Dict[str, Any]]) -> str:
+    if not evidence:
+        return "Không có citation hợp lệ trong context hiện tại."
+    return "\n".join(
+        "[{id}] document_id={document_id}; nguồn={source}; tiêu đề={title}".format(
+            **item
+        )
+        for item in evidence
+    )
+
+
+def _enforce_citation_contract(answer: str, evidence: List[Dict[str, Any]]) -> str:
+    """Remove invented numeric citations and expose valid backend-owned sources."""
+    valid_ids = {str(item["id"]) for item in evidence}
+
+    def replace_invalid(match: re.Match[str]) -> str:
+        return match.group(0) if match.group(1) in valid_ids else ""
+
+    cleaned = re.sub(r"\[(\d+)\]", replace_invalid, answer or "").strip()
+    if evidence and not re.search(r"\[(\d+)\]", cleaned):
+        references = "\n".join(
+            f"- [{item['id']}] {item['title']} — {item['source']}"
+            for item in evidence
+        )
+        cleaned = f"{cleaned}\n\nNguồn tham khảo đã truy xuất:\n{references}".strip()
+    return cleaned
+
+
 def _fallback_answer(state: AgentState) -> str:
     chunks = [
         "Mình chưa thể hoàn tất phần diễn giải tự động trong thời gian cho phép."
@@ -812,9 +940,31 @@ def _fallback_answer(state: AgentState) -> str:
     return "\n\n".join(chunks)
 
 
+def _insufficient_evidence_answer(state: AgentState) -> str:
+    chunks = [
+        "Không đủ bằng chứng trong kho tri thức hiện có để trả lời câu hỏi này một cách đáng tin cậy.",
+        "Bạn có thể hỏi cụ thể hơn hoặc cung cấp thêm chỉ số/bối cảnh liên quan.",
+    ]
+    safety = state.get("safety_result") or {}
+    if safety.get("disclaimer"):
+        chunks.append(f"Lưu ý an toàn: {safety['disclaimer']}")
+    return "\n\n".join(chunks)
+
+
 def response_composer_agent(state: AgentState) -> AgentState:
     question = _question(state)
     selected = state.get("selected_agents") or []
+    if RAG_AGENT in selected and state.get("evidence_status") == "insufficient":
+        state["final_answer"] = _insufficient_evidence_answer(state)
+        append_trace(
+            state,
+            RESPONSE_COMPOSER_AGENT,
+            "compose_insufficient_evidence",
+            "warning",
+            "Returned a deterministic limitation because retrieval evidence was insufficient.",
+        )
+        return state
+
     personalization = _personalization_context(state)
     messages = [
         {
@@ -834,9 +984,12 @@ def response_composer_agent(state: AgentState) -> AgentState:
                 f"Hồ sơ cá nhân hóa hiện có:\n{_to_json(personalization)}\n\n"
                 f"Safety result:\n{_to_json(state.get('safety_result') or {})}\n\n"
                 f"Tài liệu RAG:\n{_format_docs(state.get('retrieved_docs') or [])}\n\n"
+                f"Citation hợp lệ do backend cấp:\n{_format_evidence(state.get('evidence') or [])}\n\n"
                 "Yêu cầu: trả lời ngắn gọn nhưng đủ ý, nói rõ dữ liệu còn thiếu nếu có, "
                 "nêu dữ liệu cá nhân hóa nào đã dùng nếu phù hợp, nêu hành động thực tế, "
-                "và thêm lưu ý an toàn y tế."
+                "và thêm lưu ý an toàn y tế. Chỉ dùng citation [n] có trong danh sách "
+                "backend cấp; không tạo citation, URL, tác giả hoặc số liệu mới. Nếu evidence "
+                "không đủ, nói rõ giới hạn thay vì đưa khuyến nghị cụ thể."
             ),
         },
     ]
@@ -876,12 +1029,18 @@ def response_composer_agent(state: AgentState) -> AgentState:
             )
     except Exception as exc:
         logger.warning("Response composition LLM failed: %s", exc)
-        append_error(state, f"Response composition failed: {exc}")
+        if isinstance(exc, TimeoutError):
+            append_error(state, "Request deadline exhausted before response composition")
+        else:
+            append_error(state, "Response composition is temporarily unavailable")
         final_answer = _fallback_answer(state)
         composer_status = "warning"
         composer_summary = "LLM failed; returned deterministic safe fallback."
 
-    state["final_answer"] = final_answer
+    state["final_answer"] = _enforce_citation_contract(
+        final_answer,
+        state.get("evidence") or [],
+    )
     append_trace(
         state,
         RESPONSE_COMPOSER_AGENT,
@@ -953,6 +1112,9 @@ def _response_from_state(state: AgentState) -> Dict[str, Any]:
         "selected_agents": state.get("selected_agents") or [],
         "tool_results": state.get("tool_results") or [],
         "retrieved_docs": state.get("retrieved_docs") or [],
+        "evidence": state.get("evidence") or [],
+        "evidence_status": state.get("evidence_status") or "not_required",
+        "limitations": state.get("limitations") or [],
         "safety_result": state.get("safety_result") or {},
         "personalization_context": state.get("personalization_context") or {},
         "errors": errors,
@@ -977,6 +1139,9 @@ def multi_agent_handle(
         "latest_measurement": personalization_context.get("latest_measurement", {}),
         "tool_results": [],
         "retrieved_docs": [],
+        "evidence": [],
+        "evidence_status": "not_required",
+        "limitations": [],
         "agent_trace": [],
         "errors": [],
         "deadline_monotonic": (
@@ -1030,7 +1195,7 @@ def multi_agent_handle(
             final_state = _run_sequential(initial_state)
     except Exception as exc:
         logger.error("Multi-agent graph failed: %s", exc)
-        append_error(initial_state, f"Multi-agent graph failed: {exc}")
+        append_error(initial_state, "Multi-agent processing is temporarily unavailable")
         append_trace(
             initial_state,
             "MultiAgentGraph",

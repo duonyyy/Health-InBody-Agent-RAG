@@ -10,6 +10,7 @@ from qdrant_client.models import (
     Distance,
     FieldCondition,
     Filter,
+    MatchAny,
     MatchValue,
     PayloadSchemaType,
     PointStruct,
@@ -211,6 +212,10 @@ def search_vector(collection_name, vector, limit=4, filters=None, score_threshol
                             range_filter.lt = value["lt"]
 
                         conditions.append(FieldCondition(key=field, range=range_filter))
+                elif isinstance(value, (list, tuple, set)):
+                    conditions.append(
+                        FieldCondition(key=field, match=MatchAny(any=list(value)))
+                    )
                 else:
                     # Filter khớp chính xác, ví dụ content_type == "nutrition".
                     conditions.append(

@@ -16,6 +16,36 @@ def _record(doc_id: str) -> dict:
     }
 
 
+def _trusted_record(doc_id: str) -> dict:
+    record = _record(doc_id)
+    record["metadata"].update(
+        {
+            "publisher": "Cơ quan y tế kiểm thử",
+            "source_tier": "guideline",
+            "published_at": "2025-01-15",
+            "reviewed_at": "2026-08-14",
+            "medical_review_status": "approved",
+        }
+    )
+    return record
+
+
+def test_strict_source_validation_rejects_legacy_and_accepts_curated_record():
+    legacy_errors = import_data.validate_document(
+        _record("legacy"),
+        line_number=1,
+        require_trusted_source_metadata=True,
+    )
+    trusted_errors = import_data.validate_document(
+        _trusted_record("trusted"),
+        line_number=2,
+        require_trusted_source_metadata=True,
+    )
+
+    assert any("missing trusted source metadata" in error for error in legacy_errors)
+    assert trusted_errors == []
+
+
 def test_chunk_payload_has_version_hash_and_stable_id(monkeypatch):
     monkeypatch.setattr(
         import_data,

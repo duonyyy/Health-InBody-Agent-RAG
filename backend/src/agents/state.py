@@ -14,6 +14,9 @@ class AgentState(TypedDict, total=False):
     selected_agents: List[str]
     tool_results: List[Dict[str, Any]]
     retrieved_docs: List[Dict[str, Any]]
+    evidence: List[Dict[str, Any]]
+    evidence_status: str
+    limitations: List[str]
     safety_result: Dict[str, Any]
     agent_trace: List[Dict[str, str]]
     final_answer: str

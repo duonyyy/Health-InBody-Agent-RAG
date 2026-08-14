@@ -19,14 +19,9 @@ toolbarMode = "minimal"
 
 [runner]
 magicEnabled = false
-installTracer = false
-fixMatplotlib = true
 
 [mapbox]
 token = ""
-
-[deprecation]
-showPyplotGlobalUse = false
 
 [ui]
 hideTopBar = true

@@ -15,9 +15,10 @@ import hashlib
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import urlparse
 
 from core.config import (
     DEFAULT_COLLECTION_NAME,
@@ -64,6 +65,22 @@ ALLOWED_CONTENT_TYPES = {
     "medical_safety",
     "general_health",
 }
+TRUSTED_SOURCE_FIELDS = {
+    "source_url",
+    "publisher",
+    "source_tier",
+    "published_at",
+    "reviewed_at",
+    "medical_review_status",
+}
+ALLOWED_SOURCE_TIERS = {
+    "guideline",
+    "government",
+    "peer_reviewed",
+    "professional_org",
+    "clinic_education",
+}
+APPROVED_MEDICAL_REVIEW_STATUSES = {"approved", "reviewed"}
 
 
 class SimpleDocument:
@@ -212,7 +229,19 @@ def write_import_manifest(path: Path | None, payload: dict[str, Any]) -> None:
     temporary_path.replace(path)
 
 
-def validate_document(record: dict[str, Any], line_number: int) -> list[str]:
+def _source_metadata(record: dict[str, Any]) -> dict[str, Any]:
+    metadata = dict(record.get("metadata") or {})
+    return {
+        field: record.get(field) or metadata.get(field)
+        for field in TRUSTED_SOURCE_FIELDS
+    }
+
+
+def validate_document(
+    record: dict[str, Any],
+    line_number: int,
+    require_trusted_source_metadata: bool = False,
+) -> list[str]:
     """Kiểm tra document có đúng schema embedding của dự án không."""
     errors: list[str] = []
     missing = sorted(REQUIRED_FIELDS - set(record))
@@ -229,6 +258,41 @@ def validate_document(record: dict[str, Any], line_number: int) -> list[str]:
     content = str(record.get("content") or "").strip()
     if len(content) < 40:
         errors.append(f"line {line_number}: content too short")
+
+    if require_trusted_source_metadata:
+        source_metadata = _source_metadata(record)
+        missing_source_fields = sorted(
+            field for field, value in source_metadata.items() if not str(value or "").strip()
+        )
+        if missing_source_fields:
+            errors.append(
+                f"line {line_number}: missing trusted source metadata: "
+                + ", ".join(missing_source_fields)
+            )
+
+        source_url = str(source_metadata.get("source_url") or "").strip()
+        if source_url:
+            parsed = urlparse(source_url)
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                errors.append(f"line {line_number}: source_url must be an absolute HTTP(S) URL")
+
+        source_tier = str(source_metadata.get("source_tier") or "").strip()
+        if source_tier and source_tier not in ALLOWED_SOURCE_TIERS:
+            errors.append(f"line {line_number}: untrusted source_tier={source_tier}")
+
+        review_status = str(source_metadata.get("medical_review_status") or "").strip()
+        if review_status and review_status not in APPROVED_MEDICAL_REVIEW_STATUSES:
+            errors.append(
+                f"line {line_number}: medical_review_status is not approved/reviewed"
+            )
+
+        for field in ("published_at", "reviewed_at"):
+            value = str(source_metadata.get(field) or "").strip()
+            if value:
+                try:
+                    date.fromisoformat(value[:10])
+                except ValueError:
+                    errors.append(f"line {line_number}: {field} must start with ISO date YYYY-MM-DD")
 
     return errors
 
@@ -253,6 +317,16 @@ def build_chunk_payloads(
         "source": record.get("source"),
         "source_url": record.get("source_url")
         or (record.get("metadata") or {}).get("source_url"),
+        "publisher": record.get("publisher")
+        or (record.get("metadata") or {}).get("publisher"),
+        "source_tier": record.get("source_tier")
+        or (record.get("metadata") or {}).get("source_tier"),
+        "published_at": record.get("published_at")
+        or (record.get("metadata") or {}).get("published_at"),
+        "reviewed_at": record.get("reviewed_at")
+        or (record.get("metadata") or {}).get("reviewed_at"),
+        "medical_review_status": record.get("medical_review_status")
+        or (record.get("metadata") or {}).get("medical_review_status"),
         "content_type": record.get("content_type"),
         "domain": "health_inbody",
         "language": record.get("language", "vi"),
@@ -376,6 +450,7 @@ def import_embedding_dataset(
     start_line: int = 1,
     manifest_file: str | Path | None = None,
     skip_existing_points: bool = False,
+    require_trusted_source_metadata: bool = False,
 ) -> dict[str, Any]:
     """
     Import corpus Health/InBody đã chuẩn hóa vào Qdrant.
@@ -401,6 +476,7 @@ def import_embedding_dataset(
     logger.info("Corpus version: %s", corpus_version or "dry-run-unversioned")
     logger.info("Starting from JSONL line: %s", start_line)
     logger.info("Skip existing Qdrant points: %s", skip_existing_points)
+    logger.info("Require trusted source metadata: %s", require_trusted_source_metadata)
 
     if embedding_batch_size < 1 or embedding_batch_size > 32:
         raise ValueError("embedding_batch_size must be between 1 and 32")
@@ -450,7 +526,11 @@ def import_embedding_dataset(
         selected_records += 1
         last_processed_line = line_number
 
-        errors = validate_document(record, line_number)
+        errors = validate_document(
+            record,
+            line_number,
+            require_trusted_source_metadata=require_trusted_source_metadata,
+        )
         if errors:
             skipped_docs += 1
             error_count += len(errors)
@@ -609,6 +689,7 @@ def import_embedding_dataset(
         "newly_embedded_chunks": newly_embedded_chunks,
         "upserted_chunks": upserted_chunks,
         "bm25_index_persisted": False,
+        "trusted_source_metadata_required": require_trusted_source_metadata,
         "counts_by_content_type": counts_by_content_type,
         "error_count": error_count,
         "validation_errors_preview": validation_errors[:20],
@@ -668,6 +749,14 @@ def parse_args() -> argparse.Namespace:
             "Use for safe resume or after verified vector reuse."
         ),
     )
+    parser.add_argument(
+        "--require-trusted-source-metadata",
+        action="store_true",
+        help=(
+            "Fail validation unless source URL, publisher, tier, publish/review dates "
+            "and approved medical review status are present."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -688,6 +777,7 @@ def main() -> None:
         start_line=args.start_line,
         manifest_file=args.manifest_file,
         skip_existing_points=args.skip_existing_points,
+        require_trusted_source_metadata=args.require_trusted_source_metadata,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     sys.exit(0 if result["status"] else 1)

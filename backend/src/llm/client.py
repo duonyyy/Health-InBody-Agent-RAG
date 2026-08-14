@@ -44,6 +44,7 @@ LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "none").lower()
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "").strip()
 OLLAMA_THINK = _env_optional_bool("OLLAMA_THINK", None)
+OLLAMA_NUM_CTX = int(os.environ.get("OLLAMA_NUM_CTX", "2048"))
 LLM_TEMPERATURE = float(os.environ.get("LLM_TEMPERATURE", "0.2"))
 LLM_MAX_TOKENS = int(os.environ.get("LLM_MAX_TOKENS", "1024"))
 LLM_TIMEOUT = int(os.environ.get("LLM_TIMEOUT", "60"))
@@ -53,8 +54,8 @@ LLM_NORMALIZE_MAX_TOKENS = int(os.environ.get("LLM_NORMALIZE_MAX_TOKENS", "96"))
 LLM_NORMALIZE_TIMEOUT = int(os.environ.get("LLM_NORMALIZE_TIMEOUT", "10"))
 LLM_REWRITE_MAX_TOKENS = int(os.environ.get("LLM_REWRITE_MAX_TOKENS", "128"))
 LLM_REWRITE_TIMEOUT = int(os.environ.get("LLM_REWRITE_TIMEOUT", "15"))
-LLM_COMPOSER_MAX_TOKENS = int(os.environ.get("LLM_COMPOSER_MAX_TOKENS", "400"))
-LLM_COMPOSER_TIMEOUT = int(os.environ.get("LLM_COMPOSER_TIMEOUT", "30"))
+LLM_COMPOSER_MAX_TOKENS = int(os.environ.get("LLM_COMPOSER_MAX_TOKENS", "96"))
+LLM_COMPOSER_TIMEOUT = int(os.environ.get("LLM_COMPOSER_TIMEOUT", "35"))
 
 VIETNAMESE_LLM_API_URL = os.environ.get("VIETNAMESE_LLM_API_URL")
 
@@ -83,6 +84,7 @@ def get_llm_runtime_config() -> Dict[str, Any]:
         "provider": LLM_PROVIDER,
         "model": model,
         "ollama_think": "auto" if OLLAMA_THINK is None else OLLAMA_THINK,
+        "ollama_num_ctx": OLLAMA_NUM_CTX,
         "task_budgets": {
             "router": {
                 "max_tokens": LLM_ROUTER_MAX_TOKENS,
@@ -149,6 +151,7 @@ def _chat_with_ollama(
         "options": {
             "temperature": temperature,
             "num_predict": max_tokens,
+            "num_ctx": OLLAMA_NUM_CTX,
         },
     }
     if think is not None:

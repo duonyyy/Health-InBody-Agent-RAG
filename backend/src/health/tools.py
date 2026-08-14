@@ -59,7 +59,7 @@ def calculate_bmi(weight_kg: float, height_cm: float) -> Dict:
             "recommendation": recommendation,
             "note": "BMI chi la chi so sang loc, can doc kem PBF, SMM va mo noi tang.",
         }
-        logger.info("[TOOL] BMI calculated: %s", result)
+        logger.info("[TOOL] BMI calculated")
         return result
     except Exception as e:
         logger.error("Error calculating BMI: %s", e)
@@ -110,7 +110,7 @@ def evaluate_body_fat_percentage(pbf_percent: float, sex: Optional[str] = None) 
             "status": messages[category],
             "note": "Nguong PBF co the thay doi theo tuoi, gioi tinh va thiet bi do.",
         }
-        logger.info("[TOOL] PBF evaluated: %s", result)
+        logger.info("[TOOL] PBF evaluated")
         return result
     except Exception as e:
         logger.error("Error evaluating PBF: %s", e)
@@ -151,7 +151,7 @@ def evaluate_visceral_fat(visceral_fat_level: float) -> Dict:
             "recommendation": recommendation,
             "safety_note": "Khong dung chi so nay de chan doan benh; can danh gia cung bac si khi co trieu chung.",
         }
-        logger.info("[TOOL] Visceral fat evaluated: %s", result)
+        logger.info("[TOOL] Visceral fat evaluated")
         return result
     except Exception as e:
         logger.error("Error evaluating visceral fat: %s", e)
@@ -213,7 +213,7 @@ def suggest_nutrition_goal(
             ],
             "safety_note": "Khong ap dung an kieng cuc doan; nguoi co benh nen nen hoi chuyen gia y te.",
         }
-        logger.info("[TOOL] Nutrition goal suggested: %s", result)
+        logger.info("[TOOL] Nutrition goal suggested")
         return result
     except Exception as e:
         logger.error("Error suggesting nutrition goal: %s", e)
@@ -265,7 +265,7 @@ def suggest_training_plan(
             "progression": "Tang khoi luong/so rep tu tu moi 1-2 tuan neu khong dau bat thuong.",
             "safety_note": "Dung tap neu dau nguc, kho tho, chong mat hoac dau khop bat thuong.",
         }
-        logger.info("[TOOL] Training plan suggested: %s", result)
+        logger.info("[TOOL] Training plan suggested")
         return result
     except Exception as e:
         logger.error("Error suggesting training plan: %s", e)
@@ -293,6 +293,10 @@ def check_medical_safety(question: str, conditions: Optional[List[str]] = None) 
             "khó thở",
             "ngat",
             "ngất",
+            "lo mo",
+            "lơ mơ",
+            "choang",
+            "choáng",
             "dot quy",
             "đột quỵ",
             "chay mau",
@@ -311,6 +315,10 @@ def check_medical_safety(question: str, conditions: Optional[List[str]] = None) 
             "huyết áp",
             "chan doan",
             "chẩn đoán",
+            "dau khop",
+            "đau khớp",
+            "chan thuong",
+            "chấn thương",
         ]
 
         if any(keyword in text for keyword in urgent_keywords):
@@ -329,7 +337,7 @@ def check_medical_safety(question: str, conditions: Optional[List[str]] = None) 
             "recommended_action": action,
             "disclaimer": "Thông tin chỉ mang tính tham khảo, không thay thế chẩn đoán hoặc điều trị y khoa.",
         }
-        logger.info("[TOOL] Medical safety checked: %s", result)
+        logger.info("[TOOL] Medical safety checked: risk_level=%s", risk_level)
         return result
     except Exception as e:
         logger.error("Error checking medical safety: %s", e)

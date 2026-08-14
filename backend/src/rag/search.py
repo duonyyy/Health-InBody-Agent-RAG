@@ -1,9 +1,14 @@
 """Hybrid search cho Health/InBody Agent RAG."""
+import gzip
+import json
 import logging
 import math
 import os
 import re
+import unicodedata
 from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.config import DEFAULT_COLLECTION_NAME
@@ -15,10 +20,16 @@ logger = logging.getLogger(__name__)
 DEFAULT_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "10"))
 DEFAULT_DENSE_WEIGHT = float(os.getenv("DENSE_WEIGHT", "0.6"))
 DEFAULT_BM25_WEIGHT = float(os.getenv("BM25_WEIGHT", "0.4"))
+BM25_SNAPSHOT_SCHEMA_VERSION = 1
+BM25_SNAPSHOT_PATH = os.getenv(
+    "BM25_SNAPSHOT_PATH",
+    "/usr/src/app/data/generated/bm25_snapshot.json.gz",
+)
 
 _documents: List[Dict[str, Any]] = []
 _bm25_index: Dict[str, Any] = {}
 _search_engine_initialized = False
+_search_index_metadata: Dict[str, Any] = {}
 
 HEALTH_DOMAIN_KEYWORDS = {
     "inbody_metric": [
@@ -63,8 +74,18 @@ HEALTH_DOMAIN_KEYWORDS = {
 }
 
 
+def _normalize_lexical_text(text: str) -> str:
+    """Normalize Vietnamese accents so legacy ASCII documents remain searchable."""
+    lowered = (text or "").lower().replace("đ", "d")
+    return "".join(
+        character
+        for character in unicodedata.normalize("NFD", lowered)
+        if unicodedata.category(character) != "Mn"
+    )
+
+
 def _tokenize(text: str) -> List[str]:
-    return re.findall(r"[\wÀ-ỹ]+", (text or "").lower())
+    return re.findall(r"\w+", _normalize_lexical_text(text))
 
 
 def _document_text(doc: Dict[str, Any]) -> str:
@@ -92,7 +113,7 @@ def _normalize_document(doc: Dict[str, Any], index: int) -> Optional[Dict[str, A
         "question": doc.get("question", ""),
         "content": doc.get("content", "") or doc.get("page_content", ""),
         "source": doc.get("source", "") or doc.get("source_file", "unknown"),
-        "doc_id": doc.get("doc_id", doc.get("id", index)),
+        "doc_id": str(doc.get("doc_id", doc.get("id", index))),
         "content_type": doc.get("content_type") or _detect_content_type(text),
         "domain": doc.get("domain", "health_inbody"),
     }
@@ -106,9 +127,13 @@ def _normalize_document(doc: Dict[str, Any], index: int) -> Optional[Dict[str, A
 def _build_bm25_index(documents: List[Dict[str, Any]]) -> Dict[str, Any]:
     tokenized_docs = [_tokenize(_document_text(doc)) for doc in documents]
     doc_freq = Counter()
+    content_type_indices: Dict[str, List[int]] = {}
 
-    for tokens in tokenized_docs:
+    for index, tokens in enumerate(tokenized_docs):
         doc_freq.update(set(tokens))
+        content_type = documents[index].get("content_type")
+        if content_type:
+            content_type_indices.setdefault(str(content_type), []).append(index)
 
     doc_count = len(tokenized_docs)
     avg_doc_len = (
@@ -120,6 +145,7 @@ def _build_bm25_index(documents: List[Dict[str, Any]]) -> Dict[str, Any]:
         "doc_freq": doc_freq,
         "doc_count": doc_count,
         "avg_doc_len": avg_doc_len,
+        "content_type_indices": content_type_indices,
     }
 
 
@@ -160,7 +186,10 @@ def _normalize_scores(scored_docs: List[Tuple[int, float]]) -> Dict[int, float]:
     return {idx: score / max_score for idx, score in scored_docs}
 
 
-def initialize_search_index(documents: List[Dict]) -> bool:
+def initialize_search_index(
+    documents: List[Dict],
+    snapshot_metadata: Optional[Dict[str, Any]] = None,
+) -> bool:
     """
     Khoi tao BM25 index tu kho tai lieu suc khoe/InBody.
 
@@ -171,7 +200,7 @@ def initialize_search_index(documents: List[Dict]) -> bool:
     Returns:
         True neu index duoc tao thanh cong.
     """
-    global _documents, _bm25_index, _search_engine_initialized
+    global _documents, _bm25_index, _search_engine_initialized, _search_index_metadata
 
     try:
         normalized_docs = []
@@ -185,11 +214,13 @@ def initialize_search_index(documents: List[Dict]) -> bool:
             _documents = []
             _bm25_index = {}
             _search_engine_initialized = False
+            _search_index_metadata = {}
             return False
 
         _documents = normalized_docs
         _bm25_index = _build_bm25_index(_documents)
         _search_engine_initialized = True
+        _search_index_metadata = dict(snapshot_metadata or {})
 
         logger.info(
             "Initialized Health/InBody BM25 index with %s documents",
@@ -199,10 +230,110 @@ def initialize_search_index(documents: List[Dict]) -> bool:
     except Exception as e:
         logger.error("Failed to initialize Health/InBody search index: %s", e)
         _search_engine_initialized = False
+        _search_index_metadata = {}
         return False
 
 
-def bm25_search(query: str, limit: int = DEFAULT_TOP_K) -> List[Dict]:
+def save_search_snapshot(
+    snapshot_path: str | Path | None = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> bool:
+    """Persist normalized BM25 documents atomically without unsafe pickle."""
+    global _search_index_metadata
+    if not _search_engine_initialized or not _documents:
+        logger.warning("Cannot persist BM25 snapshot before index initialization")
+        return False
+
+    path = Path(snapshot_path or BM25_SNAPSHOT_PATH)
+    temporary_path = path.with_suffix(path.suffix + ".tmp")
+    created_at = datetime.now(timezone.utc).isoformat()
+    payload = {
+        "schema_version": BM25_SNAPSHOT_SCHEMA_VERSION,
+        "collection_name": DEFAULT_COLLECTION_NAME,
+        "created_at": created_at,
+        "document_count": len(_documents),
+        "metadata": dict(metadata or {}),
+        "documents": _documents,
+    }
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with gzip.open(temporary_path, "wt", encoding="utf-8") as file:
+            json.dump(payload, file, ensure_ascii=False, separators=(",", ":"))
+        temporary_path.replace(path)
+        _search_index_metadata = {
+            **_search_index_metadata,
+            **(metadata or {}),
+            "snapshot_persisted": True,
+            "snapshot_path": str(path),
+            "snapshot_created_at": created_at,
+        }
+        logger.info("Persisted BM25 snapshot with %s documents", len(_documents))
+        return True
+    except Exception as exc:
+        logger.error("Failed to persist BM25 snapshot: %s", exc)
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        return False
+
+
+def load_search_snapshot(snapshot_path: str | Path | None = None) -> bool:
+    """Load a trusted local JSON-gzip snapshot and rebuild the in-memory index."""
+    path = Path(snapshot_path or BM25_SNAPSHOT_PATH)
+    if not path.exists():
+        logger.warning("BM25 snapshot is not available at configured path")
+        return False
+    try:
+        with gzip.open(path, "rt", encoding="utf-8") as file:
+            payload = json.load(file)
+        if payload.get("schema_version") != BM25_SNAPSHOT_SCHEMA_VERSION:
+            raise ValueError("unsupported BM25 snapshot schema")
+        if payload.get("collection_name") != DEFAULT_COLLECTION_NAME:
+            raise ValueError("BM25 snapshot collection does not match runtime collection")
+        documents = payload.get("documents") or []
+        if int(payload.get("document_count") or 0) != len(documents):
+            raise ValueError("BM25 snapshot document count is inconsistent")
+        metadata = {
+            **(payload.get("metadata") or {}),
+            "snapshot_loaded": True,
+            "snapshot_path": str(path),
+            "snapshot_created_at": payload.get("created_at"),
+        }
+        return initialize_search_index(documents, snapshot_metadata=metadata)
+    except Exception as exc:
+        logger.error("Failed to load BM25 snapshot: %s", exc)
+        return False
+
+
+def _bm25_candidate_indices(filters: Optional[Dict[str, Any]]) -> List[int] | range:
+    """Narrow the common content-type filter before scoring the BM25 corpus."""
+    if not filters or "content_type" not in filters:
+        return range(len(_documents))
+
+    expected = filters["content_type"]
+    if isinstance(expected, str):
+        allowed = [expected]
+    elif isinstance(expected, (list, tuple, set)):
+        allowed = [str(value) for value in expected]
+    else:
+        return range(len(_documents))
+
+    index_by_type = _bm25_index.get("content_type_indices", {})
+    return sorted(
+        {
+            index
+            for content_type in allowed
+            for index in index_by_type.get(content_type, [])
+        }
+    )
+
+
+def bm25_search(
+    query: str,
+    limit: int = DEFAULT_TOP_K,
+    filters: Optional[Dict[str, Any]] = None,
+) -> List[Dict]:
     """Tim kiem keyword BM25 trong in-memory Health/InBody index."""
     if not _search_engine_initialized or not _documents:
         return []
@@ -211,7 +342,10 @@ def bm25_search(query: str, limit: int = DEFAULT_TOP_K) -> List[Dict]:
     query_tokens = _tokenize(expanded_query)
     scored_docs = []
 
-    for index, doc in enumerate(_documents):
+    for index in _bm25_candidate_indices(filters):
+        doc = _documents[index]
+        if not _matches_filters(doc, filters):
+            continue
         score = _bm25_score(query_tokens, index)
         if score <= 0:
             continue
@@ -282,6 +416,32 @@ def vector_search_fallback(
 
 def _content_key(doc: Dict[str, Any]) -> str:
     return (doc.get("doc_id") or doc.get("content") or _document_text(doc)).__str__()
+
+
+def _matches_filters(doc: Dict[str, Any], filters: Optional[Dict[str, Any]]) -> bool:
+    """Apply simple equality/range filters to non-Qdrant retrieval results."""
+    if not filters:
+        return True
+
+    for field, expected in filters.items():
+        actual = doc.get(field)
+        if isinstance(expected, dict):
+            if actual is None:
+                return False
+            if "gte" in expected and actual < expected["gte"]:
+                return False
+            if "lte" in expected and actual > expected["lte"]:
+                return False
+            if "gt" in expected and actual <= expected["gt"]:
+                return False
+            if "lt" in expected and actual >= expected["lt"]:
+                return False
+        elif isinstance(expected, (list, tuple, set)):
+            if actual not in expected:
+                return False
+        elif actual != expected:
+            return False
+    return True
 
 
 def combine_search_results(
@@ -370,13 +530,33 @@ def hybrid_search(
         return []
 
     expanded_query = expand_health_query(query)
-    bm25_results = bm25_search(expanded_query, limit=limit * 2)
-    vector_results = vector_search_fallback(
-        expanded_query,
-        limit=limit * 2,
-        filters=filters,
-        embedding_timeout=embedding_timeout,
+    bm25_results = bm25_search(expanded_query, limit=limit * 2, filters=filters)
+    candidate_count = len(_bm25_candidate_indices(filters))
+    bm25_covers_filtered_corpus = bool(
+        filters
+        and candidate_count
+        and candidate_count <= limit * 2
+        and len(bm25_results) >= candidate_count
     )
+    if bm25_covers_filtered_corpus:
+        logger.info(
+            "BM25 covered all %s filtered candidates; skipped redundant vector search",
+            candidate_count,
+        )
+        vector_results = []
+    else:
+        vector_results = vector_search_fallback(
+            expanded_query,
+            limit=limit * 2,
+            filters=filters,
+            embedding_timeout=embedding_timeout,
+        )
+
+    # Qdrant applies its filter server-side, but BM25 is process-local. Apply the
+    # same policy here so a safety query cannot regain recipe/nutrition results
+    # merely because dense retrieval is unavailable.
+    bm25_results = [doc for doc in bm25_results if _matches_filters(doc, filters)]
+    vector_results = [doc for doc in vector_results if _matches_filters(doc, filters)]
 
     if bm25_results or vector_results:
         combined = combine_search_results(bm25_results, vector_results, query)
@@ -401,6 +581,15 @@ def get_search_stats() -> Dict:
         "initialized": _search_engine_initialized,
         "documents_count": len(_documents),
         "has_bm25": bool(_bm25_index),
+        "bm25_persistence": (
+            "versioned_json_gzip_snapshot"
+            if _search_index_metadata.get("snapshot_loaded")
+            or _search_index_metadata.get("snapshot_persisted")
+            else "process_local_nonpersistent"
+        ),
+        "snapshot_created_at": _search_index_metadata.get("snapshot_created_at"),
+        "snapshot_point_count": _search_index_metadata.get("qdrant_point_count"),
+        "corpus_version": _search_index_metadata.get("corpus_version"),
         "collection_name": DEFAULT_COLLECTION_NAME,
         "domain": "health_inbody",
     }
@@ -419,20 +608,32 @@ def force_initialize_if_needed() -> bool:
     return initialize_from_vector_store()
 
 
-def initialize_from_vector_store(limit: int = 1000) -> bool:
+def initialize_from_vector_store(
+    limit: int = 1000,
+    vector_client: Any = None,
+    persist_snapshot: bool = False,
+    snapshot_path: str | Path | None = None,
+) -> bool:
     """
     Load payload tu Qdrant de khoi tao BM25 index.
     """
     try:
-        from rag.qdrant.client import client
+        if vector_client is None:
+            from rag.qdrant.client import client as vector_client
 
-        scroll_result = client.scroll(
-            collection_name=DEFAULT_COLLECTION_NAME,
-            limit=limit,
-            with_payload=True,
-            with_vectors=False,
-        )
-        points = scroll_result[0]
+        points = []
+        next_offset = None
+        while True:
+            page, next_offset = vector_client.scroll(
+                collection_name=DEFAULT_COLLECTION_NAME,
+                limit=limit,
+                offset=next_offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            points.extend(page or [])
+            if next_offset is None or not page:
+                break
     except Exception as e:
         logger.warning("Could not initialize search index from vector store: %s", e)
         return False
@@ -451,4 +652,19 @@ def initialize_from_vector_store(limit: int = 1000) -> bool:
             }
         )
 
-    return initialize_search_index(documents)
+    metadata = {
+        "qdrant_point_count": len(points),
+        "corpus_version": next(
+            (
+                str((point.payload or {}).get("corpus_version"))
+                for point in points
+                if (point.payload or {}).get("corpus_version")
+            ),
+            None,
+        ),
+    }
+    initialized = initialize_search_index(documents, snapshot_metadata=metadata)
+    if initialized and persist_snapshot:
+        if not save_search_snapshot(snapshot_path=snapshot_path, metadata=metadata):
+            return False
+    return initialized

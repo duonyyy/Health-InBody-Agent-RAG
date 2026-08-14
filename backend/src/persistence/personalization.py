@@ -209,7 +209,7 @@ def safe_build_personalization_context(external_id: Optional[str]) -> Dict[str, 
     try:
         return build_personalization_context(str(external_id))
     except Exception as exc:
-        logger.warning("Personalization context unavailable for user_id=%s: %s", external_id, exc)
+        logger.warning("Personalization context unavailable: %s", exc)
         return {
             "external_user_id": str(external_id),
             "has_profile": False,

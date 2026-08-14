@@ -4,6 +4,7 @@ import logging
 import os
 import time
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import requests
 import streamlit as st
@@ -228,34 +229,53 @@ def build_history() -> List[Dict[str, str]]:
 
 
 def extract_chat_response(data: Dict[str, Any]) -> Dict[str, Any]:
+    def normalized_response(response: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "content": str(response.get("content") or response.get("answer") or ""),
+            "agent_trace": response.get("agent_trace") or [],
+            "selected_agents": response.get("selected_agents") or [],
+            "citations": response.get("citations") or response.get("evidence") or [],
+            "evidence_status": response.get("evidence_status") or "not_required",
+            "limitations": response.get("limitations") or [],
+        }
+
     if "response" in data:
         response = data["response"]
         if isinstance(response, dict):
-            return {
-                "content": str(response.get("content") or response.get("answer") or ""),
-                "agent_trace": response.get("agent_trace") or [],
-                "selected_agents": response.get("selected_agents") or [],
-            }
-        return {"content": str(response), "agent_trace": [], "selected_agents": []}
+            return normalized_response(response)
+        return {
+            "content": str(response),
+            "agent_trace": [],
+            "selected_agents": [],
+            "citations": [],
+            "evidence_status": "not_required",
+            "limitations": [],
+        }
 
     if "answer" in data:
-        return {
-            "content": str(data["answer"]),
-            "agent_trace": data.get("agent_trace") or [],
-            "selected_agents": data.get("selected_agents") or [],
-        }
+        return normalized_response(data)
 
     task_result = data.get("task_result")
     if isinstance(task_result, dict):
-        return {
-            "content": str(task_result.get("content") or ""),
-            "agent_trace": task_result.get("agent_trace") or [],
-            "selected_agents": task_result.get("selected_agents") or [],
-        }
+        return normalized_response(task_result)
     if isinstance(task_result, str):
-        return {"content": task_result, "agent_trace": [], "selected_agents": []}
+        return {
+            "content": task_result,
+            "agent_trace": [],
+            "selected_agents": [],
+            "citations": [],
+            "evidence_status": "not_required",
+            "limitations": [],
+        }
 
-    return {"content": "", "agent_trace": [], "selected_agents": []}
+    return {
+        "content": "",
+        "agent_trace": [],
+        "selected_agents": [],
+        "citations": [],
+        "evidence_status": "not_required",
+        "limitations": [],
+    }
 
 
 @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=4))
@@ -288,6 +308,49 @@ def render_agent_trace(trace: List[Dict[str, Any]]) -> None:
             st.markdown(f"**{index}. {agent}** · `{status}` · `{action}`")
             if summary:
                 st.caption(summary)
+
+
+def render_evidence(
+    citations: List[Dict[str, Any]],
+    evidence_status: str,
+    limitations: List[str],
+) -> None:
+    if evidence_status == "insufficient":
+        st.warning("Kho tri thức hiện chưa có đủ bằng chứng trực tiếp cho câu trả lời này.")
+    elif evidence_status == "partial":
+        st.warning("Nguồn hiện có chỉ hỗ trợ một phần câu trả lời.")
+
+    for limitation in limitations:
+        st.caption(f"Giới hạn: {limitation}")
+
+    if not citations:
+        return
+
+    with st.expander(f"Nguồn tham khảo ({len(citations)})", expanded=False):
+        for item in citations:
+            citation_id = item.get("id", "?")
+            title = item.get("title") or f"Tài liệu {citation_id}"
+            source_url = str(item.get("source_url") or "").strip()
+            domain = ""
+            if source_url:
+                parsed = urlparse(source_url)
+                if parsed.scheme in {"http", "https"}:
+                    domain = parsed.netloc
+                else:
+                    source_url = ""
+
+            st.markdown(f"**[{citation_id}] {title}**")
+            metadata = [
+                str(item.get("publisher") or item.get("source") or "Nguồn chưa xác định"),
+                domain,
+                str(item.get("published_at") or ""),
+            ]
+            st.caption(" · ".join(value for value in metadata if value))
+            if item.get("excerpt"):
+                st.write(str(item["excerpt"]))
+            if source_url:
+                st.markdown(f"[Mở nguồn gốc]({source_url})")
+            st.divider()
 
 
 def call_tool(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -415,6 +478,11 @@ def render_chat_tab() -> None:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             if message["role"] == "assistant":
+                render_evidence(
+                    message.get("citations") or [],
+                    message.get("evidence_status") or "not_required",
+                    message.get("limitations") or [],
+                )
                 render_agent_trace(message.get("agent_trace") or [])
             if message.get("timestamp"):
                 st.caption(message["timestamp"])
@@ -442,12 +510,20 @@ def render_chat_tab() -> None:
                     chat_response = send_chat_message(prompt, history_before_turn)
                     answer = chat_response["content"]
                     st.markdown(answer)
+                    render_evidence(
+                        chat_response.get("citations") or [],
+                        chat_response.get("evidence_status") or "not_required",
+                        chat_response.get("limitations") or [],
+                    )
                     render_agent_trace(chat_response.get("agent_trace") or [])
                     assistant_message = {
                         "role": "assistant",
                         "content": answer,
                         "agent_trace": chat_response.get("agent_trace") or [],
                         "selected_agents": chat_response.get("selected_agents") or [],
+                        "citations": chat_response.get("citations") or [],
+                        "evidence_status": chat_response.get("evidence_status") or "not_required",
+                        "limitations": chat_response.get("limitations") or [],
                         "timestamp": now_label(),
                     }
                     st.caption(assistant_message["timestamp"])
