@@ -71,6 +71,7 @@ dataset.txt
 *.jsonl
 !backend/data/train_qa_format.jsonl
 !backend/evals/*.jsonl
+!backend/evals/phase1/cases_v1.jsonl
 data_pipeline/dataset/raw/**
 !data_pipeline/dataset/raw/README.md
 data_pipeline/dataset/processed/**

@@ -1,15 +1,11 @@
 """Personalization helpers for Health/InBody users and measurements."""
 
-import logging
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
 from persistence.database import session_scope
 from persistence.models import InBodyMeasurement, User
-
-logger = logging.getLogger(__name__)
-
 
 PROFILE_FIELDS = [
     "full_name",
@@ -44,10 +40,6 @@ def _json_value(value: Any) -> Any:
     if isinstance(value, (date, datetime)):
         return value.isoformat()
     return value
-
-
-def _drop_none(data: Dict[str, Any]) -> Dict[str, Any]:
-    return {key: value for key, value in data.items() if value is not None}
 
 
 def _user_to_dict(user: User) -> Dict[str, Any]:
@@ -153,68 +145,3 @@ def list_inbody_measurements(external_id: str, limit: int = 5) -> List[Dict[str,
 def get_latest_inbody_measurement(external_id: str) -> Optional[Dict[str, Any]]:
     measurements = list_inbody_measurements(external_id, limit=1)
     return measurements[0] if measurements else None
-
-
-def build_personalization_context(external_id: str) -> Dict[str, Any]:
-    profile = get_user_profile(external_id, auto_create=True)
-    latest_measurement = get_latest_inbody_measurement(external_id)
-
-    profile_summary = _drop_none(
-        {
-            "sex": profile.get("sex") if profile else None,
-            "birth_year": profile.get("birth_year") if profile else None,
-            "height_cm": profile.get("height_cm") if profile else None,
-            "activity_level": profile.get("activity_level") if profile else None,
-            "goal": profile.get("goal") if profile else None,
-            "medical_conditions": profile.get("medical_conditions") if profile else None,
-        }
-    )
-
-    measurement_summary = _drop_none(
-        {
-            key: latest_measurement.get(key)
-            for key in [
-                "measurement_date",
-                "height_cm",
-                "weight_kg",
-                "bmi",
-                "smm_kg",
-                "bfm_kg",
-                "pbf_percent",
-                "visceral_fat_level",
-                "recommendation_goal",
-            ]
-        }
-    ) if latest_measurement else {}
-
-    return {
-        "external_user_id": external_id,
-        "has_profile": bool(profile_summary),
-        "has_latest_measurement": bool(measurement_summary),
-        "profile": profile_summary,
-        "latest_measurement": measurement_summary,
-    }
-
-
-def safe_build_personalization_context(external_id: Optional[str]) -> Dict[str, Any]:
-    if not external_id:
-        return {
-            "external_user_id": None,
-            "has_profile": False,
-            "has_latest_measurement": False,
-            "profile": {},
-            "latest_measurement": {},
-            "error": "missing_user_id",
-        }
-    try:
-        return build_personalization_context(str(external_id))
-    except Exception as exc:
-        logger.warning("Personalization context unavailable: %s", exc)
-        return {
-            "external_user_id": str(external_id),
-            "has_profile": False,
-            "has_latest_measurement": False,
-            "profile": {},
-            "latest_measurement": {},
-            "error": "personalization_unavailable",
-        }

@@ -15,6 +15,9 @@ services:
       - .env
     environment:
       - DEBUG=False
+      - AUTH_MODE=${AUTH_MODE:-production}
+      - ENABLE_LEGACY_USER_ENDPOINTS=${ENABLE_LEGACY_USER_ENDPOINTS:-false}
+      - ENABLE_PERSONALIZATION_DEBUG=${ENABLE_PERSONALIZATION_DEBUG:-false}
       - REDIS_HOST=valkey-db
       - QDRANT_URL=http://qdrant-db:6333
       - QDRANT_COLLECTION_NAME=${QDRANT_COLLECTION_NAME:-nmk_chatbot_active}
@@ -41,12 +44,15 @@ services:
     build: .
     hostname: chatbot-worker
     container_name: chatbot-worker
-    command: celery -A jobs.tasks.celery_app worker --loglevel=debug --logfile=/var/logs/celery.log
+    command: celery -A jobs.tasks.celery_app worker --loglevel=warning --logfile=/var/logs/celery.log
     restart: always
     env_file:
       - .env
     environment:
       - DEBUG=False
+      - AUTH_MODE=${AUTH_MODE:-production}
+      - ENABLE_LEGACY_USER_ENDPOINTS=${ENABLE_LEGACY_USER_ENDPOINTS:-false}
+      - ENABLE_PERSONALIZATION_DEBUG=${ENABLE_PERSONALIZATION_DEBUG:-false}
       - REDIS_HOST=valkey-db
       - QDRANT_URL=http://qdrant-db:6333
       - QDRANT_COLLECTION_NAME=${QDRANT_COLLECTION_NAME:-nmk_chatbot_active}
@@ -62,6 +68,20 @@ services:
       - valkey-db
       - qdrant-db
       - postgres-db
+    networks:
+      - internal-network
+
+  chatbot-scheduler:
+    build: .
+    command: celery -A jobs.tasks.celery_app beat --schedule=/tmp/memory-celerybeat --loglevel=info
+    restart: always
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=valkey-db
+      - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL in backend/.env}
+    depends_on:
+      - valkey-db
     networks:
       - internal-network
 

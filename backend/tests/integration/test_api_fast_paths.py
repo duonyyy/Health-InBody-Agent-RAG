@@ -1,12 +1,15 @@
-import pytest
+import os
+
 from fastapi.testclient import TestClient
 
-pytest.importorskip("psycopg2", reason="Integration API tests require backend DB driver")
+os.environ["DATABASE_URL"] = "sqlite://"
+os.environ.setdefault("AUTH_MODE", "development")
 
 from api.app import app
 
 
 client = TestClient(app)
+AUTH_HEADERS = {"X-Dev-User-Id": "integration-fast-path-user"}
 
 
 def test_negative_bmi_input_returns_validation_error():
@@ -21,6 +24,7 @@ def test_negative_bmi_input_returns_validation_error():
 def test_agent_urgent_contract_exposes_fast_path_and_safety():
     response = client.post(
         "/agent/answer",
+        headers=AUTH_HEADERS,
         json={
             "question": "Tôi đau ngực và khó thở khi tập.",
             "history": [],
@@ -39,6 +43,7 @@ def test_agent_urgent_contract_exposes_fast_path_and_safety():
 def test_agent_bmi_contract_exposes_tool_result():
     response = client.post(
         "/agent/answer",
+        headers=AUTH_HEADERS,
         json={
             "question": "Tôi nặng 72kg, cao 170cm. BMI của tôi là bao nhiêu?",
             "history": [],

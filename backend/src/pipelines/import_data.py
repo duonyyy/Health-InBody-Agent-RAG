@@ -26,6 +26,7 @@ from core.config import (
     DEFAULT_VECTOR_SIZE,
 )
 from core.utils import setup_logging
+from rag.corpus_policy import validate_shared_document
 
 try:
     from rag.splitter import split_document as project_split_document
@@ -244,6 +245,10 @@ def validate_document(
 ) -> list[str]:
     """Kiểm tra document có đúng schema embedding của dự án không."""
     errors: list[str] = []
+    try:
+        validate_shared_document(record)
+    except ValueError as exc:
+        errors.append(f"line {line_number}: {exc}")
     missing = sorted(REQUIRED_FIELDS - set(record))
     if missing:
         errors.append(f"line {line_number}: missing fields: {', '.join(missing)}")

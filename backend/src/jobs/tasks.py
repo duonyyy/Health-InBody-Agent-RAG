@@ -18,6 +18,10 @@ try:
         backend=DEFAULT_CELERY_RESULT_BACKEND,
     )
     shared_task = celery_app.task
+    celery_app.conf.result_expires = 3600
+    celery_app.conf.beat_schedule = {"memory-retention-daily": {
+        "task": "jobs.tasks.purge_memory", "schedule": 86400.0,
+    }}
 except Exception:
     from core.config import DEFAULT_COLLECTION_NAME
 
@@ -54,7 +58,7 @@ from rag.rerank import rerank_documents
 from rag.search import hybrid_search, initialize_search_index
 from integrations.tavily import tavily_search_health
 from agents import multi_agent_handle
-from persistence.personalization import safe_build_personalization_context
+from persistence.personalization_service import safe_build_confirmed_context
 
 try:
     from core.utils import setup_logging
@@ -78,6 +82,9 @@ def index_document_v2(
     """
     from rag.splitter import split_document
     from rag.qdrant.client import add_vector
+    from rag.corpus_policy import validate_shared_document
+
+    validate_shared_document({"question": question, "content": content, "metadata": metadata or {}})
 
     text = f"{question or ''}\n{content or ''}".strip()
     chunks = split_document(
@@ -122,6 +129,9 @@ def index_health_documents(documents: List[Dict[str, Any]], collection_name=DEFA
     """
     Index nhieu tai lieu Health/InBody va khoi tao BM25 search index.
     """
+    from rag.corpus_policy import validate_shared_document
+    for document in documents or []:
+        validate_shared_document(document)
     statuses = []
     normalized_docs = []
 
@@ -149,7 +159,8 @@ def index_health_documents(documents: List[Dict[str, Any]], collection_name=DEFA
             }
         )
 
-    initialize_search_index(normalized_docs)
+    if collection_name == DEFAULT_COLLECTION_NAME:
+        initialize_search_index(normalized_docs)
     return {"indexed": len(statuses), "statuses": statuses}
 
 
@@ -323,18 +334,25 @@ def bot_route_answer_message(history, question):
 
 
 @shared_task()
-def llm_handle_message(bot_id, user_id, question):
+def llm_handle_message(bot_id, user_id, question, conversation_id=None, task_id=None):
     """
     Main handler cho Health/InBody Multi-Agent RAG chat.
 
-    DB layer hien con placeholder, nen task nay tra ve response truc tiep thay vi
-    luu conversation vao database.
+    Recheck persisted task ownership and use bounded PostgreSQL history.
+    Cloud memory is disabled on this asynchronous path.
     """
-    logger.info("Start Health/InBody message handling bot_id=%s user_id=%s", bot_id, user_id)
-    personalization_context = safe_build_personalization_context(user_id)
-    return multi_agent_handle(
-        question,
-        history=[],
-        user_id=user_id,
-        user_profile=personalization_context,
-    )
+    logger.info("Start Health/InBody message handling bot_id=%s", bot_id)
+    from memory.chat import run_chat
+    from memory.store import require_task_owner
+    if task_id:
+        require_task_owner(user_id, task_id)
+    return run_chat(question, user_id, conversation_id, bot_id=bot_id, use_zep_memory=False)
+
+
+@shared_task()
+def purge_memory():
+    from memory.store import purge_expired
+    from memory.sync import maintain_external_memory
+    result = purge_expired()
+    result.update(maintain_external_memory())
+    return result

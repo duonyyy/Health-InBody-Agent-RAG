@@ -6,6 +6,9 @@
 
 ## Mục tiêu sản phẩm
 
+Tiến độ mới 2026-09-29: [Bộ nhớ Day17 bốn lớp](09-day17-memory-completion-2026-09-29.md)
+đã nối source/test; **chưa deploy**, chưa xác minh PostgreSQL/Zep Cloud runtime.
+
 Sản phẩm không nên được định nghĩa là “một chatbot có nhiều agent”. Giá trị chính cần là:
 
 1. Giúp người dùng hiểu dữ liệu InBody đã nhập/xác nhận.

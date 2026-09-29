@@ -13,12 +13,14 @@ from core.config import (
 
 DATABASE_URL = os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
 
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-    pool_size=int(os.environ.get("DB_POOL_SIZE", "5")),
-    max_overflow=int(os.environ.get("DB_MAX_OVERFLOW", "10")),
-)
+_engine_options = {"pool_pre_ping": True}
+if not DATABASE_URL.startswith("sqlite"):
+    _engine_options.update(
+        pool_size=int(os.environ.get("DB_POOL_SIZE", "5")),
+        max_overflow=int(os.environ.get("DB_MAX_OVERFLOW", "10")),
+    )
+
+engine = create_engine(DATABASE_URL, **_engine_options)
 
 SessionLocal = sessionmaker(
     autocommit=False,
@@ -55,6 +57,7 @@ def session_scope():
 def init_db():
     """Create ORM tables if they do not exist."""
     import persistence.models  # noqa: F401
+    import memory.models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
 

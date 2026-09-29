@@ -102,11 +102,19 @@ Dịch vụ API sẽ hoạt động tại: `http://localhost:8000` (Truy cập `
 ### Quản Lý Người Dùng (Personalization)
 | Method | Endpoint | Chức Năng |
 | :--- | :--- | :--- |
-| `GET` | `/users/{user_id}/profile` | Lấy hồ sơ người dùng |
-| `PUT` | `/users/{user_id}/profile` | Cập nhật hồ sơ (chiều cao, mục tiêu, bệnh nền...) |
-| `GET` | `/users/{user_id}/measurements` | Lấy lịch sử đo InBody |
-| `POST`| `/users/{user_id}/measurements` | Thêm mới một kết quả đo InBody |
-| `GET` | `/users/{user_id}/personalization-context`| Lấy context tổng hợp của người dùng để đưa vào chat |
+| `GET/PUT/PATCH` | `/me/profile` | Hồ sơ và consent của authenticated user |
+| `GET/PUT` | `/me/goals/current` | Active goal có version |
+| `GET` | `/me/goals/history` | Lịch sử goal, không ghi đè version cũ |
+| `GET/POST` | `/me/measurements` | Cursor list và tạo lần đo có provenance/confirmation |
+| `GET/PATCH/DELETE` | `/me/measurements/{id}` | Owner-scoped CRUD; delete là soft delete |
+| `GET` | `/me/progress/summary`, `/me/progress/timeline` | Delta từ confirmed, non-deleted records |
+| `POST/GET` | `/me/plans`, `/me/plans/current` | Versioned plan + input snapshot/evidence/safety |
+| `POST/GET` | `/me/check-ins` | Check-in và symptom safety route |
+
+Các endpoint `/me` và chat không tin `user_id` trong body/path. Production cần
+trusted auth middleware inject `request.state.current_user`. Local-only:
+`AUTH_MODE=development` cho phép header `X-Dev-User-Id`. Legacy
+`/users/{user_id}/*` mặc định trả 404 và không dùng cho client mới.
 
 ### Chat & Search (Core)
 | Method | Endpoint | Chức Năng |
@@ -121,3 +129,13 @@ Dịch vụ API sẽ hoạt động tại: `http://localhost:8000` (Truy cập `
 - **Lỗi Celery timeout (`/chat/complete`):** Đảm bảo worker Celery và Redis đang chạy. Bạn có thể truyền `"sync_request": true` trong body để chạy đồng bộ bỏ qua Celery.
 - **Không tìm thấy kết quả RAG:** Kiểm tra cấu hình `CUSTOM_EMBEDDING_API_URL`, đảm bảo `embed_serving` đang chạy, và collection trong Qdrant đã chứa dữ liệu.
 - **Lỗi sinh văn bản (LLM):** Kiểm tra cấu hình `LLM_PROVIDER`. Nếu dùng Ollama, đảm bảo model đã được tải (`ollama run qwen2.5:3b`).
+
+## 8. Zep conversational memory (opt-in)
+
+Zep Cloud adapter nằm tại `src/memory/zep_memory.py`; cấu hình mẫu trong `.env.example`.
+Bộ nhớ ngoài mặc định tắt, cần xác thực tin cậy và consent riêng qua
+`PUT /me/memory-consent`; `DELETE /me/memory` tắt quyền và yêu cầu xóa trên Zep.
+Chỉ mirror các sở thích đã xác nhận, không tự gửi transcript. Lịch sử phiên/fact/sự kiện
+do PostgreSQL quản lý; cần migration `20260929_02_memory` và một Celery Beat scheduler.
+Xem [hợp đồng bộ nhớ](src/memory/README.md) và
+[trạng thái/gate triển khai](../docs/implementation-roadmap/09-day17-memory-completion-2026-09-29.md).

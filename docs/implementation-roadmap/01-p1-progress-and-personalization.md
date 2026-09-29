@@ -20,33 +20,37 @@ Lần đo đã xác nhận
 
 ## 2. Dashboard và measurement comparison
 
-### API đề xuất
+### API đã triển khai
 
 ```text
-GET  /users/{user_id}/measurements
-POST /users/{user_id}/measurements
-GET  /users/{user_id}/measurements/compare?baseline_id=...&current_id=...
-GET  /users/{user_id}/progress-summary
+GET    /me/measurements?limit=...&cursor=...&confirmed_only=...
+POST   /me/measurements
+GET    /me/measurements/{measurement_id}
+PATCH  /me/measurements/{measurement_id}
+DELETE /me/measurements/{measurement_id}
+GET    /me/progress/summary
+GET    /me/progress/timeline
 ```
 
 ### Nội dung progress summary
 
 ```json
 {
-  "current_measurement": {"date": "2026-07-30", "weight_kg": 70.8, "pbf_percent": 25.4},
-  "comparison_period": {"baseline_date": "2026-06-30", "days": 30},
-  "changes": {
+  "basis": "confirmed_non_deleted_measurements_only",
+  "current": {"measured_at": "...", "weight_kg": 70.8, "pbf_percent": 25.4},
+  "previous": {"measured_at": "...", "weight_kg": 72.0, "pbf_percent": 26.5},
+  "days_between": 30,
+  "delta": {
     "weight_kg": -1.2,
     "smm_kg": 0.3,
     "bfm_kg": -1.1,
     "pbf_percent": -1.1,
     "visceral_fat_level": -1
   },
-  "trend_labels": ["weight_down", "fat_down", "muscle_stable"],
-  "data_quality_notes": [
-    "Nên đo cùng thiết bị và trong điều kiện tương tự.",
-    "Không kết luận tăng cơ chỉ từ biến động nhỏ ở hai lần đo."
-  ]
+  "data_quality": {
+    "missing_current_metrics": [],
+    "limitations": ["Delta mô tả số đo, không chứng minh cải thiện hay quan hệ nhân quả."]
+  }
 }
 ```
 
@@ -70,15 +74,19 @@ GET  /users/{user_id}/progress-summary
 
 Personalization hữu ích chỉ khi người dùng biết hệ thống đã sử dụng gì. MedRaga minh họa cách ghép profile vào RAG, nhưng phạm vi diagnosis/treatment của repo đó không phù hợp với app đại chúng. [MedRaga](https://github.com/mdimado/MedRaga)
 
-### Contract
+### Contract Agent response
 
 ```json
 {
-  "profile_completeness": 65,
-  "used_fields": ["sex", "height_cm", "weight_kg", "pbf_percent", "goal"],
-  "missing_fields": ["birth_year", "activity_level", "medical_conditions", "injury_constraints"],
-  "measurement_source": "manual_confirmed",
-  "measurement_date": "2026-07-30"
+  "personalization_used": {
+    "available": true,
+    "reason": null,
+    "provenance": [
+      {"type": "profile", "confirmed_at": "..."},
+      {"type": "measurement", "id": "...", "confirmed_at": "..."},
+      {"type": "goal", "id": "...", "version": 2}
+    ]
+  }
 }
 ```
 
@@ -136,11 +144,23 @@ Check-in không cần gamification phức tạp. Bản MVP chỉ cần 4 câu:
 
 Nếu câu 3 có tín hiệu risk, không hiển thị lời khuyên “cố gắng tập tiếp”; chuyển safety flow.
 
-## Deliverables P1
+## Deliverables P1 backend — trạng thái 2026-08-15
 
-- [ ] Measurement list, compare, progress-summary API.
-- [ ] Dashboard latest measurement + trend chart + data-quality note.
-- [ ] Profile completeness/provenance trả về trong chat.
-- [ ] Versioned weekly plan schema và UI draft/active.
-- [ ] Weekly check-in với route safety.
-- [ ] Test permission: chỉ chủ sở hữu xem/sửa lịch sử đo của mình.
+- [x] `/me/profile` GET/PUT/PATCH với field allowlist, sanitation và consent.
+- [x] Goal current/history có version, bảo toàn history và chặn target cực đoan.
+- [x] Measurement cursor CRUD, validation, provenance và soft delete.
+- [x] Progress summary/timeline chỉ dùng record đã xác nhận, có delta và data-quality limits.
+- [x] Versioned plan có input snapshot, goal version, confirmed measurement IDs, evidence/citations và safety result.
+- [x] Check-in create/list; symptom urgent chạy safety route.
+- [x] Agent chỉ dùng context consented + confirmed và trả provenance đã redacted.
+- [x] Ownership HTTP: B không GET/PATCH/DELETE measurement A và không archive plan A.
+- [x] Migration PostgreSQL `up/down`, ledger và rollback rehearsal.
+- [x] Dashboard/profile/measurement/check-in UI đã được tích hợp hoàn chỉnh vào Streamlit frontend (`chat_interface_new.py`).
+
+Báo cáo nghiệm thu và giới hạn production nằm tại `docs/P1_PERSONALIZATION_REPORT.md`.
+
+### Tiến độ bộ nhớ — 2026-09-29
+
+- Đã thêm history owner-scoped, fact cần xác nhận, event context, Zep confirmed-only và admission guard corpus.
+- Có UI/API/migration/retention job và regression tests; **source-ready, chưa deploy**.
+- Bằng chứng và gate còn mở: [báo cáo Day17](09-day17-memory-completion-2026-09-29.md).

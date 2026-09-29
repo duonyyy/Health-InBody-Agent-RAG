@@ -1,245 +1,112 @@
-# Database Schema - Health/InBody Agent RAG
+# PostgreSQL — Health/InBody Agentic RAG
 
-Thư mục này chứa schema PostgreSQL cho backend Health/InBody Agent RAG.
+PostgreSQL là source of truth cho dữ liệu người dùng; Qdrant chỉ lưu vector và
+metadata retrieval. Schema cài mới nằm ở `database/init.sql`. Database đã tồn
+tại phải dùng migration, vì script trong `docker-entrypoint-initdb.d` không chạy
+lại khi volume PostgreSQL đã có dữ liệu.
 
-File chính:
-
-```text
-database/init.sql
-```
-
-File này được mount vào PostgreSQL container trong `backend/docker-compose.yml`:
+## Migration hiện hành
 
 ```text
-../database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+database/migrations/
+├── 20260815_01_p1_personalization.up.sql
+└── 20260815_01_p1_personalization.down.sql
 ```
 
-Khi PostgreSQL khởi tạo database lần đầu, script sẽ tạo extension, tables và indexes cần thiết.
+Migration P1 chạy trong transaction, idempotent cho thao tác `up`, ghi ledger
+`schema_migrations`, và có `down` để phục hồi schema P0. `down` làm mất dữ liệu
+được tạo trong các bảng P1; phải backup trước rollback production.
 
----
+Ví dụ áp dụng trong môi trường local Docker:
 
-# 1. Tổng Quan
+```powershell
+Get-Content -Raw ..\database\migrations\20260815_01_p1_personalization.up.sql |
+  docker compose exec -T postgres-db psql -U health_user -d health_inbody -v ON_ERROR_STOP=1
+```
 
-Database lưu dữ liệu nghiệp vụ của hệ thống:
+Không đưa mật khẩu vào command hoặc commit. User/database thực tế phải lấy từ
+deployment secret/configuration.
 
-* Hồ sơ người dùng.
-* Lịch sử đo InBody.
-* Phiên chat và tin nhắn.
-* Metadata tài liệu RAG.
-* Chunk tài liệu có liên kết với Qdrant.
-* File upload và kết quả OCR/parser.
-
-Qdrant vẫn là nơi lưu vector embedding chính. PostgreSQL giữ dữ liệu có cấu trúc và metadata để backend có thể truy vết, hiển thị lịch sử và liên kết với người dùng.
-
----
-
-# 2. Sơ Đồ Quan Hệ
+## Quan hệ P1
 
 ```text
 users
-  ├── inbody_measurements
-  ├── chat_sessions
-  │     └── chat_messages
-  └── uploaded_files
+├── inbody_measurements      # confirmed/unconfirmed, cursor, soft delete
+├── personalization_goals   # history theo version, một active goal/user
+├── personalized_plans      # input snapshot, evidence, safety, version
+├── check_ins               # adherence/symptom và safety result
+├── chat_sessions
+│   └── chat_messages
+└── uploaded_files
 
 documents
-  └── document_chunks
-          └── qdrant_point_id -> Qdrant point
+└── document_chunks -> qdrant_point_id
 ```
 
----
+Mọi bảng P1 có khóa ngoại `user_id` và index bắt đầu bằng `user_id`. Service
+luôn resolve database user từ authenticated subject, rồi lọc đồng thời
+`resource_id + user_id`; resource không thuộc owner trả 404 để không tiết lộ sự
+tồn tại.
 
-# 3. Extension
+## Bảng và trường chính
 
-```sql
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-```
+### `users`
 
-`pgcrypto` được dùng để tạo UUID bằng `gen_random_uuid()`.
+P1 bổ sung `display_name`, `birth_date` hoặc `age_range`, `sex_at_birth`,
+`dietary_preferences`, `exercise_constraints`, `medical_conditions_data`,
+`consent_flags`, `profile_confirmed_at` và `deleted_at`. Các trường legacy vẫn
+được giữ để migration tương thích; API `/me/profile` không trả email hoặc
+`external_id`.
 
----
+### `inbody_measurements`
 
-# 4. Bảng `users`
+Ngoài các metric InBody, P1 có:
 
-Lưu hồ sơ người dùng.
+- `measured_at TIMESTAMPTZ` cho timeline/cursor ổn định;
+- `source_type`, `confidence` và `confirmed_by_user`;
+- `confirmed_at` để truy vết xác nhận;
+- `deleted_at`, `delete_reason` cho soft delete.
 
-| Cột                  | Kiểu         | Ý nghĩa                                      |
-| -------------------- | ------------ | -------------------------------------------- |
-| `id`                 | UUID         | Khóa chính                                   |
-| `external_id`        | VARCHAR(128) | ID người dùng từ frontend/hệ thống ngoài     |
-| `full_name`          | VARCHAR(255) | Họ tên                                       |
-| `email`              | VARCHAR(255) | Email, unique                                |
-| `sex`                | VARCHAR(32)  | Giới tính                                    |
-| `birth_year`         | INTEGER      | Năm sinh                                     |
-| `height_cm`          | NUMERIC(6,2) | Chiều cao mặc định                           |
-| `activity_level`     | VARCHAR(64)  | Mức độ vận động                              |
-| `goal`               | VARCHAR(64)  | Mục tiêu: fat_loss, muscle_gain, maintain... |
-| `medical_conditions` | TEXT         | Bệnh nền/lưu ý sức khỏe                      |
-| `created_at`         | TIMESTAMPTZ  | Thời điểm tạo                                |
-| `updated_at`         | TIMESTAMPTZ  | Thời điểm cập nhật                           |
+Chỉ record `confirmed_by_user=true AND deleted_at IS NULL` được dùng cho
+progress, plan snapshot và Agent personalization.
 
-Quan hệ:
+### `personalization_goals`
 
-* 1 user có nhiều `inbody_measurements`.
-* 1 user có nhiều `chat_sessions`.
-* 1 user có nhiều `uploaded_files`.
+Mỗi thay đổi tạo version mới. Goal active trước được chuyển thành `superseded`;
+unique partial index bảo đảm tối đa một active goal trên mỗi user.
 
----
+### `personalized_plans`
 
-# 5. Bảng `inbody_measurements`
+Lưu `input_snapshot`, `goal_version`, measurement IDs đã xác nhận,
+`evidence_ids`, citations, `safety_result`, structured content và trạng thái.
+Active plan trước được archive khi active version mới được tạo.
 
-Lưu từng lần đo InBody của người dùng.
+### `check_ins`
 
-| Cột                   | Kiểu         | Ý nghĩa                              |
-| --------------------- | ------------ | ------------------------------------ |
-| `id`                  | UUID         | Khóa chính                           |
-| `user_id`             | UUID         | Khóa ngoại đến `users.id`            |
-| `measurement_date`    | DATE         | Ngày đo                              |
-| `height_cm`           | NUMERIC(6,2) | Chiều cao tại thời điểm đo           |
-| `weight_kg`           | NUMERIC(6,2) | Cân nặng                             |
-| `bmi`                 | NUMERIC(5,2) | Body Mass Index                      |
-| `smm_kg`              | NUMERIC(6,2) | Skeletal Muscle Mass                 |
-| `bfm_kg`              | NUMERIC(6,2) | Body Fat Mass                        |
-| `pbf_percent`         | NUMERIC(5,2) | Percent Body Fat                     |
-| `visceral_fat_level`  | NUMERIC(5,2) | Mức mỡ nội tạng                      |
-| `body_water_l`        | NUMERIC(6,2) | Lượng nước cơ thể                    |
-| `recommendation_goal` | VARCHAR(64)  | Mục tiêu gợi ý sau khi phân tích     |
-| `source_file`         | VARCHAR(512) | File nguồn nếu dữ liệu đến từ upload |
-| `raw_payload`         | JSONB        | Kết quả parse/OCR gốc                |
-| `created_at`          | TIMESTAMPTZ  | Thời điểm tạo                        |
-| `updated_at`          | TIMESTAMPTZ  | Thời điểm cập nhật                   |
+Lưu check-in có thời gian, adherence, energy/sleep/soreness, symptom và kết quả
+safety deterministic. Check-in không tự sửa profile, goal hoặc plan.
 
-Ràng buộc:
+## Retention và recovery
 
-```sql
-user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE
-```
+- Measurement delete hiện là soft delete; dữ liệu vẫn tồn tại cho tới khi có
+  retention/purge job được phê duyệt.
+- User delete ở database cascade các bảng health P1. Public account-delete và
+  export API thuộc privacy lifecycle tiếp theo, chưa được tuyên bố là hoàn tất.
+- Backup PostgreSQL phải được mã hóa và restore-test định kỳ.
+- Không log subject, raw health metric, condition hoặc payload đầy đủ.
+- Qdrant backup/rollback độc lập với migration PostgreSQL; migration P1 không
+  đổi alias/collection Qdrant.
 
-Nếu xóa user, các lần đo InBody của user đó cũng bị xóa.
+## ORM
 
----
+ORM tương ứng nằm tại `backend/src/persistence/models.py`; logic owner-scoped
+nằm tại `backend/src/persistence/personalization_service.py`. Không dùng
+`Base.metadata.create_all()` để thay thế migration trên database đã có dữ liệu.
 
-# 6. Bảng `chat_sessions`
+## Bộ nhớ Day17 — source 2026-09-29
 
-Lưu phiên chat.
-
-| Cột                | Kiểu         | Ý nghĩa                                         |
-| ------------------ | ------------ | ----------------------------------------------- |
-| `id`               | UUID         | Khóa chính                                      |
-| `bot_id`           | VARCHAR(128) | Mặc định `health-inbody-agent`                  |
-| `user_id`          | UUID         | Khóa ngoại đến `users.id`, có thể null          |
-| `external_user_id` | VARCHAR(128) | ID user từ client khi chưa có row trong `users` |
-| `title`            | VARCHAR(255) | Tiêu đề phiên chat                              |
-| `created_at`       | TIMESTAMPTZ  | Thời điểm tạo                                   |
-| `updated_at`       | TIMESTAMPTZ  | Thời điểm cập nhật                              |
-
----
-
-# 7. Bảng `chat_messages`
-
-Lưu tin nhắn trong một phiên chat.
-
-| Cột          | Kiểu        | Ý nghĩa                           |
-| ------------ | ----------- | --------------------------------- |
-| `id`         | UUID        | Khóa chính                        |
-| `session_id` | UUID        | Khóa ngoại đến `chat_sessions.id` |
-| `role`       | VARCHAR(32) | `user`, `assistant`               |
-| `content`    | TEXT        | Nội dung tin nhắn                 |
-| `route`      | VARCHAR(64) | Route xử lý                       |
-| `metadata`   | JSONB       | Metadata bổ sung                  |
-| `created_at` | TIMESTAMPTZ | Thời điểm tạo                     |
-
----
-
-# 8. Bảng `documents`
-
-Lưu tài liệu nguồn cho RAG.
-
-| Cột             | Kiểu         | Ý nghĩa                  |
-| --------------- | ------------ | ------------------------ |
-| `id`            | UUID         | Khóa chính               |
-| `external_id`   | VARCHAR(128) | ID từ data pipeline      |
-| `title`         | VARCHAR(512) | Tiêu đề tài liệu         |
-| `content`       | TEXT         | Nội dung gốc             |
-| `source`        | VARCHAR(512) | Nguồn dữ liệu            |
-| `document_type` | VARCHAR(128) | Loại tài liệu            |
-| `content_type`  | VARCHAR(128) | Nhóm nội dung            |
-| `domain`        | VARCHAR(128) | Mặc định `health_inbody` |
-| `metadata`      | JSONB        | Metadata bổ sung         |
-| `created_at`    | TIMESTAMPTZ  | Thời điểm tạo            |
-| `updated_at`    | TIMESTAMPTZ  | Thời điểm cập nhật       |
-
----
-
-# 9. Bảng `document_chunks`
-
-Lưu các chunk đã tách từ `documents`.
-
-| Cột               | Kiểu         | Ý nghĩa                         |
-| ----------------- | ------------ | ------------------------------- |
-| `id`              | UUID         | Khóa chính                      |
-| `document_id`     | UUID         | Khóa ngoại đến `documents.id`   |
-| `qdrant_point_id` | VARCHAR(128) | ID point tương ứng trong Qdrant |
-| `chunk_index`     | INTEGER      | Thứ tự chunk                    |
-| `content`         | TEXT         | Nội dung chunk                  |
-| `content_type`    | VARCHAR(128) | Nhóm nội dung                   |
-| `token_count`     | INTEGER      | Số token                        |
-| `metadata`        | JSONB        | Metadata bổ sung                |
-| `created_at`      | TIMESTAMPTZ  | Thời điểm tạo                   |
-
----
-
-# 10. Bảng `uploaded_files`
-
-Lưu thông tin file người dùng upload.
-
-| Cột                 | Kiểu          | Ý nghĩa                   |
-| ------------------- | ------------- | ------------------------- |
-| `id`                | UUID          | Khóa chính                |
-| `user_id`           | UUID          | Khóa ngoại đến `users.id` |
-| `original_filename` | VARCHAR(512)  | Tên file gốc              |
-| `storage_path`      | VARCHAR(1024) | Đường dẫn file            |
-| `mime_type`         | VARCHAR(128)  | MIME type                 |
-| `file_size_bytes`   | BIGINT        | Kích thước file           |
-| `processing_status` | VARCHAR(64)   | pending/processing/done   |
-| `extracted_text`    | TEXT          | Text OCR                  |
-| `parsed_payload`    | JSONB         | Kết quả parser            |
-| `created_at`        | TIMESTAMPTZ   | Thời điểm tạo             |
-| `updated_at`        | TIMESTAMPTZ   | Thời điểm cập nhật        |
-
----
-
-# 11. Quan Hệ Với Backend ORM
-
-Schema SQL này tương ứng với các class trong:
-
-```text
-backend/src/models.py
-```
-
-| SQL Table             | ORM Class           |
-| --------------------- | ------------------- |
-| `users`               | `User`              |
-| `inbody_measurements` | `InBodyMeasurement` |
-| `chat_sessions`       | `ChatSession`       |
-| `chat_messages`       | `ChatMessage`       |
-| `documents`           | `Document`          |
-| `document_chunks`     | `DocumentChunk`     |
-| `uploaded_files`      | `UploadedFile`      |
-
----
-
-# 12. Kết Luận
-
-PostgreSQL đóng vai trò là database nghiệp vụ chính của hệ thống Health/InBody Agent RAG.
-
-Database này hỗ trợ:
-
-* Quản lý dữ liệu người dùng.
-* Lưu lịch sử InBody.
-* Lưu lịch sử chat AI.
-* Quản lý metadata tài liệu RAG.
-* Liên kết với Qdrant Vector Database.
-* Hỗ trợ OCR/parser cho file upload.
-
-Kiến trúc này giúp hệ thống dễ mở rộng cho AI Agent, Health Analytics và Retrieval-Augmented Generation (RAG).
+Migration `migrations/20260929_02_memory.up.sql` chạy sau P1, thêm `memory_facts`,
+`chat_tasks` và index retention. Chat session/message hiện hữu vẫn dùng tiếp.
+Down migration xóa hai bảng mới và dữ liệu trong chúng; cần backup trước rollback.
+ORM mới ở `backend/src/memory/models.py`; chưa chạy migration này trên database thật.
+Chi tiết [retention và triển khai](../docs/implementation-roadmap/09-day17-memory-completion-2026-09-29.md).

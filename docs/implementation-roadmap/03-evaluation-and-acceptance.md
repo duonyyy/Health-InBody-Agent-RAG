@@ -82,11 +82,18 @@ Không chốt một con số Recall/Precision chung trước khi có dataset đ�
 
 ### P1 gates
 
-- Delta giữa hai lần đo được tính đúng ở unit test.
-- Dữ liệu chưa confirm không được dùng cho insight cá nhân hóa.
-- Người dùng A không đọc/sửa measurement của B.
-- Plan có `input_snapshot`, `version`, `status`, `evidence_ids`.
-- Check-in có symptom phải kích hoạt safety route.
+- [x] Delta giữa hai lần đo được tính đúng (`-1.0 kg` trong HTTP acceptance).
+- [x] Dữ liệu chưa confirm không được dùng cho progress/Agent personalization.
+- [x] User B không GET/PATCH/DELETE measurement A; không archive plan A.
+- [x] Plan có `input_snapshot`, `version`, `status`, `goal_version`, confirmed measurement IDs và evidence.
+- [x] Check-in có symptom urgent kích hoạt deterministic safety route.
+- [x] Unauthenticated `/me` bị 401; body `user_id` khác authenticated subject bị 403.
+- [x] Migration được diễn tập `P0 -> up -> down -> up` trên database tạm.
+
+Kết quả release 2026-08-15: backend tests `59 passed`; HTTP P1 acceptance
+`39/39 passed`. Production vẫn **no-go** cho tới khi deployment nối auth
+middleware thật vào `request.state.current_user`; dev header không hoạt động khi
+`AUTH_MODE=production`.
 
 ### P2 gates
 

@@ -11,6 +11,9 @@ services:
     hostname: chatbot-ui
     container_name: chatbot-ui
     restart: always
+    environment:
+      - API_AUTH_MODE=${API_AUTH_MODE:-production}
+      - USER_ID=${USER_ID:-demo-user}
     ports:
       - "8051:8051"
     expose:

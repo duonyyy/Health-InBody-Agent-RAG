@@ -1,0 +1,469 @@
+{
+  "case_count": 13,
+  "clinical_review_pending": 9,
+  "code_sha256": {
+    "graph": "54edb1e94479cb7dcd03f24a9670547767a21335a20b070f8098e62977762fe7",
+    "safety": "cfcdb39989a6a410462aedb10afc8da1b01145e7ecc3da5bf2f6a6c850f02ef7",
+    "search": "463a0114b8aac528aa72cfd40a1f361d8f3a89f10d489849572e271fa2615150"
+  },
+  "collection_name": "nmk_chatbot_active",
+  "corpus_version": "2026-07-30-v2",
+  "details": [
+    {
+      "actual_agents": [
+        "InBodyAgent",
+        "RAGAgent"
+      ],
+      "case_id": "route_bmi_01",
+      "expected_agents": [
+        "InBodyAgent",
+        "RAGAgent"
+      ],
+      "group": "routing",
+      "passed": true,
+      "status": "measured"
+    },
+    {
+      "actual_agents": [
+        "NutritionAgent",
+        "TrainingAgent"
+      ],
+      "case_id": "route_training_01",
+      "expected_agents": [
+        "TrainingAgent"
+      ],
+      "group": "routing",
+      "passed": false,
+      "status": "measured"
+    },
+    {
+      "actual_agents": [
+        "NutritionAgent",
+        "TrainingAgent"
+      ],
+      "case_id": "route_training_ascii_01",
+      "expected_agents": [
+        "TrainingAgent"
+      ],
+      "group": "routing",
+      "passed": false,
+      "status": "measured"
+    },
+    {
+      "case_id": "retrieval_bmi_limits_01",
+      "group": "retrieval",
+      "status": "measured",
+      "variants": {
+        "blind_retrieval_dump": {
+          "answer_char_count": 1473,
+          "answer_policy": "copy_top_k_without_synthesis",
+          "answer_sha256": "f9769a4ba58c45f529bac530c6f7f75ce83bf3278f7cb9988cb8a0f0434b1a78",
+          "claim_support": "not_measured",
+          "document_ids": [
+            "internal_inbody_bmi_001",
+            "internal_inbody_bmi_limitations_001",
+            "internal_inbody_pbf_interpretation_001",
+            "internal_inbody_bmi_asian_cutoff_001",
+            "internal_inbody_pbf_001"
+          ],
+          "duplicate_result_ids": 0,
+          "forbidden_hits": [],
+          "passed": true,
+          "precision_at_k": 0.2,
+          "raw_result_count": 5,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 0.5,
+          "wrong_content_type_count": 0
+        },
+        "current_bm25_filtered": {
+          "document_ids": [
+            "internal_inbody_bmi_001",
+            "internal_inbody_bmi_limitations_001",
+            "internal_inbody_pbf_interpretation_001",
+            "internal_inbody_bmi_asian_cutoff_001",
+            "internal_inbody_pbf_001"
+          ],
+          "duplicate_result_ids": 0,
+          "forbidden_hits": [],
+          "passed": true,
+          "precision_at_k": 0.2,
+          "raw_result_count": 5,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 0.5,
+          "wrong_content_type_count": 0
+        },
+        "topk_unfiltered": {
+          "document_ids": [
+            "internal_inbody_bmi_001",
+            "internal_inbody_bmi_limitations_001",
+            "internal_inbody_pbf_interpretation_001",
+            "internal_inbody_bmi_asian_cutoff_001",
+            "internal_inbody_pbf_001"
+          ],
+          "duplicate_result_ids": 0,
+          "forbidden_hits": [],
+          "passed": true,
+          "precision_at_k": 0.2,
+          "raw_result_count": 5,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 0.5,
+          "wrong_content_type_count": 0
+        }
+      }
+    },
+    {
+      "case_id": "retrieval_pbf_bfm_01",
+      "group": "retrieval",
+      "status": "measured",
+      "variants": {
+        "blind_retrieval_dump": {
+          "answer_char_count": 1514,
+          "answer_policy": "copy_top_k_without_synthesis",
+          "answer_sha256": "ad745f788d7dec6d961915c4ab4e4e94353e904d680c484ba24efd860c0f3dac",
+          "claim_support": "not_measured",
+          "document_ids": [
+            "internal_inbody_pbf_vs_bfm_001",
+            "internal_inbody_pbf_001",
+            "internal_inbody_pbf_interpretation_001",
+            "fitness_training_document_page_0194",
+            "internal_inbody_bfm_001"
+          ],
+          "duplicate_result_ids": 0,
+          "forbidden_hits": [],
+          "passed": false,
+          "precision_at_k": 0.2,
+          "raw_result_count": 5,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "wrong_content_type_count": 1
+        },
+        "current_bm25_filtered": {
+          "document_ids": [
+            "internal_inbody_pbf_vs_bfm_001",
+            "internal_inbody_pbf_001",
+            "internal_inbody_pbf_interpretation_001",
+            "internal_inbody_bfm_001",
+            "internal_inbody_bmi_001"
+          ],
+          "duplicate_result_ids": 0,
+          "forbidden_hits": [],
+          "passed": true,
+          "precision_at_k": 0.2,
+          "raw_result_count": 5,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "wrong_content_type_count": 0
+        },
+        "topk_unfiltered": {
+          "document_ids": [
+            "internal_inbody_pbf_vs_bfm_001",
+            "internal_inbody_pbf_001",
+            "internal_inbody_pbf_interpretation_001",
+            "fitness_training_document_page_0194",
+            "internal_inbody_bfm_001"
+          ],
+          "duplicate_result_ids": 0,
+          "forbidden_hits": [],
+          "passed": false,
+          "precision_at_k": 0.2,
+          "raw_result_count": 5,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "wrong_content_type_count": 1
+        }
+      }
+    },
+    {
+      "case_id": "retrieval_bia_01",
+      "group": "retrieval",
+      "status": "measured",
+      "variants": {
+        "blind_retrieval_dump": {
+          "answer_char_count": 1994,
+          "answer_policy": "copy_top_k_without_synthesis",
+          "answer_sha256": "0e20c8b0b2373c3bf1a66f0bd1fe26dc26f5be504a65b36974be1b9f153a226d",
+          "claim_support": "not_measured",
+          "document_ids": [
+            "internal_inbody_bia_preparation_001",
+            "internal_inbody_bia_limitations_001",
+            "fitness_training_document_page_0047",
+            "foodrecordfinal_food_2484",
+            "foodrecordfinal_food_2521"
+          ],
+          "duplicate_result_ids": 0,
+          "forbidden_hits": [],
+          "passed": false,
+          "precision_at_k": 0.2,
+          "raw_result_count": 5,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "wrong_content_type_count": 3
+        },
+        "current_bm25_filtered": {
+          "document_ids": [
+            "internal_inbody_bia_preparation_001",
+            "internal_inbody_bia_limitations_001",
+            "internal_inbody_bmi_001",
+            "internal_inbody_bmi_limitations_001",
+            "internal_inbody_bfm_fat_loss_tracking_001"
+          ],
+          "duplicate_result_ids": 0,
+          "forbidden_hits": [],
+          "passed": true,
+          "precision_at_k": 0.2,
+          "raw_result_count": 5,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "wrong_content_type_count": 0
+        },
+        "topk_unfiltered": {
+          "document_ids": [
+            "internal_inbody_bia_preparation_001",
+            "internal_inbody_bia_limitations_001",
+            "fitness_training_document_page_0047",
+            "foodrecordfinal_food_2484",
+            "foodrecordfinal_food_2521"
+          ],
+          "duplicate_result_ids": 0,
+          "forbidden_hits": [],
+          "passed": false,
+          "precision_at_k": 0.2,
+          "raw_result_count": 5,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "wrong_content_type_count": 3
+        }
+      }
+    },
+    {
+      "case_id": "retrieval_safety_redflag_01",
+      "group": "retrieval",
+      "status": "measured",
+      "variants": {
+        "blind_retrieval_dump": {
+          "answer_char_count": 1900,
+          "answer_policy": "copy_top_k_without_synthesis",
+          "answer_sha256": "a4f86dd9bdc47683e6a7306ab165869fafcd139eef6896d94fb6d73bd866656c",
+          "claim_support": "not_measured",
+          "document_ids": [
+            "internal_safety_red_flags_exercise_001",
+            "fitness_training_document_page_0319",
+            "internal_medical_safety_001",
+            "fitness_training_document_page_0477",
+            "fitness_training_document_page_0333"
+          ],
+          "duplicate_result_ids": 0,
+          "forbidden_hits": [],
+          "passed": false,
+          "precision_at_k": 0.2,
+          "raw_result_count": 5,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "wrong_content_type_count": 3
+        },
+        "current_bm25_filtered": {
+          "document_ids": [
+            "internal_safety_red_flags_exercise_001",
+            "internal_medical_safety_001",
+            "internal_safety_no_extreme_diet_001",
+            "internal_safety_chronic_conditions_001"
+          ],
+          "duplicate_result_ids": 0,
+          "forbidden_hits": [],
+          "passed": true,
+          "precision_at_k": 0.25,
+          "raw_result_count": 4,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "wrong_content_type_count": 0
+        },
+        "topk_unfiltered": {
+          "document_ids": [
+            "internal_safety_red_flags_exercise_001",
+            "fitness_training_document_page_0319",
+            "internal_medical_safety_001",
+            "fitness_training_document_page_0477",
+            "fitness_training_document_page_0333"
+          ],
+          "duplicate_result_ids": 0,
+          "forbidden_hits": [],
+          "passed": false,
+          "precision_at_k": 0.2,
+          "raw_result_count": 5,
+          "recall_at_k": 1.0,
+          "reciprocal_rank": 1.0,
+          "wrong_content_type_count": 3
+        }
+      }
+    },
+    {
+      "actual_risk": "urgent",
+      "case_id": "safety_urgent_01",
+      "expected_risk": "urgent",
+      "group": "safety",
+      "passed": true,
+      "status": "partial",
+      "unmeasured": [
+        "fast_path",
+        "LLM/retrieval calls",
+        "response safety"
+      ]
+    },
+    {
+      "actual_risk": "medical_caution",
+      "case_id": "safety_caution_01",
+      "expected_risk": "medical_caution",
+      "group": "safety",
+      "passed": true,
+      "status": "partial",
+      "unmeasured": [
+        "fast_path",
+        "LLM/retrieval calls",
+        "response safety"
+      ]
+    },
+    {
+      "case_id": "citation_missing_01",
+      "group": "claim_citation",
+      "reason": "Requires isolated evidence/tool fault fixture and response-level runtime review; offline BM25 cannot score this contract.",
+      "status": "not_measured"
+    },
+    {
+      "case_id": "injection_doc_01",
+      "group": "prompt_injection",
+      "reason": "Requires isolated evidence/tool fault fixture and response-level runtime review; offline BM25 cannot score this contract.",
+      "status": "not_measured"
+    },
+    {
+      "case_id": "evidence_missing_01",
+      "group": "insufficient_evidence",
+      "reason": "Requires isolated evidence/tool fault fixture and response-level runtime review; offline BM25 cannot score this contract.",
+      "status": "not_measured"
+    },
+    {
+      "case_id": "tool_timeout_01",
+      "group": "tool_failure",
+      "reason": "Requires isolated evidence/tool fault fixture and response-level runtime review; offline BM25 cannot score this contract.",
+      "status": "not_measured"
+    }
+  ],
+  "fixture_sha256": "f6e1500dfd529d925262b9d46a92680c1f468fbc81bc0323021da8fd9d387073",
+  "holdout_excluded_by_default": true,
+  "model_config": "none; offline deterministic only",
+  "review_status": {
+    "provisional": 13
+  },
+  "schema_version": 1,
+  "search_stats": {
+    "bm25_persistence": "versioned_json_gzip_snapshot",
+    "collection_name": "nmk_chatbot_active",
+    "corpus_version": "2026-07-30-v2",
+    "documents_count": 23608,
+    "domain": "health_inbody",
+    "has_bm25": true,
+    "initialized": true,
+    "snapshot_created_at": "2026-08-14T15:54:55.476782+00:00",
+    "snapshot_point_count": 23608
+  },
+  "snapshot_document_count": 23608,
+  "snapshot_id_stats": {
+    "duplicate_id_rows": 18263,
+    "duplicate_id_values": 4834,
+    "unique_document_ids": 5345
+  },
+  "snapshot_sha256": "2e52541aac7bb42c6733b0f18f04d04cb8e6e50683b030794417b2b195a77449",
+  "split": "development",
+  "suite_version": "1.0.0",
+  "summary": {
+    "claim_citation": {
+      "case_count": 1,
+      "failed_case_ids": [],
+      "measured": 0,
+      "not_measured": 1,
+      "partial": 0
+    },
+    "insufficient_evidence": {
+      "case_count": 1,
+      "failed_case_ids": [],
+      "measured": 0,
+      "not_measured": 1,
+      "partial": 0
+    },
+    "prompt_injection": {
+      "case_count": 1,
+      "failed_case_ids": [],
+      "measured": 0,
+      "not_measured": 1,
+      "partial": 0
+    },
+    "retrieval": {
+      "blind_retrieval_dump": {
+        "duplicate_result_ids": 0,
+        "failed_case_ids": [
+          "retrieval_pbf_bfm_01",
+          "retrieval_bia_01",
+          "retrieval_safety_redflag_01"
+        ],
+        "forbidden_case_count": 0,
+        "mean_precision_at_k": 0.2,
+        "mean_recall_at_k": 1.0,
+        "mrr": 0.875,
+        "passed": 1,
+        "wrong_type_document_count": 7
+      },
+      "case_count": 4,
+      "current_bm25_filtered": {
+        "duplicate_result_ids": 0,
+        "failed_case_ids": [],
+        "forbidden_case_count": 0,
+        "mean_precision_at_k": 0.21250000000000002,
+        "mean_recall_at_k": 1.0,
+        "mrr": 0.875,
+        "passed": 4,
+        "wrong_type_document_count": 0
+      },
+      "failed_case_ids": [],
+      "measured": 4,
+      "not_measured": 0,
+      "partial": 0,
+      "topk_unfiltered": {
+        "duplicate_result_ids": 0,
+        "failed_case_ids": [
+          "retrieval_pbf_bfm_01",
+          "retrieval_bia_01",
+          "retrieval_safety_redflag_01"
+        ],
+        "forbidden_case_count": 0,
+        "mean_precision_at_k": 0.2,
+        "mean_recall_at_k": 1.0,
+        "mrr": 0.875,
+        "passed": 1,
+        "wrong_type_document_count": 7
+      }
+    },
+    "routing": {
+      "case_count": 3,
+      "failed_case_ids": [
+        "route_training_01",
+        "route_training_ascii_01"
+      ],
+      "measured": 3,
+      "not_measured": 0,
+      "partial": 0
+    },
+    "safety": {
+      "case_count": 2,
+      "failed_case_ids": [],
+      "measured": 0,
+      "not_measured": 0,
+      "partial": 2
+    },
+    "tool_failure": {
+      "case_count": 1,
+      "failed_case_ids": [],
+      "measured": 0,
+      "not_measured": 1,
+      "partial": 0
+    }
+  }
+}

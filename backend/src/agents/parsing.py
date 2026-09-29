@@ -87,20 +87,20 @@ def extract_sex(text: str) -> Optional[str]:
     return None
 
 
-def infer_goal(text: str) -> str:
+def infer_goal(text: str) -> Optional[str]:
     text_lower = normalize_match_text(text)
     if "tang co" in text_lower or "muscle" in text_lower:
         return "muscle_gain"
     if "duy tri" in text_lower or "maintenance" in text_lower:
         return "maintenance"
-    return "fat_loss"
+    return None
 
 
-def infer_days_per_week(text: str) -> int:
+def infer_days_per_week(text: str) -> Optional[int]:
     match = re.search(
         r"(\d+)\s*(?:buoi|ngay)\s*/?\s*(?:tuan|week)",
         normalize_match_text(text),
     )
     if match:
         return max(1, min(7, int(match.group(1))))
-    return 3
+    return None

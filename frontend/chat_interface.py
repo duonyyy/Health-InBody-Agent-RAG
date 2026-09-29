@@ -7,6 +7,7 @@ import streamlit as st
 API_BASE_URL = os.getenv("API_BASE_URL", "http://chatbot-api:8000").rstrip("/")
 BOT_ID = os.getenv("BOT_ID", "health-inbody-agent")
 USER_ID = os.getenv("USER_ID", "demo-user")
+API_AUTH_MODE = os.getenv("API_AUTH_MODE", "production").strip().lower()
 
 
 st.title("Health/InBody Chatbot")
@@ -14,21 +15,23 @@ st.caption("Legacy Streamlit interface. Use chat_interface_new.py for the full U
 
 
 def send_message(text: str) -> str:
+    headers = {"X-Dev-User-Id": USER_ID} if API_AUTH_MODE == "development" else {}
     response = requests.post(
         f"{API_BASE_URL}/chat/complete",
         json={
             "bot_id": BOT_ID,
-            "user_id": USER_ID,
             "user_message": text,
-            "history": st.session_state.messages[-10:],
+            "conversation_id": st.session_state.get("conversation_id"),
             "sync_request": True,
         },
+        headers=headers,
         timeout=120,
     )
     response.raise_for_status()
     data = response.json()
     result = data.get("response", {})
     if isinstance(result, dict):
+        st.session_state.conversation_id = result.get("conversation_id")
         return result.get("content", "")
     return str(result)
 

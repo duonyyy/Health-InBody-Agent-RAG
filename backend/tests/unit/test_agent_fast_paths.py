@@ -57,6 +57,46 @@ def test_urgent_safety_returns_without_llm_or_retrieval(monkeypatch):
     assert result["errors"] == []
 
 
+def test_urgent_safety_with_personalization_still_skips_llm_and_retrieval(monkeypatch):
+    _block_llm_and_retrieval(monkeypatch)
+    context = {
+        "available": True,
+        "profile": {"medical_conditions": ["tăng huyết áp"]},
+        "latest_confirmed_measurement": {"weight_kg": 72},
+        "provenance": [{"type": "measurement", "id": "measurement-1"}],
+    }
+
+    result = graph.multi_agent_handle(
+        "Tôi đau ngực và khó thở khi tập.",
+        user_profile=context,
+    )
+
+    assert result["fast_path"] == "urgent_safety"
+    assert result["safety_result"]["risk_level"] == "urgent"
+    assert "personalization_context" not in result
+    assert result["personalization_used"]["provenance"] == context["provenance"]
+
+
+def test_plan_agents_request_missing_inputs_instead_of_using_defaults():
+    base = {
+        "question": "Hãy gợi ý dinh dưỡng và lịch tập cho tôi",
+        "selected_agents": [graph.NUTRITION_AGENT, graph.TRAINING_AGENT],
+        "personalization_context": {"available": False},
+        "tool_results": [],
+        "agent_trace": [],
+        "errors": [],
+    }
+
+    result = graph.nutrition_agent(dict(base))
+    result = graph.training_agent(result)
+
+    assert len(result["tool_results"]) == 2
+    assert all(item["result"]["need_more_info"] for item in result["tool_results"])
+    rendered = str(result["tool_results"])
+    assert "70" not in rendered
+    assert "fat_loss" not in rendered
+
+
 def test_bmi_returns_without_llm_or_retrieval(monkeypatch):
     _block_llm_and_retrieval(monkeypatch)
 

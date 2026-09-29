@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -48,8 +49,21 @@ class User(Base, TimestampMixin):
     activity_level: Mapped[Optional[str]] = mapped_column(String(64))
     goal: Mapped[Optional[str]] = mapped_column(String(64))
     medical_conditions: Mapped[Optional[str]] = mapped_column(Text)
+    display_name: Mapped[Optional[str]] = mapped_column(String(80))
+    birth_date: Mapped[Optional[date]] = mapped_column(Date)
+    age_range: Mapped[Optional[str]] = mapped_column(String(32))
+    sex_at_birth: Mapped[Optional[str]] = mapped_column(String(32))
+    dietary_preferences: Mapped[Optional[List[str]]] = mapped_column(JSONB)
+    exercise_constraints: Mapped[Optional[List[str]]] = mapped_column(JSONB)
+    medical_conditions_data: Mapped[Optional[List[str]]] = mapped_column(JSONB)
+    consent_flags: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
+    profile_confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     measurements = relationship("InBodyMeasurement", back_populates="user")
+    goals = relationship("PersonalizationGoal", back_populates="user")
+    plans = relationship("PersonalizedPlan", back_populates="user")
+    check_ins = relationship("CheckIn", back_populates="user")
     chat_sessions = relationship("ChatSession", back_populates="user")
 
 
@@ -70,8 +84,74 @@ class InBodyMeasurement(Base, TimestampMixin):
     recommendation_goal: Mapped[Optional[str]] = mapped_column(String(64))
     source_file: Mapped[Optional[str]] = mapped_column(String(512))
     raw_payload: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB)
+    measured_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False, default="legacy_unconfirmed")
+    confidence: Mapped[Optional[float]] = mapped_column(Numeric(4, 3))
+    confirmed_by_user: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    delete_reason: Mapped[Optional[str]] = mapped_column(String(240))
 
     user = relationship("User", back_populates="measurements")
+
+
+class PersonalizationGoal(Base, TimestampMixin):
+    __tablename__ = "personalization_goals"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    goal_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    target_weight_kg: Mapped[Optional[float]] = mapped_column(Numeric(6, 2))
+    target_date: Mapped[Optional[date]] = mapped_column(Date)
+    training_days_per_week: Mapped[Optional[int]] = mapped_column(Integer)
+    weekly_activity_level: Mapped[Optional[str]] = mapped_column(String(32))
+    constraints: Mapped[List[str]] = mapped_column(JSONB, nullable=False, default=list)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active")
+    supersedes_goal_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("personalization_goals.id", ondelete="SET NULL")
+    )
+
+    user = relationship("User", back_populates="goals")
+
+
+class PersonalizedPlan(Base, TimestampMixin):
+    __tablename__ = "personalized_plans"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft")
+    input_snapshot: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    goal_version: Mapped[Optional[int]] = mapped_column(Integer)
+    measurement_ids: Mapped[List[str]] = mapped_column(JSONB, nullable=False, default=list)
+    evidence_ids: Mapped[List[str]] = mapped_column(JSONB, nullable=False, default=list)
+    citations: Mapped[List[Dict[str, Any]]] = mapped_column(JSONB, nullable=False, default=list)
+    safety_result: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    content: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    archived_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    archive_reason: Mapped[Optional[str]] = mapped_column(String(240))
+
+    user = relationship("User", back_populates="plans")
+
+
+class CheckIn(Base, TimestampMixin):
+    __tablename__ = "check_ins"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    adherence: Mapped[Optional[int]] = mapped_column(Integer)
+    energy_level: Mapped[Optional[int]] = mapped_column(Integer)
+    sleep_quality: Mapped[Optional[int]] = mapped_column(Integer)
+    soreness: Mapped[Optional[int]] = mapped_column(Integer)
+    symptoms: Mapped[List[str]] = mapped_column(JSONB, nullable=False, default=list)
+    note: Mapped[Optional[str]] = mapped_column(Text)
+    safety_result: Mapped[Dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+    user = relationship("User", back_populates="check_ins")
 
 
 class ChatSession(Base, TimestampMixin):

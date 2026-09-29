@@ -9,16 +9,20 @@ class AgentState(TypedDict, total=False):
     history: List[Dict[str, str]]
     user_profile: Dict[str, Any]
     personalization_context: Dict[str, Any]
+    memory_context: str
     latest_measurement: Dict[str, Any]
     standalone_question: str
     selected_agents: List[str]
     tool_results: List[Dict[str, Any]]
     retrieved_docs: List[Dict[str, Any]]
+    composer_docs: List[Dict[str, Any]]
     evidence: List[Dict[str, Any]]
+    claim_evidence_links: List[Dict[str, Any]]
     evidence_status: str
     limitations: List[str]
     safety_result: Dict[str, Any]
-    agent_trace: List[Dict[str, str]]
+    agent_trace: List[Dict[str, Any]]
+    call_counts: Dict[str, int]
     final_answer: str
     fast_path: str
     route: str

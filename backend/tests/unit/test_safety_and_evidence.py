@@ -45,26 +45,11 @@ def test_rag_evidence_is_backend_owned_and_invalid_citation_is_removed(monkeypat
     state = graph.rag_agent(_state("PBF nghĩa là gì?"))
     result = graph.response_composer_agent(state)
 
-    assert result["evidence_status"] == "supported"
-    assert result["evidence"] == [
-        {
-            "id": 1,
-            "document_id": "inbody-pbf-001",
-            "title": "Diễn giải PBF",
-            "source": "Health guideline",
-            "source_url": "https://example.org/pbf",
-            "publisher": None,
-            "source_tier": None,
-            "published_at": None,
-            "reviewed_at": None,
-            "content_type": "inbody_metric",
-            "excerpt": "PBF cần được đọc cùng các chỉ số thành phần cơ thể khác.",
-            "retrieval_score": 0.91,
-            "rerank_score": None,
-        }
-    ]
+    assert result["evidence_status"] == "insufficient"
+    assert result["evidence"] == []
     assert "[99]" not in result["final_answer"]
-    assert "[1] Diễn giải PBF — Health guideline" in result["final_answer"]
+    assert "Không đủ bằng chứng" in result["final_answer"]
+    assert result["claim_evidence_links"] == []
 
 
 def test_empty_rag_context_is_explicitly_insufficient(monkeypatch):
@@ -118,6 +103,8 @@ def test_composer_error_does_not_expose_provider_details(monkeypatch):
     monkeypatch.setattr(graph, "openai_chat_complete", fail_with_internal_detail)
     state = _state(
         "PBF nghĩa là gì?",
+        retrieved_docs=[{"document_id": "doc-1", "title": "PBF", "source": "test",
+                         "content": "PBF là tỷ lệ phần trăm mỡ cơ thể."}],
         evidence=[
             {
                 "id": 1,
