@@ -36,7 +36,7 @@ Hệ thống hiện là MVP đang được nâng lên Agent RAG beta. Không đ�
 | Qdrant | `backend/src/rag/vectorize.py` | Vector collection và search |
 | Import | `backend/src/rag/import_data.py` | Validate, chunk, embed, upsert |
 | Embedding | `infra/embed_serving/` | BGE-M3 serving |
-| Frontend | `frontend/chat_interface_new.py` | Streamlit UI |
+| Frontend | `frontend/` | Next.js 16 Web UI (Chat, Dashboard, InBody OCR) |
 | Database | `infra/database/`, `backend/src/persistence/database.py` | PostgreSQL/personalization |
 | Cache/queue | Valkey + Celery | Cache và task bất đồng bộ |
 | Hạ tầng tập trung | `infra/` | Docker Compose quản lý Postgres, Qdrant, Valkey, Embedding |

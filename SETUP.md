@@ -114,19 +114,27 @@ docker compose -f backend/docker-compose.yml logs -f chatbot-api
 
 ---
 
-## 6. Khởi động Tầng Giao Diện Frontend
+## 6. Khởi động Tầng Giao Diện Frontend (Next.js)
 
+### Cách 1: Chạy bằng Docker Compose
 ```powershell
 docker compose -f frontend/docker-compose.yml up --build -d
 ```
+Mở giao diện người dùng tại trình duyệt: `http://localhost:3000`.
 
-Mở giao diện người dùng tại trình duyệt: `http://localhost:8051`.
+### Cách 2: Chạy trực tiếp qua Node.js (phát triển)
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+Giao diện sẽ chạy tại `http://localhost:3000`.
 
 ---
 
 ## 7. Kiểm tra nhanh Multi-Agent
 
-Trong giao diện Streamlit, gửi câu hỏi thử nghiệm:
+Trong giao diện Web, gửi câu hỏi thử nghiệm:
 
 ```text
 Tôi nam, 72kg, cao 170cm, PBF 28%, mỡ nội tạng 12.

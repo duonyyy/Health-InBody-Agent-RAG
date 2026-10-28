@@ -1,5 +1,0 @@
-services:
-  chatbot-ui:
-    volumes:
-      - ./chat_interface_new.py:/usr/src/app/chat_interface_new.py:ro
-      - ./entrypoint.sh:/usr/src/app/entrypoint.sh:ro

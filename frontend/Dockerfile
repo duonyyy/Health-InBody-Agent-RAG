@@ -1,19 +1,39 @@
-FROM python:3.10.12-slim-bullseye
+# Multi-stage Dockerfile for Next.js 16
+FROM node:22-alpine AS base
 
-WORKDIR /usr/src/app/
+FROM base AS deps
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
 
-# set environment variables
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
+COPY package.json package-lock.json* ./
+RUN npm ci
 
-COPY requirements.txt /usr/src/app/
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
 
-# Keep dependencies in a cacheable layer so source-only changes rebuild fast.
-RUN pip install --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN npm run build
 
-COPY . /usr/src/app/
-RUN chmod +x /usr/src/app/entrypoint.sh
+FROM base AS runner
+WORKDIR /app
 
-# run entrypoint.sh
-ENTRYPOINT ["/usr/src/app/entrypoint.sh"]
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+COPY --from=builder /app/public ./public
+COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/package.json ./package.json
+
+USER nextjs
+
+EXPOSE 3000
+
+CMD ["npm", "start"]

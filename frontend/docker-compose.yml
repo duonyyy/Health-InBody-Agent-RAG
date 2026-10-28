@@ -6,18 +6,17 @@ networks:
     external: true
 
 services:
-  chatbot-ui:
+  chatbot-next-ui:
     build: .
-    hostname: chatbot-ui
-    container_name: chatbot-ui
+    hostname: chatbot-next-ui
+    container_name: chatbot-next-ui
     restart: always
     environment:
-      - API_AUTH_MODE=${API_AUTH_MODE:-production}
-      - USER_ID=${USER_ID:-demo-user}
-      - FEATURE_OCR_UPLOAD=${FEATURE_OCR_UPLOAD:-false}
+      - NEXT_PUBLIC_API_URL=http://chatbot-api:8000
+      - NODE_ENV=production
     ports:
-      - "8051:8051"
+      - "3000:3000"
     expose:
-      - 8051
+      - 3000
     networks:
       - internal-network

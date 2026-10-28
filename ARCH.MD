@@ -32,7 +32,7 @@ Hệ thống **không** phải bác sĩ, chuyên gia dinh dưỡng hoặc huấn
 
 ```mermaid
 flowchart LR
-    U["Người dùng"] --> FE["Streamlit chat UI"]
+    U["Người dùng"] --> FE["Next.js Web UI"]
     FE --> AUTH["Trusted auth middleware\nhoặc dev header local-only"]
     AUTH --> API["FastAPI API"]
     API --> PC["Personalization context\nPostgreSQL"]
@@ -135,7 +135,7 @@ Agent trả payload có cấu trúc theo tinh thần sau:
 | Embedding serving | `embed_serving/` | BGE-M3 REST API, CPU mặc định, CUDA/FP16 qua compose override. | Có |
 | Persistence | `backend/src/persistence/`, `database/` | Owner-scoped profile, goal, measurement, progress, plan, check-in và confirmed-only context qua PostgreSQL. | Có P1 |
 | Queue/cache | `backend/src/jobs/`, Valkey, Celery | Chat async/background task và cache/queue. | Có |
-| Frontend | `frontend/` | Streamlit chat interface. | Có |
+| Frontend | `frontend/` | Next.js 16 Web UI (Chat, Dashboard, InBody OCR). | Có |
 | OCR/upload InBody | roadmap P2 | Parse ảnh/PDF và confirmation flow. | Chưa triển khai runtime |
 
 ## 6. LLM và embedding: provider contract
@@ -325,11 +325,15 @@ Health-InBody-Agent-RAG/
 │   ├── tests/{unit,integration}/
 │   ├── docker-compose.yml
 │   └── .env.example
-├── embed_serving/           # BGE-M3 serving and CPU/GPU compose
-├── frontend/                # Streamlit UI
+├── infra/                   # Docker Compose, PostgreSQL, Qdrant, Valkey, Embed Serving
+├── frontend/                # Next.js 16 Web UI
 ├── data_pipeline/           # prepare/merge/build embedding dataset
-├── database/                # PostgreSQL init schema
-└── docs/                    # import, embedding, roadmap, evaluation docs
+├── contracts/               # Pydantic schemas shared across services
+├── core-api/                # Core Business API (BFF)
+├── agent-service/           # Multi-Agent Platform
+├── ocr-services/            # Tesseract OCR service
+├── ocr-paddle-services/     # PaddleOCR service
+└── docs/                    # Architecture, roadmap, and evaluation docs
 ```
 
 ## 14. Ưu tiên triển khai tiếp theo
