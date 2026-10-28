@@ -49,6 +49,7 @@ class SourceType(str, Enum):
     MANUAL = "manual"
     MANUAL_CONFIRMED = "manual_confirmed"
     OCR_UNCONFIRMED = "ocr_unconfirmed"
+    OCR_CONFIRMED = "ocr_confirmed"
     DEVICE_IMPORTED = "device_imported"
     LEGACY_UNCONFIRMED = "legacy_unconfirmed"
 

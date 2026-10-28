@@ -2,7 +2,7 @@
 
 Backend là dịch vụ API lõi cho hệ thống Health/InBody Multi-Agent RAG MVP, được xây dựng bằng **FastAPI**. Dịch vụ này đảm nhiệm việc tiếp nhận request từ người dùng, quản lý hồ sơ sức khỏe (Personalization), điều phối hệ thống Agent qua **LangGraph**, truy xuất kiến thức (Hybrid Search), gọi các công cụ y tế và sinh câu trả lời an toàn.
 
-> **Lưu ý phạm vi:** Hệ thống hiện tại (MVP) tập trung xử lý dữ liệu người dùng nhập bằng văn bản và lưu trữ hồ sơ/lịch sử đo. Tính năng upload/OCR phân tích file ảnh báo cáo InBody trực tiếp chưa được expose.
+> **Lưu ý phạm vi:** Source có gateway có xác thực `POST /me/inbody-ocr` tới dịch vụ OCR nội bộ, nhưng `FEATURE_OCR_UPLOAD` mặc định tắt. Chưa kiểm chứng runtime hoặc độ đúng OCR trên phiếu thật.
 
 ## 1. Vai Trò Của Backend
 
@@ -79,13 +79,19 @@ Hệ thống đọc từ file `.env` hoặc cấu hình trong `docker-compose.ym
 | `OLLAMA_MODEL` | `qwen2.5:3b` | Model LLM sử dụng khi chạy nội bộ |
 | `OPENAI_API_KEY` | *(trống)* | API Key nếu dùng model OpenAI |
 | `TAVILY_API_KEY` | *(trống)* | API Key dùng cho WebSearchAgent |
+| `LLM_RESPONSE_CACHE_ENABLED` | `true` | Bật cache exact-match cho câu định nghĩa chung BMI/PBF/SMM/BFM/InBody |
+| `LLM_RESPONSE_CACHE_TTL_SECONDS` | `300` | TTL câu trả lời cache; key đổi theo prompt, model và corpus version |
+| `CACHE_MEMORY_MAX_ENTRIES` | `256` | Giới hạn số mục cache RAM khi Valkey không sẵn sàng |
+| `CACHE_REDIS_RETRY_SECONDS` | `5` | Khoảng chờ trước khi thử kết nối lại Valkey sau lỗi khởi động |
 
 ## 5. Hướng Dẫn Chạy Dịch Vụ
 
-Đứng tại thư mục `backend/`, chạy bằng Docker Compose:
+Đảm bảo cụm hạ tầng đã được khởi động trước (`docker compose -f infra/docker-compose.infra.yml up -d`).
+
+Sau đó, đứng tại thư mục `backend/`, chạy các container ứng dụng:
 
 ```bash
-docker compose up --build
+docker compose up --build -d
 ```
 Dịch vụ API sẽ hoạt động tại: `http://localhost:8000` (Truy cập `http://localhost:8000/docs` để xem Swagger UI).
 

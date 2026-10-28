@@ -3,6 +3,7 @@ version: '3.8'
 networks:
   internal-network:
     name: internal-network
+    external: true
 
 services:
   chatbot-api:
@@ -29,14 +30,13 @@ services:
       - API_WORKERS=${API_WORKERS:-1}
       - BM25_AUTOLOAD=${BM25_AUTOLOAD:-true}
       - BM25_SNAPSHOT_PATH=${BM25_SNAPSHOT_PATH:-/usr/src/app/data/generated/bm25_snapshot.json.gz}
+      - FEATURE_OCR_UPLOAD=${FEATURE_OCR_UPLOAD:-false}
+      - OCR_SERVICE_URL=http://ocr-api:18100
+      - CUSTOM_EMBEDDING_API_URL=${CUSTOM_EMBEDDING_API_URL:-http://embedding-api:5000}
     volumes:
       - .:/usr/src/app/
     ports:
-      - 8000:8000
-    depends_on:
-      - valkey-db
-      - qdrant-db
-      - postgres-db
+      - "8000:8000"
     networks:
       - internal-network
 
@@ -64,10 +64,6 @@ services:
     volumes:
       - .:/usr/src/app
       - worker_volume:/var/logs/
-    depends_on:
-      - valkey-db
-      - qdrant-db
-      - postgres-db
     networks:
       - internal-network
 
@@ -80,69 +76,8 @@ services:
     environment:
       - REDIS_HOST=valkey-db
       - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL in backend/.env}
-    depends_on:
-      - valkey-db
     networks:
       - internal-network
-
-  valkey-db:
-    image: 'valkey/valkey:bookworm'
-    hostname: valkey-db
-    container_name: valkey-db
-    restart: always
-    ports:
-      - "6379:6379"
-    command:
-      - '--save 60 1'
-    volumes:
-      - valkey_data:/data
-    networks:
-      - internal-network
-
-  qdrant-db:
-    image: qdrant/qdrant:latest
-    hostname: qdrant-db
-    container_name: qdrant-db
-    restart: always
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    expose:
-      - 6333
-      - 6334
-      - 6335
-    configs:
-      - source: qdrant_config
-        target: /qdrant/config/production.yaml
-    volumes:
-      - qdrant_volume:/qdrant/storage
-    networks:
-      - internal-network
-
-  postgres-db:
-    image: postgres:16-alpine
-    hostname: postgres-db
-    container_name: postgres-db
-    restart: always
-    environment:
-      - POSTGRES_DB=${POSTGRES_DB:-health_inbody}
-      - POSTGRES_USER=${POSTGRES_USER:-health_user}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in backend/.env}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ../database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
-    networks:
-      - internal-network
-
-configs:
-  qdrant_config:
-    content: |
-      log_level: INFO
 
 volumes:
   worker_volume:
-  valkey_data:
-  qdrant_volume:
-  postgres_data:

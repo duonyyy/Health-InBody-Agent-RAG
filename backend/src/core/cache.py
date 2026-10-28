@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import time
+from collections import OrderedDict
+from threading import RLock
 from typing import Any, Optional
 
 from core.utils import generate_request_id
@@ -13,10 +15,17 @@ REDIS_HOST = os.environ.get("REDIS_HOST", "valkey-db")
 REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
 REDIS_DB = int(os.environ.get("REDIS_DB", "0"))
 CACHE_NAMESPACE = os.environ.get("CACHE_NAMESPACE", "health_inbody")
+CACHE_MEMORY_MAX_ENTRIES = max(1, int(os.environ.get("CACHE_MEMORY_MAX_ENTRIES", "256")))
+CACHE_REDIS_RETRY_SECONDS = max(1.0, float(os.environ.get("CACHE_REDIS_RETRY_SECONDS", "5")))
+LLM_RESPONSE_CACHE_TTL_SECONDS = max(
+    1, int(os.environ.get("LLM_RESPONSE_CACHE_TTL_SECONDS", "300"))
+)
 
 _redis_client = None
-_redis_checked = False
-_memory_cache = {}
+_redis_last_attempt = 0.0
+_memory_cache = OrderedDict()
+_cache_lock = RLock()
+_llm_response_cache_stats = {"hits": 0, "misses": 0, "writes": 0, "invalidations": 0, "errors": 0}
 
 
 def _now() -> float:
@@ -34,12 +43,14 @@ def get_redis_client():
 
     Ham lazy-load de module van import duoc trong moi truong dev chua cai Redis.
     """
-    global _redis_client, _redis_checked
+    global _redis_client, _redis_last_attempt
 
-    if _redis_checked:
+    if _redis_client is not None:
         return _redis_client
-
-    _redis_checked = True
+    now = time.monotonic()
+    if now - _redis_last_attempt < CACHE_REDIS_RETRY_SECONDS:
+        return None
+    _redis_last_attempt = now
     try:
         import redis
 
@@ -75,10 +86,14 @@ def cache_set(key: str, value: Any, ttl_seconds: int = 3600) -> bool:
         except Exception as e:
             logger.warning("Redis set failed, falling back to memory: %s", e)
 
-    _memory_cache[namespaced] = {
-        "value": payload,
-        "expires_at": _now() + ttl_seconds if ttl_seconds else None,
-    }
+    with _cache_lock:
+        _memory_cache[namespaced] = {
+            "value": payload,
+            "expires_at": _now() + ttl_seconds if ttl_seconds else None,
+        }
+        _memory_cache.move_to_end(namespaced)
+        while len(_memory_cache) > CACHE_MEMORY_MAX_ENTRIES:
+            _memory_cache.popitem(last=False)
     return True
 
 
@@ -100,16 +115,18 @@ def cache_get(key: str, default: Any = None) -> Any:
         except Exception as e:
             logger.warning("Redis get failed, checking memory fallback: %s", e)
 
-    cached_item = _memory_cache.get(namespaced)
-    if not cached_item:
-        return default
+    with _cache_lock:
+        cached_item = _memory_cache.get(namespaced)
+        if not cached_item:
+            return default
 
-    expires_at = cached_item.get("expires_at")
-    if expires_at and expires_at < _now():
-        _memory_cache.pop(namespaced, None)
-        return default
+        expires_at = cached_item.get("expires_at")
+        if expires_at and expires_at < _now():
+            _memory_cache.pop(namespaced, None)
+            return default
 
-    return json.loads(cached_item["value"])
+        _memory_cache.move_to_end(namespaced)
+        return json.loads(cached_item["value"])
 
 
 def cache_delete(key: str) -> bool:
@@ -125,7 +142,8 @@ def cache_delete(key: str) -> bool:
         except Exception as e:
             logger.warning("Redis delete failed: %s", e)
 
-    _memory_cache.pop(namespaced, None)
+    with _cache_lock:
+        _memory_cache.pop(namespaced, None)
     return True
 
 
@@ -138,7 +156,68 @@ def cache_health_check() -> dict:
         "namespace": CACHE_NAMESPACE,
         "backend": "redis" if client is not None else "memory",
         "memory_keys": len(_memory_cache),
+        "memory_max_entries": CACHE_MEMORY_MAX_ENTRIES,
+        "llm_response_cache": {
+            "enabled": llm_response_cache_enabled(),
+            "ttl_seconds": LLM_RESPONSE_CACHE_TTL_SECONDS,
+            **_llm_response_cache_stats,
+        },
     }
+
+
+def llm_response_cache_enabled() -> bool:
+    """Return whether the narrowly scoped public RAG response cache is enabled."""
+    return os.environ.get("LLM_RESPONSE_CACHE_ENABLED", "true").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+
+
+def llm_response_cache_get(key: str) -> Optional[str]:
+    """Read one exact-match composer response, recording only aggregate metrics."""
+    if not llm_response_cache_enabled():
+        return None
+    try:
+        value = cache_get(key)
+    except Exception as exc:
+        _llm_response_cache_stats["errors"] += 1
+        logger.warning("LLM response cache read failed (%s)", type(exc).__name__)
+        return None
+    if isinstance(value, str) and value.strip():
+        _llm_response_cache_stats["hits"] += 1
+        return value
+    _llm_response_cache_stats["misses"] += 1
+    return None
+
+
+def llm_response_cache_set(key: str, value: str, ttl_seconds: Optional[int] = None) -> bool:
+    """Store a validated public composer response under a versioned opaque key."""
+    if not llm_response_cache_enabled() or not isinstance(value, str) or not value.strip():
+        return False
+    try:
+        stored = cache_set(
+            key,
+            value,
+            ttl_seconds=ttl_seconds or LLM_RESPONSE_CACHE_TTL_SECONDS,
+        )
+    except Exception as exc:
+        _llm_response_cache_stats["errors"] += 1
+        logger.warning("LLM response cache write failed (%s)", type(exc).__name__)
+        return False
+    if stored:
+        _llm_response_cache_stats["writes"] += 1
+    return stored
+
+
+def llm_response_cache_delete(key: str) -> bool:
+    """Evict a cached response that fails the current output/evidence guards."""
+    try:
+        deleted = cache_delete(key)
+    except Exception as exc:
+        _llm_response_cache_stats["errors"] += 1
+        logger.warning("LLM response cache invalidation failed (%s)", type(exc).__name__)
+        return False
+    _llm_response_cache_stats["invalidations"] += 1
+    return deleted
 
 
 def get_conversation_key(bot_id, user_id):

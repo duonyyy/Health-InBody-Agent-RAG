@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "10"))
 DEFAULT_DENSE_WEIGHT = float(os.getenv("DENSE_WEIGHT", "0.6"))
 DEFAULT_BM25_WEIGHT = float(os.getenv("BM25_WEIGHT", "0.4"))
+ENABLE_PARENT_RETRIEVAL = os.getenv("ENABLE_PARENT_RETRIEVAL", "true").lower() == "true"
 BM25_SNAPSHOT_SCHEMA_VERSION = 1
 BM25_SNAPSHOT_PATH = os.getenv(
     "BM25_SNAPSHOT_PATH",
@@ -510,12 +511,64 @@ def combine_search_results(
     return results
 
 
+def expand_parent_documents(
+    docs: List[Dict[str, Any]],
+    max_parents: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Expand retrieved child chunks to their parent documents while deduplicating by parent_id.
+    Preserves the highest ranking/score among child matches for each parent.
+    """
+    if not docs:
+        return []
+
+    expanded_parents: List[Dict[str, Any]] = []
+    seen_parent_keys: set[str] = set()
+
+    for doc in docs:
+        parent_id = doc.get("parent_id") or (doc.get("metadata") or {}).get("parent_id")
+        parent_content = doc.get("parent_content") or (doc.get("metadata") or {}).get("parent_content")
+
+        # Fallback if no parent or empty parent_content: use chunk itself
+        if not parent_id or not parent_content:
+            key = str(doc.get("chunk_id") or doc.get("doc_id") or doc.get("content") or "")
+            if key not in seen_parent_keys:
+                seen_parent_keys.add(key)
+                expanded_parents.append(doc)
+            if max_parents and len(expanded_parents) >= max_parents:
+                break
+            continue
+
+        parent_key = str(parent_id)
+        if parent_key in seen_parent_keys:
+            # Already have this parent from a higher-scoring child chunk
+            continue
+
+        seen_parent_keys.add(parent_key)
+        parent_doc = doc.copy()
+        # Keep original child info for traceability
+        parent_doc["child_content"] = doc.get("content", "")
+        parent_doc["child_chunk_id"] = doc.get("chunk_id", "")
+        # Expand content to full parent content
+        parent_doc["content"] = parent_content
+        if doc.get("parent_title"):
+            parent_doc["title"] = doc["parent_title"]
+        parent_doc["is_expanded_parent"] = True
+
+        expanded_parents.append(parent_doc)
+        if max_parents and len(expanded_parents) >= max_parents:
+            break
+
+    return expanded_parents
+
+
 def hybrid_search(
     query: str,
     limit: int = DEFAULT_TOP_K,
     filters: Optional[Dict[str, Any]] = None,
     use_rerank: bool = True,
     embedding_timeout: float | None = None,
+    expand_parents: Optional[bool] = None,
 ) -> List[Dict]:
     """
     Tim kiem hybrid cho Health/InBody RAG.
@@ -525,17 +578,21 @@ def hybrid_search(
     2. Chay BM25 neu index da duoc khoi tao.
     3. Chay vector search neu embedding/Qdrant san sang.
     4. Gop diem hybrid va rerank ket qua cuoi.
+    5. Expand Child chunk thanh Parent document va deduplicate (Small-to-Big Retrieval).
     """
     if not query or not query.strip():
         return []
 
+    should_expand = ENABLE_PARENT_RETRIEVAL if expand_parents is None else expand_parents
+    candidate_limit = limit * 3 if should_expand else limit * 2
+
     expanded_query = expand_health_query(query)
-    bm25_results = bm25_search(expanded_query, limit=limit * 2, filters=filters)
+    bm25_results = bm25_search(expanded_query, limit=candidate_limit, filters=filters)
     candidate_count = len(_bm25_candidate_indices(filters))
     bm25_covers_filtered_corpus = bool(
         filters
         and candidate_count
-        and candidate_count <= limit * 2
+        and candidate_count <= candidate_limit
         and len(bm25_results) >= candidate_count
     )
     if bm25_covers_filtered_corpus:
@@ -547,7 +604,7 @@ def hybrid_search(
     else:
         vector_results = vector_search_fallback(
             expanded_query,
-            limit=limit * 2,
+            limit=candidate_limit,
             filters=filters,
             embedding_timeout=embedding_timeout,
         )
@@ -565,7 +622,14 @@ def hybrid_search(
         combined = []
 
     if use_rerank and combined:
-        return rerank_documents(combined, query, top_n=limit)
+        rerank_pool = combined[:candidate_limit]
+        reranked = rerank_documents(rerank_pool, query, top_n=candidate_limit)
+        if should_expand:
+            return expand_parent_documents(reranked, max_parents=limit)
+        return reranked[:limit]
+
+    if should_expand:
+        return expand_parent_documents(combined, max_parents=limit)
 
     return combined[:limit]
 

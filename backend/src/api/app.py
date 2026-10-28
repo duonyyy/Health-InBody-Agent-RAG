@@ -44,6 +44,7 @@ from llm.summarizer import summarize_health_report, summarize_text
 from jobs.tasks import index_document_v2, index_health_documents, llm_handle_message
 from core.utils import setup_logging
 from api.personalization import router as personalization_router
+from api.inbody_ocr import router as inbody_ocr_router
 from api.personalization import _execute
 from api.memory import router as memory_router
 from memory.chat import run_chat
@@ -71,6 +72,8 @@ app = FastAPI(
     ),
 )
 app.include_router(personalization_router)
+if os.getenv("FEATURE_OCR_UPLOAD", "false").strip().lower() in {"1", "true", "yes", "on"}:
+    app.include_router(inbody_ocr_router)
 app.include_router(memory_router)
 
 

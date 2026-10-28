@@ -31,3 +31,9 @@ DEFAULT_CELERY_RESULT_BACKEND = os.getenv(
     "CELERY_RESULT_BACKEND",
     DEFAULT_CELERY_BROKER_URL,
 )
+
+# Langfuse Observability defaults
+DEFAULT_LANGFUSE_ENABLED = os.getenv("LANGFUSE_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+DEFAULT_LANGFUSE_BASE_URL = os.getenv("LANGFUSE_BASE_URL", "https://cloud.langfuse.com").strip()
+DEFAULT_LANGFUSE_ENV = os.getenv("LANGFUSE_ENV", "development").strip()
+
