@@ -1,7 +1,9 @@
-"""Merge raw dataset sources into one normalized JSONL file.
+"""Raw Data Ingestion Module (Stage 1 / Ingestion Layer).
 
-This script keeps files under dataset/raw unchanged and writes a single
-line-delimited JSON file under dataset/processed.
+Vai trò:
+    Đọc, giải mã và hợp nhất toàn bộ các nguồn dữ liệu thô (CSV món ăn, CSV tương tác rating,
+    JSON USDA Foundation Foods, thư mục tri thức y khoa InBody JSON, và văn bản trích xuất từ PDF)
+    thành tệp bản ghi hợp nhất `all_raw_sources.jsonl` mà không làm thay đổi thư mục `dataset/raw/`.
 """
 
 from __future__ import annotations
@@ -10,24 +12,63 @@ import argparse
 import csv
 import json
 import re
+import unicodedata
 from pathlib import Path
 from typing import Any, Iterable
-
 
 PROJECT_DOMAIN = "health_inbody"
 
 
 def clean_text(value: Any) -> str:
+    """Làm sạch và chuẩn hóa văn bản.
+
+    Vai trò:
+        Chuẩn hóa văn bản về Unicode NFC, loại bỏ ký tự ngắt dòng thừa và các ký tự
+        điều khiển ẩn (zero-width characters) để đảm bảo chất lượng dữ liệu văn bản.
+
+    Args:
+        value: Giá trị văn bản đầu vào bất kỳ.
+
+    Returns:
+        Chuỗi văn bản đã làm sạch.
+    """
     if value is None:
         return ""
-    return str(value).replace("\r\n", "\n").replace("\r", "\n").strip()
+    text = str(value).replace("\r\n", "\n").replace("\r", "\n").strip()
+    text = unicodedata.normalize("NFC", text)
+    text = re.sub(r"[\u200B-\u200D\uFEFF\u200E\u200F]", "", text)
+    return text
 
 
 def compact_parts(parts: Iterable[str]) -> str:
+    """Nối các đoạn văn bản thành một chuỗi duy nhất.
+
+    Vai trò:
+        Hợp nhất danh sách các trường thông tin (tên món, khẩu phần, mô tả, calo)
+        bỏ qua các phần tử rỗng sau khi làm sạch.
+
+    Args:
+        parts: Tập hợp các đoạn văn bản chuỗi.
+
+    Returns:
+        Chuỗi kết hợp phân tách bằng dấu xuống dòng.
+    """
     return "\n".join(part for part in (clean_text(part) for part in parts) if part)
 
 
 def read_manifest(raw_dir: Path) -> dict[str, Any]:
+    """Đọc tệp kê khai danh mục nguồn dữ liệu thô (source manifest).
+
+    Vai trò:
+        Nạp cấu hình danh sách các nguồn dữ liệu raw từ `source_manifest.json`
+        để xác định định dạng, quyền hạn và trạng thái của từng tệp nguồn.
+
+    Args:
+        raw_dir: Thư mục chứa dữ liệu thô dataset/raw.
+
+    Returns:
+        Dict cấu hình manifest.
+    """
     manifest_path = raw_dir / "source_manifest.json"
     with manifest_path.open("r", encoding="utf-8") as file:
         return json.load(file)
@@ -43,6 +84,25 @@ def make_record(
     pipeline_role: str,
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Tạo bản ghi dữ liệu chuẩn theo schema thống nhất của pipeline.
+
+    Vai trò:
+        Đóng gói thông tin văn bản, định danh, nguồn gốc và metadata theo cấu trúc
+        chuẩn JSON của dự án trước khi lưu trữ vào processed dataset.
+
+    Args:
+        doc_id: Mã định danh tài liệu duy nhất.
+        title: Tiêu đề tài liệu.
+        content: Nội dung văn bản chi tiết.
+        source_id: Mã định danh nguồn thu thập.
+        content_type: Loại nội dung (nutrition, inbody_metric, exercise, medical_safety).
+        language: Mã ngôn ngữ (vi, en).
+        pipeline_role: Vai trò xử lý (rag_corpus, recommender, excluded_from_rag).
+        metadata: Metadata bổ sung đính kèm.
+
+    Returns:
+        Dict bản ghi chuẩn hóa.
+    """
     return {
         "doc_id": doc_id,
         "title": title,
@@ -59,6 +119,19 @@ def make_record(
 
 
 def merge_foods(source: dict[str, Any], raw_dir: Path) -> Iterable[dict[str, Any]]:
+    """Chuyển đổi dữ liệu món ăn thô dạng CSV sang bản ghi chuẩn hóa.
+
+    Vai trò:
+        Đọc các tệp CSV chứa danh sách món ăn, chuẩn hóa thông tin dinh dưỡng
+        (calories, fat, protein, carbs) và sinh các bản ghi JSONL có metadata chi tiết.
+
+    Args:
+        source: Bản ghi cấu hình nguồn từ manifest.
+        raw_dir: Thư mục gốc chứa dữ liệu thô.
+
+    Yields:
+        Dict bản ghi tài liệu chuẩn hóa cho từng món ăn.
+    """
     path = raw_dir / source["path"]
     with path.open("r", encoding="utf-8-sig", newline="") as file:
         reader = csv.DictReader(file)
@@ -111,6 +184,19 @@ def merge_foods(source: dict[str, Any], raw_dir: Path) -> Iterable[dict[str, Any
 
 
 def merge_ratings(source: dict[str, Any], raw_dir: Path) -> Iterable[dict[str, Any]]:
+    """Chuyển đổi dữ liệu tương tác đánh giá món ăn của người dùng sang bản ghi JSONL.
+
+    Vai trò:
+        Nạp các lượt rating từ file CSV phục vụ các bài toán đề xuất (recommender),
+        đánh dấu role phù hợp để lọc tách biệt khỏi RAG corpus.
+
+    Args:
+        source: Bản ghi cấu hình nguồn từ manifest.
+        raw_dir: Thư mục chứa dữ liệu thô.
+
+    Yields:
+        Dict bản ghi đánh giá người dùng.
+    """
     path = raw_dir / source["path"]
     with path.open("r", encoding="utf-8-sig", newline="") as file:
         reader = csv.DictReader(file)
@@ -137,6 +223,18 @@ def merge_ratings(source: dict[str, Any], raw_dir: Path) -> Iterable[dict[str, A
 
 
 def nutrient_map(food: dict[str, Any]) -> dict[str, Any]:
+    """Tạo từ điển ánh xạ thông tin dinh dưỡng từ đối tượng USDA food.
+
+    Vai trò:
+        Trích xuất và chuẩn hóa cặp giá trị (số lượng, đơn vị) của từng chất dinh dưỡng
+        từ payload JSON phân cấp của USDA Foundation Foods.
+
+    Args:
+        food: Dict dữ liệu một loại thực phẩm của USDA.
+
+    Returns:
+        Dict tra cứu {tên_chất: {amount, unit}}.
+    """
     nutrients: dict[str, Any] = {}
     for item in food.get("foodNutrients", []):
         nutrient = item.get("nutrient", {})
@@ -151,6 +249,19 @@ def nutrient_map(food: dict[str, Any]) -> dict[str, Any]:
 
 
 def merge_usda(source: dict[str, Any], raw_dir: Path) -> Iterable[dict[str, Any]]:
+    """Chuyển đổi dữ liệu chuẩn USDA Foundation Foods sang bản ghi chuẩn hóa.
+
+    Vai trò:
+        Trích chọn các trường dinh dưỡng cốt lõi (Energy, Protein, Lipid, Fiber, Sugar)
+        từ cơ sở dữ liệu USDA để làm giàu tri thức dinh dưỡng chuẩn quốc tế cho RAG.
+
+    Args:
+        source: Bản ghi cấu hình nguồn từ manifest.
+        raw_dir: Thư mục chứa dữ liệu thô.
+
+    Yields:
+        Dict bản ghi tài liệu chuẩn hóa thực phẩm USDA.
+    """
     path = raw_dir / source["path"]
     with path.open("r", encoding="utf-8") as file:
         payload = json.load(file)
@@ -207,11 +318,27 @@ def merge_usda(source: dict[str, Any], raw_dir: Path) -> Iterable[dict[str, Any]
 
 
 def merge_pdf_placeholder(source: dict[str, Any], raw_dir: Path) -> Iterable[dict[str, Any]]:
+    """Xử lý nạp văn bản từ tệp PDF đã qua trích xuất hoặc tạo bản ghi chờ.
+
+    Vai trò:
+        Kiểm tra nội dung Markdown/văn bản đã được trích xuất trong thư mục `extracted_text`,
+        phân tách theo từng trang `[PAGE n]` thành các tài liệu độc lập; nếu chưa trích xuất
+        thì sinh bản ghi placeholder yêu cầu trích xuất trước khi đưa vào RAG.
+
+    Args:
+        source: Cấu hình nguồn PDF trong manifest.
+        raw_dir: Thư mục chứa tệp PDF thô.
+
+    Yields:
+        Dict bản ghi tài liệu cho từng trang hoặc placeholder.
+    """
     path = raw_dir / source["path"]
     if not path.exists():
         return
     processed_dir = raw_dir.parent / "processed"
-    extracted_text_path = processed_dir / "extracted_text" / f"{source['source_id']}.txt"
+    extracted_md_path = processed_dir / "extracted_text" / f"{source['source_id']}.md"
+    extracted_txt_path = processed_dir / "extracted_text" / f"{source['source_id']}.txt"
+    extracted_text_path = extracted_md_path if extracted_md_path.exists() else extracted_txt_path
     title = path.stem.replace("-", " ").replace("_", " ")
     if extracted_text_path.exists():
         content = extracted_text_path.read_text(encoding="utf-8").strip()
@@ -228,7 +355,10 @@ def merge_pdf_placeholder(source: dict[str, Any], raw_dir: Path) -> Iterable[dic
                 page_count += 1
                 yield make_record(
                     doc_id=f"{source['source_id']}_page_{int(page_number):04d}",
-                    title=f"{title} - trang {page_number}",
+                    title=(
+                        next((l.lstrip("# ").strip() for l in page_text.splitlines() if l.strip().startswith("# ")), None)
+                        or f"{title} - trang {page_number}"
+                    ),
                     content=page_text,
                     source_id=source["source_id"],
                     content_type=source["content_type"],
@@ -266,11 +396,90 @@ def merge_pdf_placeholder(source: dict[str, Any], raw_dir: Path) -> Iterable[dic
     )
 
 
+def merge_inbody_medical_knowledge(
+    source: dict[str, Any], raw_dir: Path
+) -> Iterable[dict[str, Any]]:
+    """Hợp nhất các tài liệu tri thức y khoa và InBody từ tệp JSON.
+
+    Vai trò:
+        Quét toàn bộ tệp JSON tri thức chuyên gia trong thư mục nguồn, đọc từng tài liệu
+        chuẩn y khoa và gán metadata về review status, tier và publisher.
+
+    Args:
+        source: Cấu hình nguồn tri thức y khoa trong manifest.
+        raw_dir: Thư mục chứa dữ liệu thô.
+
+    Yields:
+        Dict bản ghi tài liệu y tế chuẩn hóa.
+    """
+    path = raw_dir / source["path"]
+    if not path.exists():
+        return
+    for json_file in sorted(path.glob("*.json")):
+        with json_file.open("r", encoding="utf-8") as file:
+            payload = json.load(file)
+
+        default_publisher = clean_text(payload.get("publisher"))
+        default_tier = clean_text(payload.get("source_tier"))
+        default_url = clean_text(payload.get("source_url"))
+        source_id = clean_text(payload.get("source_id")) or source["source_id"]
+
+        for doc in payload.get("documents", []):
+            doc_id = clean_text(doc.get("doc_id"))
+            title = clean_text(doc.get("title"))
+            content = clean_text(doc.get("content"))
+            content_type = clean_text(doc.get("content_type")) or source.get("content_type", "inbody_metric")
+            language = clean_text(doc.get("language")) or source.get("language", "vi")
+            publisher = clean_text(doc.get("publisher")) or default_publisher
+            source_tier = clean_text(doc.get("source_tier")) or default_tier
+            source_url = clean_text(doc.get("source_url")) or default_url
+            published_at = clean_text(doc.get("published_at"))
+            reviewed_at = clean_text(doc.get("reviewed_at"))
+            review_status = clean_text(doc.get("medical_review_status")) or "approved"
+
+            metadata = {
+                "raw_path": str((raw_dir / source["path"] / json_file.name).relative_to(raw_dir.parent)).replace("\\", "/"),
+                "raw_file": json_file.name,
+                "publisher": publisher,
+                "source_tier": source_tier,
+                "source_url": source_url,
+                "published_at": published_at,
+                "reviewed_at": reviewed_at,
+                "medical_review_status": review_status,
+                "source_name": publisher,
+            }
+            yield make_record(
+                doc_id=doc_id,
+                title=title,
+                content=content,
+                source_id=source_id,
+                content_type=content_type,
+                language=language,
+                pipeline_role=source.get("pipeline_role", "rag_corpus"),
+                metadata=metadata,
+            )
+
+
 def merge_source(source: dict[str, Any], raw_dir: Path) -> Iterable[dict[str, Any]]:
-    if source.get("status") == "empty":
+    """Phân phối việc chuyển đổi một nguồn dữ liệu theo loại định dạng.
+
+    Vai trò:
+        Bộ định tuyến kiểm tra trạng thái và định dạng của nguồn dữ liệu trong manifest
+        để gọi hàm chuyển đổi tương ứng (InBody JSON, CSV món ăn, ratings, USDA, hoặc PDF).
+
+    Args:
+        source: Bản ghi cấu hình nguồn từ manifest.
+        raw_dir: Thư mục chứa dữ liệu thô.
+
+    Returns:
+        Iterable chứa các bản ghi tài liệu chuẩn hóa.
+    """
+    if source.get("status") in ("empty", "excluded_from_rag", "pending_tcvn3_cleaning"):
         return []
 
     source_id = source["source_id"]
+    if source_id == "inbody_medical_knowledge" or source.get("format") == "json_directory":
+        return merge_inbody_medical_knowledge(source, raw_dir)
     if source_id == "foodrecordfinal_foods":
         return merge_foods(source, raw_dir)
     if source_id == "foodrecordfinal_ratings":
@@ -283,6 +492,17 @@ def merge_source(source: dict[str, Any], raw_dir: Path) -> Iterable[dict[str, An
 
 
 def merge_all(raw_dir: Path, output_path: Path, report_path: Path) -> None:
+    """Hợp nhất toàn bộ nguồn dữ liệu thô thành một tệp JSONL duy nhất.
+
+    Vai trò:
+        Duyệt qua toàn bộ danh sách nguồn trong manifest, gọi chuyển đổi và ghi tuần tự
+        vào tệp đầu ra `all_raw_sources.jsonl`, đồng thời xuất báo cáo thống kê số bản ghi.
+
+    Args:
+        raw_dir: Đường dẫn tới thư mục dữ liệu thô.
+        output_path: Đường dẫn tệp JSONL kết quả hợp nhất.
+        report_path: Đường dẫn tệp JSON lưu báo cáo thống kê.
+    """
     manifest = read_manifest(raw_dir)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -315,8 +535,17 @@ def merge_all(raw_dir: Path, output_path: Path, report_path: Path) -> None:
 
 
 def parse_args() -> argparse.Namespace:
+    """Phân tích các đối số dòng lệnh CLI cho raw_loader.
+
+    Vai trò:
+        Cung cấp giao diện dòng lệnh cho phép người dùng tùy biến đường dẫn dữ liệu thô,
+        tệp đầu ra và tệp báo cáo khi chạy thủ công độc lập.
+
+    Returns:
+        Đối tượng argparse.Namespace chứa cấu hình người dùng.
+    """
     parser = argparse.ArgumentParser(description=__doc__)
-    default_root = Path(__file__).resolve().parents[1]
+    default_root = Path(__file__).resolve().parents[2]
     parser.add_argument(
         "--raw-dir",
         type=Path,
@@ -339,6 +568,11 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
+    """Điểm vào thực thi chính khi chạy trực tiếp kịch bản raw_loader.
+
+    Vai trò:
+        Nhận tham số dòng lệnh từ người dùng và khởi chạy chu trình merge toàn bộ nguồn dữ liệu.
+    """
     args = parse_args()
     merge_all(args.raw_dir, args.output, args.report)
     print(f"Wrote merged JSONL: {args.output}")
