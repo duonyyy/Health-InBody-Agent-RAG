@@ -11,7 +11,7 @@ Dự án cung cấp trợ lý tiếng Việt về:
 - RAG trên corpus sức khỏe/InBody;
 - cảnh báo an toàn y tế, không chẩn đoán và không kê đơn.
 
-Hệ thống hiện là MVP đang được nâng lên Agent RAG beta. Không được mô tả hệ thống là production-ready nếu chưa qua các quality gate trong `KE_HOACH_CAI_THIEN_HE_THONG_AGENT_RAG.md`.
+Hệ thống hiện là MVP đang được nâng lên Agent RAG beta. Không được mô tả hệ thống là production-ready nếu chưa qua các quality gate trong `docs/implementation-roadmap/README.md`.
 
 ## 2. Giao tiếp và tư duy
 
@@ -31,21 +31,23 @@ Hệ thống hiện là MVP đang được nâng lên Agent RAG beta. Không đ�
 |---|---|---|
 | Backend | `backend/src/` | FastAPI, LangGraph Agent, tools, retrieval |
 | Agent graph | `backend/src/agents/graph.py` | Routing và orchestration |
-| LLM adapter | `backend/src/brain.py` | Ollama/OpenAI/custom provider |
-| Retrieval | `backend/src/search.py` | Dense/BM25/hybrid search |
-| Qdrant | `backend/src/vectorize.py` | Vector collection và search |
-| Import | `backend/src/import_data.py` | Validate, chunk, embed, upsert |
-| Embedding | `embed_serving/` | BGE-M3 serving |
+| LLM adapter | `backend/src/llm/client.py` | Ollama/OpenAI/custom provider |
+| Retrieval | `backend/src/rag/search.py` | Dense/BM25/hybrid search |
+| Qdrant | `backend/src/rag/vectorize.py` | Vector collection và search |
+| Import | `backend/src/rag/import_data.py` | Validate, chunk, embed, upsert |
+| Embedding | `infra/embed_serving/` | BGE-M3 serving |
 | Frontend | `frontend/chat_interface_new.py` | Streamlit UI |
-| Database | `database/`, `backend/src/database.py` | PostgreSQL/personalization |
+| Database | `infra/database/`, `backend/src/persistence/database.py` | PostgreSQL/personalization |
 | Cache/queue | Valkey + Celery | Cache và task bất đồng bộ |
+| Hạ tầng tập trung | `infra/` | Docker Compose quản lý Postgres, Qdrant, Valkey, Embedding |
 
 Các tài liệu bắt buộc đọc trước thay đổi lớn:
 
-1. `KE_HOACH_CAI_THIEN_HE_THONG_AGENT_RAG.md`
-2. `BAO_CAO_KIEM_THU_HE_THONG_2026-07-30.md`
-3. `SETUP.md`
-4. README của component đang sửa.
+1. `docs/implementation-roadmap/README.md`
+2. `docs/P0_TRUST_RAG_SAFETY_REPORT_2026-08-14.md`
+3. `docs/P1_PERSONALIZATION_REPORT.md`
+4. `SETUP.md`
+5. README của component đang sửa.
 
 ## 4. Quy tắc không được vi phạm
 
@@ -204,8 +206,9 @@ python -m py_compile backend/src/brain.py backend/src/agents/graph.py backend/sr
 ### Compose validation
 
 ```powershell
+docker compose -f infra/docker-compose.infra.yml config
 docker compose -f backend/docker-compose.yml config
-docker compose -f embed_serving/docker-compose.serving.yml config
+docker compose -f infra/embed_serving/docker-compose.serving.yml config
 docker compose -f frontend/docker-compose.yml config
 ```
 

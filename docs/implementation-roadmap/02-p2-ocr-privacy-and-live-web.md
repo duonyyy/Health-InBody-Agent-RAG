@@ -1,5 +1,13 @@
 # P2 — OCR/PDF InBody, Privacy và Web Search có kiểm soát
 
+## Tiến độ triển khai 2026-10-01
+
+- Đã nối source cho dịch vụ InBody OCR, gateway `/me/inbody-ocr` có xác thực/feature flag và biểu mẫu người dùng đối chiếu trước khi lưu measurement.
+- Test trong process: OCR 7/7; backend unit 135/135 ở lượt hiện tại, gồm gateway auth/consent/proxy. Một lượt contract với ảnh tổng hợp + model giả đi qua gateway → OCR → schema measurement đạt HTTP 200. Local HTTP riêng cho OCR: `/health` trả `degraded` do thiếu model, upload ảnh lỗi trả 400 và OpenAPI chỉ có `/ocr/inbody`. Chưa kiểm thử OCR bằng phiếu InBody thật hoặc HTTP của cả ba service qua Docker.
+- Chưa có field confidence hiệu chuẩn, parser theo template, lưu provenance có retention, malware scan và kiểm thử cross-user/file lifecycle. `FEATURE_OCR_UPLOAD` mặc định tắt; chưa đạt gate P2.
+- Đã xóa mã, UI và test OCR cho các loại giấy tờ khác sau khi người dùng phê duyệt; thư mục `ocr-services` chỉ còn luồng InBody.
+- Đã chuyển `ocr-services` sang package `src/inbody_ocr` với `pyproject.toml`, Dockerfile chạy bằng user riêng và `compose.yaml`; giữ nguyên endpoint `/health`, `/ocr/inbody` và service name `ocr-api`. Sau chuyển cấu trúc: OCR 7/7, gateway backend 4/4, wheel build/import đạt, Compose config hợp lệ. Local HTTP trên cổng 18123: `/health` trả `degraded` vì chưa cấu hình model/URL local, upload ảnh lỗi trả 400. Chưa build/deploy container sau chuyển cấu trúc.
+
 **Mức cấp thiết:** trung bình; chỉ bắt đầu sau khi P0 và P1 đạt nghiệm thu.  
 **Mục tiêu:** giảm thao tác nhập số liệu nhưng không làm giảm tính đúng đắn, quyền riêng tư và kiểm soát nguồn.
 

@@ -1,17 +1,22 @@
 # Hướng dẫn chạy Health/InBody Multi-Agent RAG MVP
 
-Tài liệu này chạy dự án bằng Docker Desktop trên Windows/PowerShell. Thứ tự khởi động rất quan trọng: **backend trước**, rồi mới đến frontend, vì frontend dùng Docker network do backend tạo.
+Tài liệu này hướng dẫn chạy toàn bộ dự án bằng Docker Desktop trên Windows/PowerShell. 
+Hệ thống được tổ chức theo kiến trúc phân tầng chuẩn Enterprise: **Tầng Hạ tầng (Infra) -> Tầng Ứng dụng Backend -> Tầng Giao diện Frontend**.
+
+---
 
 ## 1. Điều kiện cần
 
 - Docker Desktop đang chạy; kiểm tra bằng `docker compose version`.
 - PowerShell mở tại thư mục gốc dự án (`LLL RAG`).
-- Nếu cần câu trả lời sinh bởi LLM, chuẩn bị Ollama hoặc OpenAI API key.
+- Nếu cần câu trả lời sinh bởi LLM, chuẩn bị Ollama (chạy host/remote) hoặc OpenAI API key.
 - Nếu cần RAG vector đầy đủ, chuẩn bị model BGE-M3 (mục 3). Không có model này, các health tool vẫn chạy nhưng không có vector retrieval.
 
-## 2. Cấu hình backend
+---
 
-Tạo file cấu hình từ mẫu, chỉ làm một lần:
+## 2. Cấu hình môi trường
+
+Tạo file cấu hình backend từ mẫu (chỉ làm một lần):
 
 ```powershell
 Copy-Item backend\.env.example backend\.env
@@ -20,7 +25,7 @@ Copy-Item backend\.env.example backend\.env
 Mở `backend\.env` và chọn một trong các cấu hình LLM sau:
 
 ```env
-# Chạy demo không có LLM: API vẫn hoạt động, dùng fallback response.
+# Chạy demo không có LLM: API vẫn hoạt động, dùng deterministic fallback response.
 LLM_PROVIDER=none
 ```
 
@@ -44,136 +49,105 @@ Nếu **không** chạy embedding service, đặt rõ biến sau để backend k
 CUSTOM_EMBEDDING_ENABLED=false
 ```
 
-> Không commit `backend\.env`, vì file này có thể chứa API key.
+> **Lưu ý bảo mật:** Không commit `backend\.env`, vì file này có thể chứa API key và secret.
 
-## 3. Tùy chọn: chạy embedding BGE-M3 cho RAG vector
+---
 
-Bỏ qua mục này nếu chỉ cần demo health tools, các agent và giao diện chat.
+## 3. Chuẩn bị model BGE-M3 cho RAG Vector (Tùy chọn)
 
-Tải model một lần. Lệnh này cần Python cùng các dependency của `embed_serving` và kết nối Internet:
+Bỏ qua mục này nếu chỉ cần demo health tools, logic agent và giao diện chat.
+
+Tải model một lần (cần Python và Internet):
 
 ```powershell
-cd embed_serving
+cd infra\embed_serving
 Copy-Item .env.serving.template .env.serving
 pip install -r requirements_serving.txt
 python scripts\download_model_from_spaces.py
+cd ..\..
 ```
 
-Sau khi model xuất hiện tại `embed_serving\models\bge-m3`, bật embedding trong `backend\.env`:
+Sau khi model xuất hiện tại `infra\embed_serving\models\bge-m3`, bật embedding trong `backend\.env`:
 
 ```env
 CUSTOM_EMBEDDING_ENABLED=true
-CUSTOM_EMBEDDING_API_URL=http://host.docker.internal:5001
+CUSTOM_EMBEDDING_API_URL=http://embedding-api:5000
 ```
 
-Khởi động embedding service:
+---
+
+## 4. Khởi động Tầng Hạ Tầng (Infra Stack)
+
+Cụm hạ tầng gồm 4 dịch vụ nền tảng: PostgreSQL (Database), Qdrant (Vector DB), Valkey (Cache & Message Broker), và BGE-M3 (Embedding API).
 
 ```powershell
-docker compose -f docker-compose.serving.yml up --build -d
-Invoke-WebRequest http://localhost:5001/health
-cd ..
+docker compose -f infra/docker-compose.infra.yml up --build -d
 ```
 
-CPU la cau hinh mac dinh. Chi dung GPU override sau khi CUDA smoke test thanh
-cong:
+Kiểm tra trạng thái hạ tầng:
+```powershell
+Invoke-WebRequest http://localhost:5001/health   # Embedding API
+Invoke-WebRequest http://localhost:6333/healthz  # Qdrant Vector DB
+```
+
+---
+
+## 5. Khởi động Tầng Ứng Dụng Backend
+
+Cụm ứng dụng backend gồm 3 dịch vụ: `chatbot-api` (FastAPI), `chatbot-worker` (Celery Worker), và `chatbot-scheduler` (Celery Beat).
 
 ```powershell
-docker compose -f docker-compose.serving.yml -f docker-compose.gpu.yml up --build -d
+docker compose -f backend/docker-compose.yml up --build -d
 ```
-
-## 4. Khởi động backend
-
-```powershell
-cd backend
-docker compose up --build -d
-```
-
-Lệnh này khởi động năm container: `chatbot-api`, `chatbot-worker`, `postgres-db`, `valkey-db`, và `qdrant-db`.
 
 Kiểm tra API:
-
 ```powershell
 Invoke-WebRequest http://localhost:8000/health
 ```
 
-Nếu API chưa sẵn sàng, xem log:
+Trang tài liệu Swagger UI có tại: `http://localhost:8000/docs`.
 
+Xem nhật ký nếu cần debug:
 ```powershell
-docker compose logs -f chatbot-api
+docker compose -f backend/docker-compose.yml logs -f chatbot-api
 ```
 
-Khi API đã chạy, trang Swagger ở `http://localhost:8000/docs`.
+---
 
-## 5. Khởi động frontend
-
-Mở một PowerShell khác, quay lại thư mục gốc rồi chạy:
+## 6. Khởi động Tầng Giao Diện Frontend
 
 ```powershell
-cd frontend
-docker compose up --build -d
+docker compose -f frontend/docker-compose.yml up --build -d
 ```
 
-Mở giao diện tại `http://localhost:8051`.
+Mở giao diện người dùng tại trình duyệt: `http://localhost:8051`.
 
-## 6. Kiểm tra nhanh multi-agent
+---
 
-Trong giao diện, thử câu hỏi:
+## 7. Kiểm tra nhanh Multi-Agent
+
+Trong giao diện Streamlit, gửi câu hỏi thử nghiệm:
 
 ```text
 Tôi nam, 72kg, cao 170cm, PBF 28%, mỡ nội tạng 12.
 Tôi nên giảm mỡ hay tăng cơ trước và tập thế nào 3 buổi mỗi tuần?
 ```
 
-Trong phần **Agent trace**, luồng thường sẽ có `SupervisorAgent`, các agent chuyên môn phù hợp, `SafetyAgent` và `ResponseComposerAgent`.
+Trong phần **Agent trace**, luồng thực thi sẽ hiển thị lần lượt: `SupervisorAgent`, `InBodyAgent`, `NutritionAgent`/`TrainingAgent`, `SafetyAgent` và `ResponseComposerAgent`.
 
-## 7. Index dữ liệu cho RAG
-
-RAG chỉ truy xuất được tài liệu sau khi corpus đã được index. Chuẩn bị corpus (nếu chưa có) tại thư mục gốc:
-
-```powershell
-python data_pipeline\utils\build_embedding_dataset.py
-```
-
-Sau đó copy file JSONL vào container backend và chạy importer:
-
-```powershell
-docker cp data_pipeline\dataset\processed\embedding_documents.jsonl chatbot-api:/tmp/embedding_documents.jsonl
-cd backend
-docker compose exec chatbot-api python src/pipelines/import_data.py `
-  --data-file /tmp/embedding_documents.jsonl `
-  --collection nmk_chatbot_collection_v20260730_bge_m3_1024 `
-  --corpus-version 2026-07-30-v2 `
-  --skip-collection-create `
-  --skip-existing-points `
-  --manifest-file /usr/src/app/artifacts/imports/2026-07-30-v2-import.json
-```
-
-`--skip-existing-points` tai danh sach ID Qdrant mot lan va chi encode chunk
-con thieu. Day la cach tiep tuc an toan sau migration vector hoac sau khi import
-bi gian doan. Duong dan corpus, collection va `corpus-version` phai khop voi
-manifest dry-run cua lan import hien tai.
+---
 
 ## 8. Dừng dự án
 
-Dừng frontend:
+Khi cần tắt hệ thống:
 
 ```powershell
-cd frontend
-docker compose down
+# 1. Dừng frontend
+docker compose -f frontend/docker-compose.yml down
+
+# 2. Dừng backend
+docker compose -f backend/docker-compose.yml down
+
+# 3. Dừng hạ tầng (dữ liệu PostgreSQL, Qdrant và Valkey vẫn được lưu giữ an toàn trong volumes)
+docker compose -f infra/docker-compose.infra.yml down
 ```
-
-Dừng backend:
-
-```powershell
-cd backend
-docker compose down
-```
-
-Dừng embedding service (nếu đã bật):
-
-```powershell
-cd embed_serving
-docker compose -f docker-compose.serving.yml down
-```
-
-Các lệnh `down` ở trên giữ lại Docker volumes. Do đó dữ liệu PostgreSQL và Qdrant không bị xóa.

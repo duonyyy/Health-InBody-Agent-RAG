@@ -1,7 +1,7 @@
 # Health/InBody Agentic RAG — Architecture
 
-> **Trạng thái:** Beta/MVP, không phải production-ready.
-> **Phạm vi tài liệu:** kiến trúc đang có trong branch `multi-agent-rag-mvp` tại commit `ec7313d`; phân biệt rõ phần đang chạy, giới hạn hiện tại và roadmap.
+> **Trạng thái:** P0/P1 backend beta, chưa phải production-ready.
+> **Phạm vi tài liệu:** kiến trúc đang có trong branch `multi-agent-rag-mvp` ngày 2026-08-15; phân biệt rõ phần đã chạy, giới hạn hiện tại và roadmap.
 
 ## 1. Mục tiêu
 
@@ -26,14 +26,15 @@ Hệ thống **không** phải bác sĩ, chuyên gia dinh dưỡng hoặc huấn
 | Data migration an toàn | Qdrant dùng physical collection có version + alias ổn định. Không ghi đè collection đang phục vụ. |
 | Idempotent import | Point ID ổn định, content hash và manifest cho phép chạy lại/resume mà không nhân bản dữ liệu. |
 | Degrade có chủ đích | Lỗi LLM/retrieval không được làm mất safety warning; response báo `degraded` cùng nguyên nhân. |
-| Bảo mật dữ liệu sức khỏe | Không commit secret, không log dư PII/chỉ số đầy đủ, không tin `user_id` từ client khi production chưa có auth context. |
+| Bảo mật dữ liệu sức khỏe | `/me` và chat lấy subject từ auth dependency; không dùng body/path `user_id` làm ownership. Chỉ dữ liệu consented, confirmed và chưa soft-delete được đưa vào Agent. |
 
 ## 3. Tổng quan hệ thống
 
 ```mermaid
 flowchart LR
     U["Người dùng"] --> FE["Streamlit chat UI"]
-    FE --> API["FastAPI API"]
+    FE --> AUTH["Trusted auth middleware\nhoặc dev header local-only"]
+    AUTH --> API["FastAPI API"]
     API --> PC["Personalization context\nPostgreSQL"]
     API --> AG["LangGraph Agent orchestration"]
     AG --> SAFE["Safety pre-check / SafetyAgent"]
@@ -61,7 +62,7 @@ Hệ thống có ba luồng chính:
 
 ```mermaid
 flowchart TD
-    A["POST /agent/answer hoặc /chat/complete"] --> B["Tải personalization context nếu có user_id"]
+    A["POST /agent/answer hoặc /chat/complete"] --> B["Resolve authenticated subject\nTải consented + confirmed context"]
     B --> C{"Safety pre-check\nnguy cơ urgent?"}
     C -- "Có" --> D["Urgent fast-path\nKhông LLM / Qdrant / reranker / web"]
     C -- "Không" --> E{"Greeting hoặc BMI\nđủ dữ kiện?"}
@@ -110,6 +111,7 @@ Agent trả payload có cấu trúc theo tinh thần sau:
   "evidence": [],
   "limitations": [],
   "safety_result": {},
+  "personalization_used": {"available": false, "reason": "...", "provenance": []},
   "errors": []
 }
 ```
@@ -123,6 +125,7 @@ Agent trả payload có cấu trúc theo tinh thần sau:
 | Thành phần | Vị trí | Trách nhiệm | Trạng thái |
 |---|---|---|---|
 | API | `backend/src/api/app.py` | FastAPI endpoints, validation, sync/async chat, health/tool/user APIs. | Có |
+| Auth boundary | `backend/src/auth/` | Resolve server-owned identity; dev header chỉ khi bật explicit; khóa legacy path-user API. | Có contract; production middleware ngoài app chưa nối |
 | Agent orchestration | `backend/src/agents/` | LangGraph state, routing, fast-path, agent trace, composition. | Có |
 | Health tools | `backend/src/health/` | BMI, PBF, mỡ nội tạng, nutrition, training và safety rule. | Có |
 | RAG | `backend/src/rag/` | Query rewrite, dense search, BM25 process-local, rerank, metadata/chunking. | Có, còn giới hạn |
@@ -130,7 +133,7 @@ Agent trả payload có cấu trúc theo tinh thần sau:
 | LLM adapter | `backend/src/llm/client.py` | Ollama, OpenAI hoặc custom API và task budget riêng. | Có |
 | Embedding adapter | `backend/src/llm/embedding.py` | Gọi embedding HTTP service. | Có |
 | Embedding serving | `embed_serving/` | BGE-M3 REST API, CPU mặc định, CUDA/FP16 qua compose override. | Có |
-| Persistence | `backend/src/persistence/`, `database/` | Profile, measurement, personalization context qua PostgreSQL. | Có |
+| Persistence | `backend/src/persistence/`, `database/` | Owner-scoped profile, goal, measurement, progress, plan, check-in và confirmed-only context qua PostgreSQL. | Có P1 |
 | Queue/cache | `backend/src/jobs/`, Valkey, Celery | Chat async/background task và cache/queue. | Có |
 | Frontend | `frontend/` | Streamlit chat interface. | Có |
 | OCR/upload InBody | roadmap P2 | Parse ảnh/PDF và confirmation flow. | Chưa triển khai runtime |
@@ -178,12 +181,12 @@ Query gốc phải là retrieval query đầu tiên. Không mở rộng ba query
 
 ### 7.2 Giới hạn hiện tại cần nói thật
 
-Mã có dense search Qdrant và BM25, nhưng BM25 hiện nằm trong RAM từng process, không được persist từ importer và mất sau restart/CLI exit. Vì vậy:
+Mã có dense search Qdrant và BM25. P0 đã thêm snapshot BM25 versioned trên disk và autoload khi API startup; index chạy trong RAM sau khi load. Vì vậy:
 
-- không được mô tả hiện trạng là “hybrid search hoàn chỉnh”;
-- nhiều Uvicorn worker có thể có index BM25 khác nhau hoặc chưa khởi tạo;
+- chỉ được gọi là hybrid khi snapshot load thành công và stats chứng minh BM25 coverage;
+- nhiều Uvicorn worker vẫn nhân bản index RAM, nên runtime hiện khóa `API_WORKERS=1`;
 - benchmark phải ghi rõ dense-only hay có BM25 thật sự tham gia;
-- hướng khắc phục là sparse index/storage dùng chung và persist, hoặc đưa sparse vector vào Qdrant với migration/version tương ứng.
+- hướng mở rộng là sparse vector trong Qdrant hoặc sparse storage dùng chung khi cần scale nhiều worker.
 
 Safety/caution retrieval hiện truyền filter `content_type=medical_safety` cho cả dense search lẫn BM25. Đây là guardrail giảm nguy cơ recipe/nutrition chen vào context y tế; nó không thay thế corpus safety đủ rộng hoặc benchmark retrieval.
 
@@ -234,8 +237,8 @@ Các giá trị này là mốc import, **không phải bằng chứng collection
 
 | Dữ liệu/trạng thái | Nơi lưu | Lưu ý |
 |---|---|---|
-| User profile và measurement | PostgreSQL | Sản xuất phải lấy user identity từ auth context, không tin path/client `user_id`. |
-| Personalization context | Tạo từ persistence | Dữ liệu chưa xác nhận không được biến thành insight cá nhân hóa. |
+| Profile, goal, measurement, plan, check-in | PostgreSQL | Mọi query resource lọc theo authenticated owner; measurement delete là soft delete. |
+| Personalization context | Tạo từ persistence | Cần cả health-data + personalization consent; chỉ measurement confirmed/non-deleted, active goal và field allowlist. |
 | Queue/cache | Valkey | Không đưa health PII không cần thiết vào key/log/payload. |
 | Chat/background work | Celery worker | API có thể gọi sync hoặc enqueue, client phải hiểu task status/polling. |
 | Agent state | Request scope | Không đặt state bền vững trong global RAM; multi-worker sẽ không nhất quán. |
@@ -247,7 +250,7 @@ Các giá trị này là mốc import, **không phải bằng chứng collection
 
 ```mermaid
 flowchart TB
-    API["chatbot-api\nFastAPI, 2 workers\n:8000"] --> QD["qdrant-db\n:6333/:6334"]
+    API["chatbot-api\nFastAPI, 1 worker\n:8000"] --> QD["qdrant-db\n:6333/:6334"]
     API --> PG["postgres-db\n:5432"]
     API --> VK["valkey-db\n:6379"]
     API --> ES["Embedding serving\nexternal/independent compose"]
@@ -258,7 +261,7 @@ flowchart TB
     FE["frontend Streamlit"] --> API
 ```
 
-- `chatbot-api` chạy `uvicorn api.app:app` với 2 workers.
+- `chatbot-api` chạy `uvicorn api.app:app` với `API_WORKERS=1` mặc định để BM25 RAM nhất quán.
 - `chatbot-worker` chạy `celery -A jobs.tasks.celery_app worker`.
 - Qdrant, PostgreSQL và Valkey có volume Docker riêng.
 - Embedding serving là compose độc lập; endpoint backend mặc định dùng `host.docker.internal:5001`, hoặc service name khi đưa vào cùng network.
@@ -274,7 +277,8 @@ Trước deploy, chạy `docker compose ... config`; trước restart khi bulk i
 | Agent/chat | `POST /agent/answer`, `POST /chat/complete`, `GET /chat/complete/{task_id}` | Trả lời trực tiếp hoặc qua task async. |
 | Retrieval | `POST /search` | Search độc lập để debug/evaluation. |
 | Tools | `POST /tools/bmi`, `/pbf`, `/visceral-fat`, `/nutrition`, `/training`, `/safety` | Tool deterministic và safety. |
-| Personalization | `/users/{user_id}/profile`, `/measurements`, `/personalization-context` | Quản lý profile/lịch sử InBody. |
+| Personalization P1 | `/me/profile`, `/me/goals/*`, `/me/measurements/*`, `/me/progress/*`, `/me/plans/*`, `/me/check-ins` | Owner-scoped profile, mục tiêu, lịch sử đo, progress, plan và check-in. |
+| Legacy user API | `/users/{user_id}/*` | Mặc định 404; chỉ bật local khi `AUTH_MODE=development`, flag legacy=true và path user khớp auth subject. |
 | Data admin | `/collection/create`, `/document/create`, `/documents/index`, `/data/import` | Chỉ mở cho vận hành đã có authentication/authorization. |
 
 Các endpoint write/admin đang là bề mặt rủi ro khi production chưa có auth/authz và rate limit. Không nên expose công khai chỉ vì chúng tiện dùng trong demo.
@@ -332,8 +336,8 @@ Health-InBody-Agent-RAG/
 
 1. **P0 trust RAG/safety:** fixture evaluation versioned, citation contract, safety regression và latency HTTP measurement.
 2. **Hoàn thiện retrieval:** persist/shared sparse index hoặc sparse vector; không tiếp tục gọi hệ thống hybrid đầy đủ trước khi xong.
-3. **P1 personalization:** auth context, phân quyền user, confirmation data, delta measurement và plan versioning.
-4. **P2 OCR/privacy/live web:** upload/OCR confidence, PII redaction, export/delete/retention, web search không gửi PII và không tự ingest.
+3. **P1 personalization backend:** đã triển khai auth boundary, ownership, consent, confirmation, progress, plan/check-in versioning và migration; UI P1 còn là follow-up.
+4. **P2 OCR/privacy/live web:** upload/OCR confidence, account export/delete và purge retention, web search không gửi PII và không tự ingest.
 5. **Production candidate:** rate limit, audit log, metrics/alerts, backup/restore Qdrant/PostgreSQL, soak/load test và rollout/rollback runbook.
 
 ## 15. Các rủi ro và giả định còn mở
@@ -344,7 +348,7 @@ Health-InBody-Agent-RAG/
 | BM25 process-local. | Kết quả khác giữa worker/restart; claim hybrid sai. | Chọn persistent sparse architecture và migration plan. |
 | 2 Uvicorn workers + global RAM. | Cache/index state không chia sẻ. | Chỉ dùng RAM cho cache tái tạo được; state bền vững phải chuyển shared storage. |
 | GPU 4 GB. | Dễ OOM khi LLM lớn và BGE-M3 dùng chung VRAM. | Benchmark theo mode bulk/online và đặt admission policy. |
-| User ID từ client. | Cross-user data leak khi public. | Bổ sung auth/authz trước mở public. |
+| Production auth middleware chưa được nối vào `request.state.current_user`. | Standalone production mode chặn `/me`/chat bằng 401; không thể mở public. | Tích hợp IdP/JWT hoặc trusted middleware, chạy lại ownership suite; tuyệt đối không bật dev header production. |
 | Web search. | Có thể lộ PII hoặc tạo claim không kiểm chứng. | Opt-in, redaction, allowlist/attribution và không tự ingest. |
 | LLM thay model/provider. | Chất lượng, latency và output format đổi. | Chạy regression/eval/release report cho từng cấu hình model. |
 
@@ -354,7 +358,8 @@ Health-InBody-Agent-RAG/
 - `backend/README.md` — backend/API và runtime variables.
 - `docs/QDRANT_BLUE_GREEN_IMPORT.md` — runbook import/alias/rollback.
 - `docs/implementation-roadmap/` — P0/P1/P2 và evaluation/acceptance.
-- `BAO_CAO_KIEM_THU_HE_THONG_2026-07-30.md` — baseline test, không thay thế benchmark release hiện hành.
+- `docs/P0_TRUST_RAG_SAFETY_REPORT_2026-08-14.md` — báo cáo nghiệm thu P0 (safety, fast-path, hybrid retrieval).
+- `docs/P1_PERSONALIZATION_REPORT.md` — báo cáo nghiệm thu P1 (personalization, progress tracking, data safety).
 
 ---
 

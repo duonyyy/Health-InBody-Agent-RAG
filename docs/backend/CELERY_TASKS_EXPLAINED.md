@@ -1,62 +1,51 @@
-# Celery Tasks Explained
+# Celery Tasks & Async Processing
 
-File `backend/src/tasks.py` chứa các task nền cho indexing và chat async. Sau khi chuyển sang Multi-Agent RAG MVP, handler chat async dùng cùng entrypoint với sync API để tránh lệch logic.
+File `backend/src/jobs/tasks.py` chịu trách nhiệm quản lý các tác vụ nền bất đồng bộ (Background Tasks) bằng Celery và Valkey (Redis-compatible broker) nhằm giải phóng luồng chính của FastAPI khi xử lý các công việc tốn nhiều thời gian như nạp tập tài liệu lớn (bulk indexing) hoặc xử lý hàng đợi tin nhắn.
 
-## 1. Indexing tasks
+---
 
-### `index_document_v2(...)`
+## 1. Các Tác Vụ Indexing Dữ Liệu
 
-- Tách tài liệu thành chunks.
-- Gọi embedding API qua `get_embedding`.
-- Upsert vector vào Qdrant.
+### 1.1 `index_document_v2(...)`
+- Nhận văn bản đầu vào, thực hiện phân tách thành các đoạn ngữ nghĩa (semantic chunks).
+- Gửi yêu cầu sinh vector nhúng tới service BGE-M3 (`POST /embed`).
+- Lưu trữ vector và metadata vào collection Qdrant.
 
-### `index_health_documents(...)`
+### 1.2 `index_health_documents(...)`
+- Xử lý hàng loạt tài liệu sức khỏe/InBody từ tệp chuẩn hóa.
+- Định dạng payload cho cả vector search và cập nhật BM25 index.
 
-- Index nhiều tài liệu Health/InBody.
-- Chuẩn hóa payload cho search.
-- Khởi tạo BM25 index bằng `initialize_search_index`.
+---
 
-## 2. Chat task hiện tại
+## 2. Xử Lý Chat Bất Đồng Bộ (`llm_handle_message`)
 
-### `llm_handle_message(bot_id, user_id, question)`
+Khi client gửi yêu cầu qua `POST /chat/complete` với `sync_request=false`:
+1. FastAPI đẩy task vào hàng đợi Celery thông qua:
+   ```python
+   task = llm_handle_message.delay(bot_id, user_id, user_message)
+   ```
+2. API trả về ngay lập tức mã định danh công việc: `{"task_id": "..."}`.
+3. Worker nhận nhiệm vụ, nạp ngữ cảnh cá nhân hóa của người dùng (`safe_build_confirmed_context`) và gọi entrypoint `multi_agent_handle`.
+4. Client có thể thăm dò kết quả qua `GET /chat/complete/{task_id}` hoặc nhận thông báo khi hoàn thành.
 
-Handler chính cho `/chat/complete` khi chạy async. Hiện tại hàm này gọi:
+---
 
-```python
-multi_agent_handle(question, history=[])
-```
-
-Kết quả trả về có dạng:
-
-```json
-{
-  "role": "assistant",
-  "content": "...",
-  "agent_trace": [],
-  "selected_agents": [],
-  "tool_results": [],
-  "retrieved_docs": [],
-  "safety_result": {},
-  "errors": []
-}
-```
-
-## 3. Các hàm route cũ
-
-Các hàm như `bot_route_answer_message` và `bot_rag_answer_message` vẫn còn để tương thích/đối chiếu, nhưng không còn là flow chính của chat MVP. Flow chính là `agents.multi_agent_handle`.
-
-## 4. Async flow
+## 3. Kiến Trúc Hàng Đợi (Queue Architecture)
 
 ```text
-POST /chat/complete sync_request=false
-  -> llm_handle_message.delay(...)
-  -> multi_agent_handle(...)
-  -> GET /chat/complete/{task_id}
-  -> task_result.content + task_result.agent_trace
+[Client / UI]
+     │ (sync_request=false)
+     ▼
+[FastAPI Backend] ──────(Task Payload)──────> [Valkey Queue (Port 6379)]
+     │                                                    │
+     │ (Return task_id)                                   ▼
+     ▼                                            [Celery Worker]
+[Client Polling] <─────(Result in Backend)─────── [multi_agent_handle]
 ```
 
-## 5. Lưu ý vận hành
+---
 
-- Nếu Celery worker không chạy, dùng `sync_request=true`.
-- Nếu LLM provider bị tắt (`LLM_PROVIDER=none`), ResponseComposerAgent sẽ trả fallback answer từ tool/RAG/safety state.
-- Async hiện chưa truyền history vào task; sync chat từ frontend có truyền history.
+## 4. Lưu Ý Vận Hành
+
+- Trong môi trường phát triển local, nếu Celery worker chưa được bật, client nên gửi tham số `sync_request=true` để FastAPI xử lý trực tiếp.
+- Các tác vụ dài hạn có cấu hình `TASK_TIMEOUT = 60` giây để tránh worker bị treo khi dịch vụ nhúng hoặc LLM gặp sự cố.

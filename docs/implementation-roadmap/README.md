@@ -9,6 +9,20 @@
 Tiến độ mới 2026-09-29: [Bộ nhớ Day17 bốn lớp](09-day17-memory-completion-2026-09-29.md)
 đã nối source/test; **chưa deploy**, chưa xác minh PostgreSQL/Zep Cloud runtime.
 
+Tiến độ mới 2026-10-01: [Cache câu trả lời RAG an toàn](11-safe-llm-response-cache.md)
+đã nối vào Composer và có regression tests; **source-ready, chưa deploy**, chưa đo hit rate/latency
+trên Redis và API runtime.
+
+Kế hoạch thiết kế dữ liệu: [Database và data schema tổng thể](10-database-schema-master-plan.md)
+— **đề xuất chờ duyệt**, gồm hiện trạng, mô hình đích, privacy lifecycle, migration/rollback,
+kiểm thử và các hướng mở rộng tương lai; chưa thực hiện thay đổi database.
+
+Đối chiếu source ngày 2026-10-11, rà soát lại ngày 2026-10-16: [Kiểm kê hệ thống trước khi thiết kế lại CSDL](12-database-current-state-audit-2026-10-11.md)
+ghi luồng dữ liệu, 12 bảng nghiệp vụ, các bất biến cần bảo vệ và phần phải kiểm tra trên PostgreSQL live.
+Lần rà soát 2026-10-16 xác nhận source-level auth/OCR/retention/corpus flow; Docker Engine/API/DB runtime
+không truy cập được trong sandbox, nên schema live, ledger, counts, backup/restore và worker status vẫn **CHƯA BIẾT**.
+Thiết kế ở [master plan](10-database-schema-master-plan.md) vẫn là **đề xuất chờ duyệt**; chưa đổi schema hay dữ liệu.
+
 Sản phẩm không nên được định nghĩa là “một chatbot có nhiều agent”. Giá trị chính cần là:
 
 1. Giúp người dùng hiểu dữ liệu InBody đã nhập/xác nhận.

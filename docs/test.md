@@ -1,69 +1,31 @@
-# Health/InBody Multi-Agent RAG MVP - Test Queries
+# Health/InBody Multi-Agent RAG - Bộ Câu Hỏi Kiểm Thử (Test Queries & Smoke Suite)
 
-## Tổng quan
+Tài liệu này tổng hợp các kịch bản kiểm thử, bao gồm bộ kiểm thử chuẩn vàng (P0 Golden Suite) và các câu hỏi demo phức hợp dùng để đánh giá hệ thống **Health/InBody Multi-Agent RAG**.
 
-File này chứa các câu test dùng để demo và kiểm tra hệ thống Health/InBody Multi-Agent RAG MVP.
+---
 
-Mục tiêu test:
+## 1. Bộ Kiểm Thử Chuẩn Vàng P0 (Golden Suite - 6 Ca Cốt Lõi)
 
-- Kiểm tra `SupervisorAgent` chọn đúng một hoặc nhiều agent.
-- Kiểm tra `agent_trace` có thể chứng minh flow multi-agent.
-- Kiểm tra các agent chính: `InBodyAgent`, `RAGAgent`, `NutritionAgent`, `TrainingAgent`, `SafetyAgent`, `ResponseComposerAgent`.
-- Kiểm tra câu hỏi phức hợp gọi nhiều agent cùng lúc.
+Dữ liệu nguồn được lưu tại [backend/evals/p0_golden.jsonl](file:///c:/Users/Admin/Desktop/KLTN/LLL RAG/backend/evals/p0_golden.jsonl). Chạy đánh giá tự động bằng lệnh:
 
-## 1. InBodyAgent
-
-```json
-[
-  {
-    "query": "Tôi nặng 72kg cao 170cm, tính BMI giúp tôi",
-    "expected_agents": ["SupervisorAgent", "InBodyAgent", "SafetyAgent", "ResponseComposerAgent"],
-    "expected_tools": ["calculate_bmi"],
-    "description": "Tính BMI từ cân nặng và chiều cao"
-  },
-  {
-    "query": "PBF của tôi 28%, nam, chỉ số này có cao không?",
-    "expected_agents": ["SupervisorAgent", "InBodyAgent", "RAGAgent", "SafetyAgent", "ResponseComposerAgent"],
-    "expected_tools": ["evaluate_body_fat_percentage"],
-    "description": "Đánh giá phần trăm mỡ cơ thể"
-  },
-  {
-    "query": "Mỡ nội tạng level 12 có đáng lo không?",
-    "expected_agents": ["SupervisorAgent", "InBodyAgent", "RAGAgent", "SafetyAgent", "ResponseComposerAgent"],
-    "expected_tools": ["evaluate_visceral_fat"],
-    "description": "Đánh giá mỡ nội tạng từ level InBody"
-  }
-]
+```powershell
+python backend/scripts/evaluate_p0.py --api-url http://localhost:8000
 ```
 
-## 2. NutritionAgent và TrainingAgent
+| ID | Câu hỏi / Hành động | Risk Level | Yêu cầu kỹ thuật & Ràng buộc | Kỳ vọng Latency |
+|---|---|---|---|---:|
+| `urgent_chest_pain` | *"Tôi đau ngực và khó thở sau khi tập."* | `urgent` | **Pre-check Fast-path**. Bắt buộc chỉ chạy `SafetyAgent`; cấm tuyệt đối `RAGAgent`, `NutritionAgent`, `TrainingAgent`, `WebSearchAgent`. | < 500 ms (thực tế ~40 ms) |
+| `bmi_tool` | *"Tôi nặng 72kg, cao 170cm, hãy tính BMI và nhận xét."* | `low` | **Deterministic Tool Fast-path**. Chỉ gọi `InBodyAgent`; cấm gọi `RAGAgent`, `WebSearchAgent`. | < 500 ms (thực tế ~15 ms) |
+| `medical_caution` | *"Tôi đang dùng thuốc huyết áp, nên tập thế nào?"* | `medical_caution` | **Thận trọng y tế**. Chỉ cho phép `RAGAgent` truy xuất tài liệu `medical_safety`; cấm Nutrition/Training tự lập giáo án. Yêu cầu bằng chứng trích dẫn. | < 35.000 ms |
+| `inbody_pbf` | *"PBF là gì và nên đọc chỉ số phần trăm mỡ cơ thể như thế nào?"* | `low` | **Kiến thức InBody**. Kích hoạt `InBodyAgent` + `RAGAgent`; chỉ truy xuất tài liệu `inbody_metric` hoặc `nutrition`. Bắt buộc có citations. | < 35.000 ms |
+| `nutrition_protein` | *"Nên ăn bao nhiêu protein khi muốn giảm mỡ và giữ cơ?"* | `low` | **Tư vấn dinh dưỡng**. Kích hoạt `NutritionAgent` + `RAGAgent`; lọc tài liệu `nutrition`. Bắt buộc có trích dẫn. | < 35.000 ms |
+| `invalid_bmi_negative` | `POST /tools/bmi` với `weight_kg = -72` | N/A | **Validation HTTP**. Pydantic bắt lỗi giá trị âm và trả về mã lỗi `HTTP 422 Unprocessable Entity`. | < 100 ms |
 
-```json
-[
-  {
-    "query": "Tôi 72kg, muốn giảm mỡ thì nên ăn bao nhiêu protein mỗi ngày?",
-    "expected_agents": ["SupervisorAgent", "NutritionAgent", "SafetyAgent", "ResponseComposerAgent"],
-    "expected_tools": ["suggest_nutrition_goal"],
-    "description": "Gợi ý protein và chiến lược calo"
-  },
-  {
-    "query": "Gợi ý lịch tập 3 buổi/tuần để giảm mỡ",
-    "expected_agents": ["SupervisorAgent", "TrainingAgent", "SafetyAgent", "ResponseComposerAgent"],
-    "expected_tools": ["suggest_training_plan"],
-    "description": "Gợi ý lịch tập theo tuần"
-  },
-  {
-    "query": "Tôi muốn tăng cơ, 65kg, nên ăn và tập thế nào 4 buổi/tuần?",
-    "expected_agents": ["SupervisorAgent", "NutritionAgent", "TrainingAgent", "RAGAgent", "SafetyAgent", "ResponseComposerAgent"],
-    "expected_tools": ["suggest_nutrition_goal", "suggest_training_plan"],
-    "description": "Câu hỏi phức hợp gọi nutrition, training và RAG"
-  }
-]
-```
+---
 
-## 3. Multi-Agent Demo Query
+## 2. Kịch Bản Demo Phức Hợp (Multi-Agent Composite Query)
 
-Câu này dùng tốt nhất khi demo trước hội đồng vì nó buộc hệ thống gọi nhiều agent:
+Câu hỏi tối ưu để trình diễn khả năng phối hợp đa tác tử trước hội đồng bảo vệ KLTN:
 
 ```json
 {
@@ -79,91 +41,63 @@ Câu này dùng tốt nhất khi demo trước hội đồng vì nó buộc hệ
     "ResponseComposerAgent"
   ],
   "expected_trace_min_length": 6,
-  "description": "Demo đầy đủ Multi-Agent RAG MVP"
+  "description": "Demo toàn diện khả năng điều phối của LangGraph Multi-Agent RAG"
 }
 ```
 
-Expected behavior:
+### Hành vi chuẩn của hệ thống:
+1. `SupervisorAgent` phân tích câu hỏi và nhận diện nhiều tác vụ: phân tích chỉ số, tính dinh dưỡng, lên lịch tập và tra cứu kiến thức.
+2. `InBodyAgent` tính toán BMI (24.91), cảnh báo PBF (28% - cao đối với nam) và mỡ nội tạng (level 12 - vượt ngưỡng an toàn).
+3. `NutritionAgent` đưa ra định hướng thâm hụt calo vừa phải (~300–500 kcal/ngày) và lượng đạm cần thiết.
+4. `TrainingAgent` xây dựng khung giáo án 3 buổi/tuần (kết hợp kháng lực và cardio vùng 2).
+5. `RAGAgent` truy xuất tài liệu về rủi ro của mỡ nội tạng và nguyên tắc giảm mỡ nội tạng khoa học.
+6. `SafetyAgent` bổ sung lưu ý y tế (không nhịn ăn cực đoan, theo dõi nhịp tim).
+7. `ResponseComposerAgent` tổng hợp báo cáo mạch lạc kèm bảng chỉ số và nguồn trích dẫn.
 
-1. `SupervisorAgent` chọn nhiều agent, không chỉ một route.
-2. `InBodyAgent` tính BMI, đánh giá PBF và mỡ nội tạng.
-3. `NutritionAgent` đưa protein/calorie strategy.
-4. `TrainingAgent` đưa lịch tập 3 buổi/tuần.
-5. `RAGAgent` truy xuất tài liệu Health/InBody liên quan.
-6. `SafetyAgent` thêm guardrail y tế.
-7. `ResponseComposerAgent` tổng hợp câu trả lời cuối.
+---
 
-## 4. SafetyAgent
+## 3. Lệnh Smoke Test Qua HTTP Thật
 
-```json
-[
-  {
-    "query": "Tôi bị đau ngực khi tập cardio, có nên tiếp tục tập không?",
-    "expected_agents": ["SupervisorAgent", "TrainingAgent", "SafetyAgent", "ResponseComposerAgent"],
-    "expected_safety_risk": "urgent",
-    "description": "Triệu chứng nguy hiểm cần khuyến nghị gặp cơ sở y tế"
-  },
-  {
-    "query": "Tôi bị tiểu đường, muốn giảm mỡ nhanh thì có nên nhịn ăn không?",
-    "expected_agents": ["SupervisorAgent", "NutritionAgent", "RAGAgent", "SafetyAgent", "ResponseComposerAgent"],
-    "expected_safety_risk": "medical_caution",
-    "description": "Có bệnh nền, phải trả lời thận trọng"
-  }
-]
+### 3.1 Test Endpoint Chuẩn `/agent/answer`
+
+```powershell
+curl -X POST http://localhost:8000/agent/answer `
+  -H "Content-Type: application/json" `
+  -d '{\"question\": \"Tôi nặng 72kg cao 170cm, tính BMI giúp tôi\", \"user_id\": \"demo-user\"}'
 ```
 
-## 5. RAGAgent
-
-```json
-[
-  {
-    "query": "BMI và PBF khác nhau như thế nào?",
-    "expected_agents": ["SupervisorAgent", "InBodyAgent", "RAGAgent", "SafetyAgent", "ResponseComposerAgent"],
-    "description": "Truy xuất kiến thức giải thích chỉ số"
-  },
-  {
-    "query": "SMM thấp thì nên ưu tiên tập luyện kiểu gì?",
-    "expected_agents": ["SupervisorAgent", "InBodyAgent", "RAGAgent", "TrainingAgent", "SafetyAgent", "ResponseComposerAgent"],
-    "description": "Kết hợp kiến thức InBody và training"
-  }
-]
-```
-
-## 6. API Smoke Test
-
-```bash
-curl -X POST http://localhost:8000/chat/complete \
-  -H "Content-Type: application/json" \
-  -d '{
-    "user_id": "demo-user",
-    "user_message": "Tôi nam, 72kg, cao 170cm, PBF 28%, mỡ nội tạng level 12. Tôi nên giảm mỡ hay tăng cơ trước và tập thế nào 3 buổi/tuần?",
-    "sync_request": true
-  }'
-```
-
-Response cần có:
-
+**Kỳ vọng trả về:**
 ```json
 {
-  "response": {
-    "role": "assistant",
-    "content": "...",
-    "agent_trace": [
-      {
-        "agent": "SupervisorAgent",
-        "action": "select_agents",
-        "status": "success",
-        "summary": "Selected agents: InBodyAgent, NutritionAgent, TrainingAgent, RAGAgent"
-      }
-    ]
-  }
+  "answer": "Chỉ số BMI của bạn là 24.91...",
+  "status": "ok",
+  "fast_path": "bmi_calculation",
+  "latency_ms": 14.8,
+  "agent_trace": [...],
+  "evidence_status": "not_required"
 }
 ```
 
-## 7. Acceptance Criteria
+### 3.2 Test Tình Huống Cấp Cứu Y Tế (Safety Fast-Path)
 
-- `/chat/complete` trả `response.content` không rỗng.
-- `/chat/complete` trả `response.agent_trace` là list.
-- Câu hỏi phức hợp phải có ít nhất `SupervisorAgent`, một domain agent, `SafetyAgent`, `ResponseComposerAgent`.
-- Người dùng không cần chọn tool thủ công trong frontend chat.
-- Các endpoint `/tools/...` vẫn hoạt động để dev/debug nhưng không phải flow chính của người dùng.
+```powershell
+curl -X POST http://localhost:8000/agent/answer `
+  -H "Content-Type: application/json" `
+  -d '{\"question\": \"Tôi bị đau ngực và khó thở khi tập cardio\", \"user_id\": \"demo-user\"}'
+```
+
+**Kỳ vọng trả về:**
+- `status`: `"ok"`
+- `fast_path`: `"urgent_safety"`
+- `latency_ms`: `< 50 ms`
+- `safety_result.risk_level`: `"urgent"`
+- Khuyến nghị dừng tập ngay lập tức và liên hệ cơ sở y tế gần nhất.
+
+---
+
+## 4. Tiêu Chí Nghiệm Thu Chung (Acceptance Criteria)
+
+- Phản hồi HTTP status luôn là `200` cho câu hỏi hợp lệ; dữ liệu sai định dạng/âm trả `422`.
+- Trường `agent_trace` luôn có danh sách các bước thực thi để chứng minh luồng điều phối.
+- Mọi câu trả lời có sử dụng tài liệu RAG phải có `evidence_status = "supported"` và danh sách `citations` tương ứng.
+- Tuyệt đối không để lộ thông tin nhạy cảm nội bộ, lỗi hệ thống (traceback) hoặc hostname/port ra câu trả lời người dùng.

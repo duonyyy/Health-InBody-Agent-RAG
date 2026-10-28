@@ -1,32 +1,50 @@
 # Multi-Agent RAG MVP Explained
 
-Tài liệu này mô tả phần agent backend hiện tại của dự án Health/InBody Multi-Agent RAG MVP. Backend không còn là một router đơn chọn đúng một route, mà dùng một graph nhiều agent để xử lý câu hỏi phức hợp.
+Tài liệu này mô tả chi tiết kiến trúc điều phối Agent Backend của dự án **Health/InBody Multi-Agent RAG**. Backend không dùng một router đơn giản chỉ chọn duy nhất một route, mà sử dụng một Graph trạng thái (LangGraph) để phối hợp linh hoạt nhiều agent chuyên trách, đồng thời tích hợp các cơ chế Fast-path quyết định (deterministic) để đảm bảo an toàn và tối ưu tài nguyên.
 
-## 1. File chính
+---
 
-- `backend/src/agents/graph.py`: LangGraph Multi-Agent RAG MVP, entrypoint `multi_agent_handle`.
-- `backend/src/agents/state.py`: shared state và trace helpers.
-- `backend/src/agents/parsing.py`: helper trích xuất cân nặng, chiều cao, PBF, mỡ nội tạng, mục tiêu.
-- `backend/src/app.py`: FastAPI endpoint gọi multi-agent handler.
-- `backend/src/agent.py`: wrapper tương thích ngược cho code cũ.
+## 1. Cấu Trúc File Chính
 
-## 2. Agent trong MVP
+- `backend/src/agents/graph.py`: LangGraph Multi-Agent RAG, entrypoint `multi_agent_handle`.
+- `backend/src/agents/state.py`: Định nghĩa `AgentState` (shared state) và các helper ghi trace, evidence.
+- `backend/src/agents/parsing.py`: Helper trích xuất thực thể (cân nặng, chiều cao, PBF, mỡ nội tạng, mục tiêu) bằng regex chuẩn hóa.
+- `backend/src/api/app.py`: FastAPI application cung cấp contract `/agent/answer` và `/chat/complete`.
+- `backend/src/health/tools.py`: Các hàm tính toán chỉ số (BMI, PBF, mỡ nội tạng), dinh dưỡng, lịch tập và kiểm tra quy tắc an toàn y tế.
 
-| Agent | Vai trò |
+---
+
+## 2. Danh Sách Agent Chuyên Trách
+
+| Agent | Vai trò chính |
 | --- | --- |
-| `QuestionNormalizerAgent` | Viết lại follow-up question thành câu hỏi độc lập |
-| `SupervisorAgent` | Chọn một hoặc nhiều agent chuyên trách |
-| `InBodyAgent` | Tính BMI, đánh giá PBF và mỡ nội tạng |
-| `RAGAgent` | Rewrite query, hybrid search, rerank tài liệu |
-| `NutritionAgent` | Gợi ý protein và calorie strategy |
-| `TrainingAgent` | Gợi ý lịch tập cơ bản |
-| `WebSearchAgent` | Tìm thông tin mới khi câu hỏi cần tính thời sự |
-| `SafetyAgent` | Luôn chạy guardrail y tế |
-| `ResponseComposerAgent` | Tổng hợp câu trả lời cuối |
+| `QuestionNormalizerAgent` | Chuẩn hóa câu hỏi theo ngữ cảnh lịch sử hội thoại thành câu độc lập |
+| `SupervisorAgent` | Phân tích ý định và chọn danh sách các agent phù hợp cần kích hoạt |
+| `InBodyAgent` | Tính toán chỉ số BMI, đánh giá tỷ lệ mỡ (PBF) và cấp độ mỡ nội tạng |
+| `RAGAgent` | Tái cấu trúc truy vấn, thực hiện Hybrid Search (Vector + BM25) trên corpus y tế |
+| `NutritionAgent` | Tính toán mục tiêu calo và phân bổ macro/protein theo thể trạng |
+| `TrainingAgent` | Đề xuất lịch tập luyện kháng lực và cardio theo số buổi/tuần |
+| `WebSearchAgent` | Tìm kiếm dữ liệu mới qua Tavily khi câu hỏi mang tính thời sự hoặc nghiên cứu mới |
+| `SafetyAgent` | Áp dụng guardrail an toàn y tế bắt buộc, lọc bỏ lời khuyên cực đoan |
+| `ResponseComposerAgent` | Tổng hợp thông tin từ các agent thành câu trả lời mạch lạc, kèm trích dẫn |
 
-## 3. Shared State
+---
 
-Các agent cùng đọc/ghi vào state:
+## 3. Cơ Chế Fast-Path Tốc Độ Cao (P0)
+
+Để tiết kiệm chi phí tính toán và bảo vệ an toàn y tế tuyệt đối, hệ thống có 2 cơ chế Fast-Path bỏ qua LLM/RAG:
+
+1.  **Deterministic Safety Pre-Check:**
+    *   Chạy kiểm tra quy tắc triệu chứng khẩn cấp (đau ngực, khó thở, ngất xỉu, v.v.) **ngay trước khi vào Graph**.
+    *   Nếu phát hiện nguy cơ `urgent`, trả về cảnh báo cố định lập tức trong **~10–40 ms**, không gọi LLM, Qdrant hay Web Search.
+2.  **BMI Tool Fast-Path:**
+    *   Nếu câu hỏi chỉ đơn thuần yêu cầu tính toán BMI từ chiều cao & cân nặng hợp lệ, hệ thống tính toán bằng pure-Python tool và trả lời trong **~15 ms**.
+
+---
+
+## 4. Shared State (`AgentState`)
+
+Tất cả các node trong Graph cùng chia sẻ và cập nhật trạng thái chung:
 
 ```python
 {
@@ -36,32 +54,54 @@ Các agent cùng đọc/ghi vào state:
     "selected_agents": [],
     "tool_results": [],
     "retrieved_docs": [],
+    "evidence": [],                # Danh sách citations đã được map vào tài liệu thực tế
+    "evidence_status": "supported",# supported | partial | insufficient | not_required
+    "limitations": [],             # Giới hạn dữ liệu/khuyến cáo
     "safety_result": {},
-    "agent_trace": [],
-    "final_answer": ""
+    "personalization_used": {},    # Dữ liệu profile/measurement đã xác nhận
+    "agent_trace": [],             # Dấu vết thực thi của từng agent
+    "final_answer": "",
+    "errors": []
 }
 ```
 
-## 4. Luồng xử lý
+---
+
+## 5. Luồng Xử Lý Trong Graph
 
 ```text
+[Input Request]
+      ↓
+[Safety Pre-Check] ──(urgent)──> [Return Emergency Fast-Path (~40ms)]
+      ↓ (safe)
+[BMI Check] ──────(only BMI)───> [Return BMI Fast-Path (~15ms)]
+      ↓ (normal)
 normalize_question
-  -> supervisor
-  -> inbody_agent
-  -> nutrition_agent
-  -> training_agent
-  -> rag_agent
-  -> web_search_agent
-  -> general_chat_agent
-  -> safety_agent
-  -> response_composer
+      ↓
+supervisor (chọn các agent)
+      ↓
+┌────────────────────────────────────────────────────────┐
+│  Các domain agent (chạy khi có trong selected_agents): │
+│  ├─ inbody_agent                                       │
+│  ├─ nutrition_agent                                    │
+│  ├─ training_agent                                     │
+│  ├─ rag_agent                                          │
+│  ├─ web_search_agent                                   │
+│  └─ general_chat_agent                                 │
+└────────────────────────────────────────────────────────┘
+      ↓
+safety_agent (chạy guardrail kiểm tra chéo)
+      ↓
+response_composer (tổng hợp câu trả lời & gắn citations)
+      ↓
+[Output Contract]
 ```
 
-Các node domain agent chỉ thực sự xử lý khi tên agent có trong `selected_agents`. Cách này giữ graph đơn giản nhưng vẫn cho phép một câu hỏi gọi nhiều agent.
+---
 
-## 5. Agent Trace
+## 6. Minh Chứng Thực Thi (`agent_trace`)
 
-Mỗi bước ghi trace dạng:
+Mỗi node ghi lại vết hoạt động để giao diện Streamlit hiển thị trực quan cho người dùng và phục vụ chấm điểm đồ án:
 
 ```json
 {
@@ -72,26 +112,9 @@ Mỗi bước ghi trace dạng:
 }
 ```
 
-Frontend hiển thị trace trong expander `Agent trace` để demo và debug.
+---
 
-## 6. Ví dụ demo
+## 7. Giới Hạn Hiện Tại (Roadmap)
 
-Input:
-
-```text
-Tôi nam, 72kg, cao 170cm, PBF 28%, mỡ nội tạng level 12. Tôi nên giảm mỡ hay tăng cơ trước và tập thế nào 3 buổi/tuần?
-```
-
-Expected selected agents:
-
-```text
-InBodyAgent, NutritionAgent, TrainingAgent, RAGAgent
-```
-
-SafetyAgent và ResponseComposerAgent luôn chạy sau đó.
-
-## 7. Giới hạn MVP
-
-- Chưa có upload/parse ảnh hoặc PDF InBody.
-- Supervisor MVP dùng keyword + route fallback để ổn định demo, chưa phải planner phức tạp.
-- Các endpoint `/tools/...` vẫn tồn tại để dev/debug, nhưng flow người dùng chính là `/chat/complete`.
+- OCR đọc ảnh/PDF kết quả InBody đang thuộc lộ trình P2 (hiện tại người dùng nhập số liệu qua chat).
+- Metadata nguồn corpus đang ở mức seed/curated công khai, chưa qua thẩm định y khoa chính thức.

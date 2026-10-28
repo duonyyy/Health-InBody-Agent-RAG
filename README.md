@@ -6,7 +6,7 @@ Dự án xây dựng hệ thống chatbot hỏi đáp sức khỏe ứng dụng 
 
 MVP hiện tại kết hợp FastAPI, LangGraph, health tools, hybrid retrieval, LLM và safety guardrail để tạo câu trả lời có ngữ cảnh. Mục tiêu không phải thay thế bác sĩ, mà hỗ trợ người dùng hiểu các chỉ số cơ thể và nhận khuyến nghị tham khảo an toàn.
 
-> Lưu ý phạm vi hiện tại: backend chưa có endpoint upload/parse ảnh hoặc PDF báo cáo InBody. OCR và lưu lịch sử đo là hạng mục roadmap, chưa phải tính năng MVP đang chạy.
+> Lưu ý phạm vi hiện tại: source có gateway OCR InBody `/me/inbody-ocr` nhưng `FEATURE_OCR_UPLOAD` mặc định tắt. Chưa deploy hoặc kiểm chứng HTTP runtime; kết quả OCR luôn cần người dùng đối chiếu trước khi lưu.
 
 ## II. Bài Toán
 

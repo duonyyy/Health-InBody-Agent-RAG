@@ -1,53 +1,49 @@
-# Tavily Search Explained
+# Tavily Search & WebSearchAgent
 
-Tavily được dùng bởi `WebSearchAgent` trong Health/InBody Multi-Agent RAG MVP. Agent này chỉ nên chạy khi câu hỏi cần thông tin mới, nghiên cứu gần đây, tin tức hoặc dữ liệu thời sự mà corpus nội bộ có thể chưa cập nhật.
+Tavily Search API được tích hợp vào hệ thống **Health/InBody Multi-Agent RAG** thông qua module `backend/src/integrations/tavily.py`, phục vụ riêng cho tác tử `WebSearchAgent`.
 
-## 1. Khi nào dùng WebSearchAgent
+Agent này được thiết kế để mở rộng tri thức ra ngoài phạm vi kho tài liệu nội bộ khi người dùng đặt các câu hỏi mang tính thời sự, nghiên cứu y học mới công bố hoặc các hướng dẫn sức khỏe gần đây.
 
-Các dấu hiệu:
+---
 
-- "mới nhất"
-- "gần đây"
-- "hôm nay"
-- "năm 2026"
-- "vừa công bố"
-- câu hỏi về nghiên cứu hoặc khuyến nghị mới
+## 1. Dấu Hiệu Kích Hoạt `WebSearchAgent`
 
-Ví dụ:
+Bộ phân loại của `SupervisorAgent` sẽ cân nhắc chọn `WebSearchAgent` khi phát hiện các đặc trưng:
+- Từ khóa thời gian: *"mới nhất"*, *"gần đây"*, *"hôm nay"*, *"năm 2026"*, *"vừa công bố"*.
+- Hỏi về xu hướng hoặc nghiên cứu mới: *"nghiên cứu mới về mối liên hệ giữa mỡ nội tạng và tim mạch"*, *"hướng dẫn mới của WHO về tiêu thụ đường"*.
 
-```text
-Nghiên cứu mới nhất về mỡ nội tạng và nguy cơ tim mạch nói gì?
-```
+---
 
-## 2. Flow trong multi-agent
+## 2. Luồng Điều Phối Trong Multi-Agent Graph
 
 ```text
-SupervisorAgent
-  -> WebSearchAgent
-  -> SafetyAgent
-  -> ResponseComposerAgent
+[User Query]
+     ↓
+[SupervisorAgent]
+     ↓
+┌──────────────────────────────────────┐
+│  Kích hoạt WebSearchAgent            │
+│  (Kết hợp cùng InBodyAgent nếu có số)│
+└──────────────────────────────────────┘
+     ↓
+[Tavily Search API Call] ──> [Trích xuất tóm tắt và nguồn web uy tín]
+     ↓
+[SafetyAgent] ─────────────> [Áp đặt rào cản an toàn y tế bắt buộc]
+     ↓
+[ResponseComposerAgent] ───> [Tổng hợp thông tin kèm liên kết nguồn web]
 ```
 
-Nếu câu hỏi vừa có chỉ số cá nhân vừa cần thông tin mới, SupervisorAgent có thể chọn thêm agent khác:
+---
 
-```text
-SupervisorAgent
-  -> InBodyAgent
-  -> WebSearchAgent
-  -> SafetyAgent
-  -> ResponseComposerAgent
-```
+## 3. Cấu Trúc File Liên Quan
 
-## 3. File liên quan
+- `backend/src/integrations/tavily.py`: Wrapper xử lý kết nối HTTP tới API Tavily, lọc kết quả và xử lý ngoại lệ timeout.
+- `backend/src/agents/graph.py`: Định nghĩa node `web_search_agent` trong đồ thị LangGraph.
 
-- `backend/src/tavily_tool.py`: wrapper Tavily.
-- `backend/src/agents/graph.py`: `web_search_agent`.
-- `backend/src/brain.py`: vẫn giữ route detection fallback cho tương thích.
+---
 
-## 4. Safety
+## 4. Nguyên Tắc An Toàn (Safety Guardrails)
 
-Thông tin web chỉ dùng ở mức tham khảo. ResponseComposerAgent vẫn phải:
-
-- Không chẩn đoán bệnh.
-- Không kê đơn.
-- Khuyến nghị gặp bác sĩ khi có triệu chứng nguy hiểm hoặc bệnh nền phức tạp.
+Dữ liệu thu thập từ Internet luôn có tính biến động và rủi ro:
+1.  **Không tin cậy mù quáng:** `SafetyAgent` luôn chạy sau `WebSearchAgent` để kiểm duyệt nội dung, ngăn chặn các trào lưu ăn kiêng cực đoan hoặc lời khuyên dùng thuốc tự ý.
+2.  **Giới hạn trách nhiệm:** Mọi câu trả lời sử dụng dữ liệu web đều phải đi kèm khuyến cáo: *"Thông tin được tổng hợp từ nguồn tham khảo công khai, người dùng cần tham vấn ý kiến bác sĩ chuyên khoa trước khi áp dụng."*
