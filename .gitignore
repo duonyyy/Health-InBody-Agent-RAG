@@ -58,9 +58,7 @@ desktop.ini
 *.sqlite
 *.sqlite3
 
-# Internal career notes and checklists
-MWG_AI_Engineer_Agentic_AI_JD_Checklist.md
-*JD_Checklist*
+
 
 # Next.js build
 .next/

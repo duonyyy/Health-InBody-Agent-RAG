@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2, Sparkles, AlertCircle } from 'lucide-react';
+import { Send, Loader2, Sparkles, RotateCcw } from 'lucide-react';
 import { ChatMessage } from '@/types';
 import MessageBubble from './MessageBubble';
 import QuickPrompts from './QuickPrompts';
@@ -89,6 +89,20 @@ export default function ChatContainer({ initialMessages }: ChatContainerProps) {
     }
   };
 
+  const handleResetChat = () => {
+    setMessages([
+      {
+        id: `msg-welcome-${Date.now()}`,
+        role: 'assistant',
+        content:
+          '👋 Đã làm mới phiên hội thoại!\n\n' +
+          'Tôi sẵn sàng phân tích chỉ số InBody mới, tư vấn thực đơn dinh dưỡng hoặc giải đáp thắc mắc sức khỏe của bạn.',
+        timestamp: 'Vừa xong',
+        selected_agents: ['greeter_node'],
+      },
+    ]);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -147,9 +161,22 @@ export default function ChatContainer({ initialMessages }: ChatContainerProps) {
           />
 
           <div className="flex items-center justify-between px-3 pt-1 border-t border-slate-800/60 mt-1">
-            <div className="flex items-center gap-2 text-[11px] text-slate-400">
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span>Safety Pre-check Active</span>
+            <div className="flex items-center gap-3 text-[11px] text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Safety Pre-check Active</span>
+              </span>
+              {messages.length > 2 && (
+                <button
+                  type="button"
+                  onClick={handleResetChat}
+                  className="flex items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors ml-2 hover:bg-slate-800/80 px-2 py-0.5 rounded"
+                  title="Bắt đầu lại cuộc trò chuyện mới"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Xóa lịch sử</span>
+                </button>
+              )}
             </div>
 
             <button

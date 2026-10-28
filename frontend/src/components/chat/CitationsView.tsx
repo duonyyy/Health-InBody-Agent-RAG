@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { BookOpen, ExternalLink, ChevronDown, ChevronUp, FileText } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronUp, FileText } from 'lucide-react';
 import { Citation } from '@/types';
 
 interface CitationsViewProps {

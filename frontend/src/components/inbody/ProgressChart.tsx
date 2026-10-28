@@ -15,13 +15,56 @@ import {
   ReferenceLine,
 } from 'recharts';
 import { InBodyMeasurement } from '@/types';
-import { Activity, TrendingDown, ShieldCheck } from 'lucide-react';
+import { Activity } from 'lucide-react';
 
 interface ProgressChartProps {
   measurements: InBodyMeasurement[];
 }
 
 type ChartMode = 'composition' | 'fat' | 'visceral' | 'all';
+
+interface TooltipEntry {
+  color?: string;
+  name?: string;
+  value?: number | string;
+  unit?: string;
+  payload?: {
+    fullDate?: string;
+  };
+}
+
+interface CustomTooltipProps {
+  active?: boolean;
+  payload?: TooltipEntry[];
+  label?: string;
+}
+
+function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
+  if (active && payload && payload.length) {
+    return (
+      <div className="glass-panel p-3 rounded-xl border border-slate-700 bg-slate-900/95 text-xs shadow-2xl space-y-1.5">
+        <div className="font-semibold text-slate-300 pb-1 border-b border-slate-800">
+          Ngày: {payload[0]?.payload?.fullDate || label}
+        </div>
+        {payload.map((entry, index) => (
+          <div key={index} className="flex items-center justify-between gap-4">
+            <span className="flex items-center gap-1.5 text-slate-400">
+              <span
+                className="w-2.5 h-2.5 rounded-full"
+                style={{ backgroundColor: entry.color }}
+              />
+              <span>{entry.name}:</span>
+            </span>
+            <span className="font-bold text-slate-100 font-mono">
+              {entry.value} {entry.unit || ''}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return null;
+}
 
 export default function ProgressChart({ measurements }: ProgressChartProps) {
   const [mode, setMode] = useState<ChartMode>('composition');
@@ -43,33 +86,6 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
         bmi: m.bmi,
       };
     });
-
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="glass-panel p-3 rounded-xl border border-slate-700 bg-slate-900/95 text-xs shadow-2xl space-y-1.5">
-          <div className="font-semibold text-slate-300 pb-1 border-b border-slate-800">
-            Ngày: {payload[0]?.payload?.fullDate || label}
-          </div>
-          {payload.map((entry: any, index: number) => (
-            <div key={index} className="flex items-center justify-between gap-4">
-              <span className="flex items-center gap-1.5 text-slate-400">
-                <span
-                  className="w-2.5 h-2.5 rounded-full"
-                  style={{ backgroundColor: entry.color }}
-                />
-                <span>{entry.name}:</span>
-              </span>
-              <span className="font-bold text-slate-100 font-mono">
-                {entry.value} {entry.unit || ''}
-              </span>
-            </div>
-          ))}
-        </div>
-      );
-    }
-    return null;
-  };
 
   return (
     <div className="glass-card rounded-2xl p-5 border border-slate-800/80 bg-slate-900/60 shadow-lg">

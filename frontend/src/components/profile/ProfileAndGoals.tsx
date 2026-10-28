@@ -9,7 +9,6 @@ import {
   Save,
   Check,
   Trash2,
-  AlertCircle,
   ShieldCheck,
   Star,
   Plus,
@@ -152,7 +151,7 @@ export default function ProfileAndGoals() {
                 <label className="block text-slate-300 font-medium mb-1">Giới tính sinh học</label>
                 <select
                   value={profile.sex}
-                  onChange={(e) => setProfile({ ...profile, sex: e.target.value as any })}
+                  onChange={(e) => setProfile({ ...profile, sex: e.target.value as 'male' | 'female' })}
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:border-indigo-500"
                 >
                   <option value="male">Nam (WPRO Male standard)</option>
@@ -176,7 +175,7 @@ export default function ProfileAndGoals() {
               <label className="block text-slate-300 font-medium mb-1">Mức độ hoạt động thể chất</label>
               <select
                 value={profile.activity_level || 'moderate'}
-                onChange={(e) => setProfile({ ...profile, activity_level: e.target.value as any })}
+                onChange={(e) => setProfile({ ...profile, activity_level: e.target.value as 'sedentary' | 'light' | 'moderate' | 'very_active' })}
                 className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 focus:outline-none focus:border-indigo-500"
               >
                 <option value="sedentary">Ít vận động (Dân văn phòng, ngồi nhiều)</option>

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { InBodyMeasurement } from '@/types';
-import { Trash2, Calendar, FileText, Smartphone, HardDrive, Check, X, AlertTriangle } from 'lucide-react';
+import { Trash2, Calendar, FileText, Smartphone, HardDrive, X } from 'lucide-react';
 import { classifyBmiAsian, classifyPbf, classifyVisceralFat } from '@/lib/classifiers';
 
 interface MeasurementHistoryTableProps {

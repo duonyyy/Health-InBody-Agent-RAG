@@ -2,16 +2,10 @@
 
 import React, { useState } from 'react';
 import {
-  Sliders,
   Server,
   Terminal,
   Play,
-  CheckCircle2,
-  AlertCircle,
   RefreshCw,
-  Cpu,
-  Layers,
-  ShieldAlert,
 } from 'lucide-react';
 import { BackendHealth } from '@/types';
 import { checkBackendHealth } from '@/lib/api';
@@ -19,6 +13,11 @@ import { calculateBmi, calculateBmr, classifyBmiAsian } from '@/lib/classifiers'
 
 interface DevToolsProps {
   initialHealth: BackendHealth | null;
+}
+
+interface ToolOutputData {
+  execution_time_ms?: number;
+  [key: string]: unknown;
 }
 
 export default function DevTools({ initialHealth }: DevToolsProps) {
@@ -31,7 +30,7 @@ export default function DevTools({ initialHealth }: DevToolsProps) {
   const [testHeight, setTestHeight] = useState(172);
   const [testAge, setTestAge] = useState(27);
   const [testSymptom, setTestSymptom] = useState('Đau ngực khó thở khi chạy bộ');
-  const [toolOutput, setToolOutput] = useState<any>(null);
+  const [toolOutput, setToolOutput] = useState<ToolOutputData | null>(null);
 
   const handlePingHealth = async () => {
     setIsChecking(true);
@@ -296,7 +295,7 @@ export default function DevTools({ initialHealth }: DevToolsProps) {
             <div className="flex items-center justify-between text-xs pb-1 border-b border-slate-800">
               <span className="font-semibold text-emerald-400">Kết quả phản hồi JSON:</span>
               <span className="text-slate-500 font-mono text-[11px]">
-                Thời gian: {toolOutput.execution_time_ms} ms
+                Thời gian: {toolOutput.execution_time_ms ?? 0} ms
               </span>
             </div>
             <pre className="font-mono text-xs text-slate-200 overflow-x-auto p-2 bg-slate-900/60 rounded-lg">

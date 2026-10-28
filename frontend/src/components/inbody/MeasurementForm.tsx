@@ -11,13 +11,13 @@ interface MeasurementFormProps {
 }
 
 export default function MeasurementForm({ onSave, defaultHeight = 172 }: MeasurementFormProps) {
-  const [date, setDate] = useState('2026-10-26');
-
-  React.useEffect(() => {
+  const [date, setDate] = useState(() => {
     try {
-      setDate(new Date().toISOString().split('T')[0]);
-    } catch (e) {}
-  }, []);
+      return new Date().toISOString().split('T')[0];
+    } catch {
+      return '2026-10-26';
+    }
+  });
   const [height, setHeight] = useState(defaultHeight);
   const [weight, setWeight] = useState<number | ''>(72.4);
   const [smm, setSmm] = useState<number | ''>(33.8);
@@ -63,8 +63,9 @@ export default function MeasurementForm({ onSave, defaultHeight = 172 }: Measure
 
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3000);
-    } catch (err: any) {
-      setErrorMsg(err?.message || 'Có lỗi khi lưu lần đo');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Có lỗi khi lưu lần đo';
+      setErrorMsg(message);
     } finally {
       setIsSubmitting(false);
     }

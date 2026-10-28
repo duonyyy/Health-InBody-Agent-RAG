@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Weight,
   Activity,
@@ -12,6 +12,7 @@ import {
   FileText,
   Calendar,
   Layers,
+  Loader2,
 } from 'lucide-react';
 import { InBodyMeasurement } from '@/types';
 import KpiCard from './KpiCard';
@@ -31,20 +32,38 @@ export default function InBodyDashboard() {
   const [subTab, setSubTab] = useState<'overview' | 'manual' | 'ocr' | 'history'>('overview');
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
       const data = await fetchInBodyMeasurements();
       setMeasurements(data);
     } catch (err) {
-      console.error(err);
+      console.error('Load measurements error:', err);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    loadData();
+    let ignore = false;
+    async function init() {
+      try {
+        const data = await fetchInBodyMeasurements();
+        if (!ignore) {
+          setMeasurements(data);
+          setIsLoading(false);
+        }
+      } catch (err) {
+        if (!ignore) {
+          console.error('Init measurements error:', err);
+          setIsLoading(false);
+        }
+      }
+    }
+    init();
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   const handleSave = async (meas: Partial<InBodyMeasurement>) => {
@@ -93,6 +112,14 @@ export default function InBodyDashboard() {
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+      {/* Loading status pill */}
+      {isLoading && (
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-400 w-fit shadow-sm">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+          <span>Đang đồng bộ dữ liệu chỉ số InBody...</span>
+        </div>
+      )}
+
       {/* KPI Top Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <KpiCard

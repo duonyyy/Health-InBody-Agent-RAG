@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react';
 import {
-  Activity,
   Trash2,
   Settings,
   Sparkles,

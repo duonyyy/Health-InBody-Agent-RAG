@@ -24,7 +24,7 @@ export default function Home() {
       try {
         const res = await checkBackendHealth();
         if (mounted) setHealth(res);
-      } catch (err) {
+      } catch {
         if (mounted) {
           setHealth({
             status: 'offline',

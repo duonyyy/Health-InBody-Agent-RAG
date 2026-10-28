@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { UploadCloud, FileImage, Sparkles, Check, AlertCircle, RefreshCw, Save } from 'lucide-react';
+import { UploadCloud, Sparkles, Check, AlertCircle, RefreshCw, Save } from 'lucide-react';
 import { InBodyMeasurement } from '@/types';
 import { uploadInBodyOcrFile } from '@/lib/api';
 
@@ -37,8 +37,9 @@ export default function OcrScanner({ onSaveOcrResult }: OcrScannerProps) {
     try {
       const result = await uploadInBodyOcrFile(file);
       setExtractedData(result);
-    } catch (err: any) {
-      setErrorMsg(err?.message || 'Có lỗi khi phân tích ảnh phiếu InBody');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Có lỗi khi phân tích ảnh phiếu InBody';
+      setErrorMsg(message);
     } finally {
       setIsScanning(false);
     }
@@ -55,8 +56,9 @@ export default function OcrScanner({ onSaveOcrResult }: OcrScannerProps) {
         setFile(null);
         setPreviewUrl(null);
       }, 2500);
-    } catch (err: any) {
-      setErrorMsg(err?.message || 'Không thể lưu vào hồ sơ');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Không thể lưu vào hồ sơ';
+      setErrorMsg(message);
     }
   };
 
@@ -109,6 +111,7 @@ export default function OcrScanner({ onSaveOcrResult }: OcrScannerProps) {
 
           {previewUrl ? (
             <div className="flex flex-col items-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={previewUrl}
                 alt="Phiếu InBody preview"

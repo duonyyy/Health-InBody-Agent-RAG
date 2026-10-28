@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { GitCommit, ChevronDown, ChevronUp, CheckCircle, Clock } from 'lucide-react';
+import { GitCommit, ChevronDown, ChevronUp, Clock } from 'lucide-react';
 import { AgentTraceStep } from '@/types';
 
 interface AgentTraceViewProps {

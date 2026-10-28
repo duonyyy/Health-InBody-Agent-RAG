@@ -66,7 +66,7 @@ export interface AgentTraceStep {
   action?: string;
   duration_ms?: number;
   status?: 'success' | 'running' | 'skipped' | 'fallback';
-  details?: Record<string, any>;
+  details?: Record<string, unknown>;
   timestamp?: string;
 }
 

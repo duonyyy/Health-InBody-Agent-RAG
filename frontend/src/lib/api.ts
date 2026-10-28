@@ -21,7 +21,6 @@ const PROFILE_KEY = `${STORAGE_PREFIX}profile`;
 const MEASUREMENTS_KEY = `${STORAGE_PREFIX}measurements`;
 const CHECKINS_KEY = `${STORAGE_PREFIX}checkins`;
 const MEMORY_KEY = `${STORAGE_PREFIX}memory`;
-const CONV_KEY = `${STORAGE_PREFIX}conv_id`;
 
 export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
@@ -84,7 +83,7 @@ export async function checkBackendHealth(): Promise<BackendHealth> {
       latency_ms: latency,
       timestamp: new Date().toISOString(),
     };
-  } catch (err) {
+  } catch {
     return {
       status: 'offline',
       latency_ms: Math.round(performance.now() - start),
@@ -295,7 +294,7 @@ export async function fetchUserProfile(): Promise<UserProfile> {
     if (res.ok) {
       return await res.json();
     }
-  } catch (err) {
+  } catch {
     // fallback
   }
 
@@ -321,7 +320,7 @@ export async function saveUserProfile(profile: UserProfile): Promise<UserProfile
     if (res.ok) {
       return await res.json();
     }
-  } catch (err) {
+  } catch {
     // fallback
   }
 
@@ -346,7 +345,7 @@ export async function fetchInBodyMeasurements(): Promise<InBodyMeasurement[]> {
       if (Array.isArray(data)) return data;
       if (data.items) return data.items;
     }
-  } catch (err) {
+  } catch {
     // fallback
   }
 
@@ -389,7 +388,7 @@ export async function saveInBodyMeasurement(measurement: Partial<InBodyMeasureme
     if (res.ok) {
       return await res.json();
     }
-  } catch (err) {
+  } catch {
     // fallback
   }
 
@@ -411,7 +410,7 @@ export async function deleteInBodyMeasurement(id: string): Promise<boolean> {
       headers: { 'X-Dev-User-Id': userId },
     });
     if (res.ok) return true;
-  } catch (err) {
+  } catch {
     // fallback
   }
 
@@ -446,7 +445,7 @@ export async function uploadInBodyOcrFile(file: File): Promise<Partial<InBodyMea
       const data = await res.json();
       return data;
     }
-  } catch (err) {
+  } catch {
     console.warn('Real OCR endpoint unavailable, running client-side simulated AI OCR parser');
   }
 
@@ -540,7 +539,7 @@ export async function searchCorpusApi(query: string, category?: string): Promise
       if (Array.isArray(data)) return data;
       if (data.results) return data.results;
     }
-  } catch (err) {
+  } catch {
     // fallback
   }
 

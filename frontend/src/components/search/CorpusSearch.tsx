@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, BookOpen, FileText, Sparkles, Filter, ExternalLink } from 'lucide-react';
+import { Search, FileText, Filter } from 'lucide-react';
 import { Citation } from '@/types';
 import { searchCorpusApi } from '@/lib/api';
 
