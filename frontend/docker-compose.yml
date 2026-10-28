@@ -14,6 +14,7 @@ services:
     environment:
       - API_AUTH_MODE=${API_AUTH_MODE:-production}
       - USER_ID=${USER_ID:-demo-user}
+      - FEATURE_OCR_UPLOAD=${FEATURE_OCR_UPLOAD:-false}
     ports:
       - "8051:8051"
     expose:

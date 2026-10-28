@@ -1,0 +1,168 @@
+import { InBodyMeasurement, UserProfile, UserGoal, CheckInLog, MemoryProposal } from '@/types';
+
+export const INITIAL_PROFILE: UserProfile = {
+  user_id: 'demo-user',
+  display_name: 'Nguyễn Minh Khoa',
+  age: 27,
+  sex: 'male',
+  height_cm: 172,
+  activity_level: 'moderate',
+  health_conditions: ['Hơi căng mỏi cơ thắt lưng nhẹ khi ngồi lâu'],
+  dietary_restrictions: ['Hạn chế đường tinh luyện', 'Không uống được sữa có lactose'],
+  acknowledged_disclaimer: true,
+  created_at: '2026-06-01T08:00:00Z',
+  updated_at: '2026-10-20T10:30:00Z',
+};
+
+export const INITIAL_GOAL: UserGoal = {
+  target_weight_kg: 70.0,
+  target_body_fat_pct: 16.5,
+  target_skeletal_muscle_kg: 34.5,
+  target_date: '2026-12-31',
+  primary_goal: 'muscle_gain',
+  notes: 'Tập trung tăng cơ nạc (hypertrophy) và duy trì tỷ lệ mỡ dưới 17% đón Tết.',
+};
+
+export const INITIAL_MEASUREMENTS: InBodyMeasurement[] = [
+  {
+    id: 'meas-001',
+    user_id: 'demo-user',
+    measured_at: '2026-07-15T08:30:00Z',
+    weight_kg: 76.8,
+    height_cm: 172,
+    skeletal_muscle_mass_kg: 31.8,
+    body_fat_mass_kg: 19.2,
+    percent_body_fat: 25.0,
+    visceral_fat_level: 9,
+    bmi: 25.96,
+    bmr_kcal: 1640,
+    notes: 'Lần đo đầu tiên tại phòng tập FitCity',
+    source: 'ocr',
+  },
+  {
+    id: 'meas-002',
+    user_id: 'demo-user',
+    measured_at: '2026-08-15T08:15:00Z',
+    weight_kg: 75.2,
+    height_cm: 172,
+    skeletal_muscle_mass_kg: 32.4,
+    body_fat_mass_kg: 17.6,
+    percent_body_fat: 23.4,
+    visceral_fat_level: 8,
+    bmi: 25.42,
+    bmr_kcal: 1655,
+    notes: 'Sau 1 tháng ăn thâm hụt calo nhẹ và tập 4 buổi/tuần',
+    source: 'manual',
+  },
+  {
+    id: 'meas-003',
+    user_id: 'demo-user',
+    measured_at: '2026-09-18T09:00:00Z',
+    weight_kg: 73.6,
+    height_cm: 172,
+    skeletal_muscle_mass_kg: 33.1,
+    body_fat_mass_kg: 15.6,
+    percent_body_fat: 21.2,
+    visceral_fat_level: 7,
+    bmi: 24.88,
+    bmr_kcal: 1675,
+    notes: 'Tăng lượng đạm lên 1.8g/kg, cơ bắp bắt đầu lên rõ',
+    source: 'ocr',
+  },
+  {
+    id: 'meas-004',
+    user_id: 'demo-user',
+    measured_at: '2026-10-22T08:00:00Z',
+    weight_kg: 72.4,
+    height_cm: 172,
+    skeletal_muscle_mass_kg: 33.8,
+    body_fat_mass_kg: 14.1,
+    percent_body_fat: 19.5,
+    visceral_fat_level: 6,
+    bmi: 24.47,
+    bmr_kcal: 1690,
+    notes: 'Lần đo mới nhất - Đạt mốc mỡ dưới 20% lý tưởng!',
+    source: 'device',
+  },
+];
+
+export const INITIAL_CHECKINS: CheckInLog[] = [
+  {
+    id: 'chk-001',
+    date: '2026-10-25',
+    workout_completed: true,
+    workout_rating: 5,
+    energy_level: 4,
+    sleep_hours: 7.5,
+    unusual_symptoms: 'Không có, cơ thể hồi phục rất tốt sau buổi chân.',
+    notes: 'Đã hoàn thành 4/4 buổi tuần này.',
+  },
+  {
+    id: 'chk-002',
+    date: '2026-10-18',
+    workout_completed: true,
+    workout_rating: 4,
+    energy_level: 3,
+    sleep_hours: 6.5,
+    unusual_symptoms: 'Hơi mỏi khớp vai trái do đẩy tạ nặng hơn tuần trước.',
+    notes: 'Cần khởi động kỹ khớp vai trước khi đẩy ngực.',
+  },
+];
+
+export const INITIAL_MEMORY_FACTS: MemoryProposal[] = [
+  {
+    id: 'mem-001',
+    fact: 'Người dùng tập gym 4 buổi/tuần theo giáo án Upper/Lower split',
+    category: 'Thói quen tập luyện',
+    confidence: 0.95,
+    status: 'confirmed',
+    created_at: '2026-08-10T14:20:00Z',
+  },
+  {
+    id: 'mem-002',
+    fact: 'Người dùng không dung nạp lactose, ưu tiên whey isolate hoặc đạm thực vật',
+    category: 'Dị ứng & Dinh dưỡng',
+    confidence: 0.98,
+    status: 'confirmed',
+    created_at: '2026-08-12T09:15:00Z',
+  },
+  {
+    id: 'mem-003',
+    fact: 'Thích chạy bộ ngoài trời vào sáng thứ Bảy cự ly 5km',
+    category: 'Sở thích vận động',
+    confidence: 0.88,
+    status: 'pending',
+    created_at: '2026-10-24T16:00:00Z',
+  },
+];
+
+export const INITIAL_CORPUS_DOCS = [
+  {
+    title: 'Tiêu chuẩn phân loại InBody & Chỉ số Thành phần Cơ thể',
+    category: 'inbody_guide',
+    source: 'Huong_Dan_Doc_Chi_So_InBody_2026.pdf',
+    score: 0.94,
+    content: 'Chỉ số PBF (Percent Body Fat) phản ánh tỷ lệ mỡ thực tế hơn BMI. Với nam giới châu Á, mức chuẩn nằm trong khoảng 10-20%, trên 25% được xem là béo phì. Mỡ nội tạng (VFL) trên mức 10 cảnh báo nguy cơ rối loạn chuyển hóa tim mạch.',
+  },
+  {
+    title: 'Nguyên tắc An toàn Tim mạch và Hô hấp trong Thể dục Thể thao',
+    category: 'medical_safety',
+    source: 'Khuyen_Cao_An_Toan_Y_Te_The_Thao_Bo_Y_Te.pdf',
+    score: 0.98,
+    content: 'Khi gặp triệu chứng đau thắt ngực, khó thở kịch phát, chóng mặt choáng váng hoặc vã mồ hôi lạnh trong hoặc sau khi tập luyện, người tập phải dừng ngay lập tức và đến cơ sở y tế gần nhất để đo điện tim. Không được tiếp tục gắng sức.',
+  },
+  {
+    title: 'Chiến lược Phân bổ Dinh dưỡng Tăng cơ Giảm mỡ (Body Recomposition)',
+    category: 'nutrition',
+    source: 'Giao_Trinh_Dinh_Duong_The_Hinh_Nang_Cao.pdf',
+    score: 0.91,
+    content: 'Để tái tạo thể trạng (Body Recomposition), duy trì thâm hụt năng lượng nhỏ 200-300 kcal/ngày cùng lượng protein 1.8 - 2.2 g/kg trọng lượng cơ thể. Đảm bảo giấc ngủ sâu từ 7-8 tiếng để hormone đồng hóa cơ bắp hoạt động tối ưu.',
+  },
+  {
+    title: 'Giáo án Kháng lực Tăng cơ Xương (SMM) cho Người bận rộn',
+    category: 'workout',
+    source: 'Giao_An_Tap_Luyen_Khang_Luc_4_Buoi.pdf',
+    score: 0.89,
+    content: 'Chương trình Upper/Lower 4 ngày mỗi tuần giúp tối ưu hóa tần suất kích thích sợi cơ (2 lần/tuần/nhóm cơ) mà vẫn có 3 ngày nghỉ ngơi phục hồi hệ thần kinh trung ương và khớp.',
+  },
+];

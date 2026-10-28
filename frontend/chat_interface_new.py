@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 import html
 import json
 import logging
@@ -601,6 +602,24 @@ def request_json(
         return response.json()
     except ValueError as exc:
         raise requests.RequestException("Backend returned invalid JSON") from exc
+
+
+def request_inbody_ocr(uploaded_file) -> Dict[str, Any]:
+    """Send one private report through the authenticated backend gateway."""
+    headers = {}
+    if API_AUTH_MODE == "development":
+        headers["X-Dev-User-Id"] = str(st.session_state.get("user_id", DEFAULT_USER_ID))
+    with requests.Session() as session:
+        session.trust_env = False
+        response = session.post(
+            f"{API_BASE_URL}/me/inbody-ocr",
+            files={"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)},
+            headers=headers,
+            timeout=110,
+        )
+    if response.status_code >= 400:
+        raise requests.RequestException(f"{response.status_code}: {response.json().get('detail', 'Không thể đọc phiếu InBody')}")
+    return response.json()
 
 
 @retry(stop=stop_after_attempt(2), wait=wait_exponential(multiplier=1, min=1, max=4))
@@ -1576,6 +1595,80 @@ def render_progress_summary_subtab() -> None:
 def render_measurement_log_subtab() -> None:
     st.subheader("📝 Ghi nhận kết quả đo InBody mới")
     st.caption("Nhập các thông số chính xác từ phiếu in kết quả đo InBody của bạn (máy đo InBody 270, 370, 570, 770...).")
+
+    if os.getenv("FEATURE_OCR_UPLOAD", "false").lower() in {"1", "true", "yes", "on"}:
+        st.markdown("#### Đọc chỉ số từ ảnh hoặc PDF")
+        st.caption("Cần đồng ý xử lý dữ liệu sức khỏe trong Hồ sơ. Kết quả nhận dạng chỉ để điền nháp; hãy đối chiếu từng số với phiếu trước khi lưu.")
+        report = st.file_uploader("Chọn phiếu InBody", type=["jpg", "jpeg", "png", "webp", "pdf"], key="inbody_ocr_file")
+        report_hash = hashlib.sha256(report.getvalue()).hexdigest() if report is not None else None
+        if (st.session_state.get("inbody_ocr_result") is not None
+                and (st.session_state.get("inbody_ocr_owner") != st.session_state.get("user_id", DEFAULT_USER_ID)
+                     or st.session_state.get("inbody_ocr_file_hash") != report_hash)):
+            for key in ("inbody_ocr_result", "inbody_ocr_owner", "inbody_ocr_file_hash", "inbody_ocr_confirmed"):
+                st.session_state.pop(key, None)
+        if report is not None and st.button("Đọc phiếu InBody", key="read_inbody_report"):
+            try:
+                for key in ("height_cm", "weight_kg", "smm_kg", "bfm_kg", "pbf_percent", "visceral_fat_level", "body_water_l"):
+                    st.session_state.pop(f"ocr_{key}", None)
+                st.session_state.pop("inbody_ocr_confirmed", None)
+                st.session_state.inbody_ocr_result = request_inbody_ocr(report)
+                st.session_state.inbody_ocr_owner = st.session_state.get("user_id", DEFAULT_USER_ID)
+                st.session_state.inbody_ocr_file_hash = report_hash
+            except (requests.RequestException, ValueError) as exc:
+                st.error(f"Không thể đọc phiếu: {exc}")
+        result = (st.session_state.get("inbody_ocr_result")
+                  if st.session_state.get("inbody_ocr_owner") == st.session_state.get("user_id", DEFAULT_USER_ID)
+                  and st.session_state.get("inbody_ocr_file_hash") == report_hash
+                  else None)
+        if result:
+            if not result.get("extracted_fields"):
+                st.warning("Không đọc được chỉ số nào từ phiếu. Nếu tiếp tục nhập, dữ liệu sẽ được ghi là nhập tay.")
+            for warning in result.get("warnings", []):
+                st.warning(warning)
+            if result.get("unresolved_fields"):
+                st.info("Chỉ số chưa đọc được: " + ", ".join(result["unresolved_fields"]))
+            with st.form("confirm_inbody_ocr"):
+                fields = {}
+                labels = {
+                    "height_cm": "Chiều cao (cm)", "weight_kg": "Cân nặng (kg)",
+                    "smm_kg": "Cơ xương SMM (kg)", "bfm_kg": "Mỡ cơ thể BFM (kg)",
+                    "pbf_percent": "Mỡ cơ thể PBF (%)", "visceral_fat_level": "Mỡ nội tạng (level)",
+                    "body_water_l": "Nước cơ thể (L)",
+                }
+                for key, label in labels.items():
+                    extracted = result.get("extracted_fields", {}).get(key) or {}
+                    value = extracted.get("value")
+                    fields[key] = st.text_input(label, value="" if value is None else str(value), key=f"ocr_{key}")
+                    if extracted:
+                        st.caption(f"OCR báo đọc được ở trang {extracted.get('page_number')}: {extracted.get('raw_text', '')}")
+                measured_date = st.date_input("Ngày đo trên phiếu (giờ Việt Nam)", value=datetime.date.today(), key="ocr_measured_date")
+                measured_time = st.time_input("Giờ đo trên phiếu", value=datetime.time(12, 0), key="ocr_measured_time")
+                confirmed_ocr = st.checkbox("Tôi đã đối chiếu và sửa các chỉ số theo phiếu gốc", value=False, key="inbody_ocr_confirmed")
+                save_ocr = st.form_submit_button("Lưu chỉ số đã xác nhận")
+            if save_ocr:
+                if not confirmed_ocr:
+                    st.error("Bạn cần xác nhận các chỉ số trước khi lưu.")
+                else:
+                    try:
+                        values = {key: float(value.replace(",", ".")) for key, value in fields.items() if value.strip()}
+                        payload = {
+                            "measured_at": datetime.datetime.combine(
+                                measured_date, measured_time,
+                                tzinfo=datetime.timezone(datetime.timedelta(hours=7)),
+                            ).isoformat(),
+                            **values,
+                            "source_type": "ocr_confirmed" if result.get("extracted_fields") else "manual_confirmed",
+                            "confirmed_by_user": True,
+                        }
+                        request_json("POST", "/me/measurements", payload)
+                        st.session_state.pop("inbody_ocr_result", None)
+                        st.session_state.pop("inbody_ocr_owner", None)
+                        st.session_state.pop("inbody_ocr_file_hash", None)
+                        st.success("Đã lưu chỉ số do bạn xác nhận.")
+                        st.rerun()
+                    except (ValueError, requests.RequestException) as exc:
+                        st.error(f"Không thể lưu chỉ số: {exc}")
+        st.divider()
 
     with st.form("new_measurement_form"):
         col1, col2 = st.columns(2)

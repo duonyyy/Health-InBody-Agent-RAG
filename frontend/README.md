@@ -23,7 +23,7 @@ Frontend Streamlit cho backend FastAPI Health/InBody Agent RAG. Flow chính là 
 
 ## Lưu ý contract backend
 
-Backend hiện tại chưa có endpoint upload/parse ảnh hoặc PDF InBody. Vì vậy frontend không hiển thị upload giả. Người dùng nhập chỉ số InBody bằng văn bản trong chat; agent backend sẽ tự quyết định khi nào cần gọi tool BMI, PBF, mỡ nội tạng, dinh dưỡng, lịch tập hoặc safety.
+Frontend có biểu mẫu upload InBody sau khi cả backend và frontend bật `FEATURE_OCR_UPLOAD=true`. OCR chỉ điền bản nháp; người dùng phải đối chiếu và xác nhận trước khi lưu. Mặc định tính năng tắt vì chưa có kiểm chứng runtime, benchmark OCR theo từng chỉ số và lifecycle file/provenance.
 
 Endpoint chính:
 

@@ -1,0 +1,22 @@
+version: "3.8"
+
+networks:
+  internal-network:
+    name: internal-network
+    external: true
+
+services:
+  chatbot-next-ui:
+    build: .
+    hostname: chatbot-next-ui
+    container_name: chatbot-next-ui
+    restart: always
+    environment:
+      - NEXT_PUBLIC_API_URL=http://chatbot-api:8000
+      - NODE_ENV=production
+    ports:
+      - "3000:3000"
+    expose:
+      - 3000
+    networks:
+      - internal-network
