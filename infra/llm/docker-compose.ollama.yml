@@ -1,0 +1,30 @@
+version: '3.8'
+
+networks:
+  internal-network:
+    name: internal-network
+    external: true
+
+volumes:
+  ollama_data:
+    name: ollama_data
+
+services:
+  ollama-service:
+    image: ollama/ollama:latest
+    container_name: ollama-service
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - internal-network
+    # Bỏ comment deploy bên dưới nếu máy chủ có card NVIDIA GPU
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]

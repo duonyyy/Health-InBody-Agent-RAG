@@ -9,6 +9,10 @@ INSERT INTO schema_migrations(version)
 VALUES ('20260815_01_p1_personalization')
 ON CONFLICT (version) DO NOTHING;
 
+INSERT INTO schema_migrations(version)
+VALUES ('20260929_02_memory')
+ON CONFLICT (version) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     external_id VARCHAR(128) UNIQUE,

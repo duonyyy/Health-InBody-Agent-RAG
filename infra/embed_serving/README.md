@@ -232,6 +232,6 @@ Luu y: `VECTOR_SIZE` ben backend va kich thuoc embedding cua model phai cung la 
 
 ## Tai lieu lien quan
 
-- [docs/embed/EMBEDDING_SERVING_DOCUMENTATION.md](../docs/embed/EMBEDDING_SERVING_DOCUMENTATION.md)
-- [backend/src/custom_embedding.py](../backend/src/custom_embedding.py)
-- [backend/README.md](../backend/README.md)
+- [docs/embed/EMBEDDING_SERVING_DOCUMENTATION.md](../../docs/embed/EMBEDDING_SERVING_DOCUMENTATION.md)
+- [backend/src/llm/embedding.py](../../backend/src/llm/embedding.py)
+- [backend/README.md](../../backend/README.md)

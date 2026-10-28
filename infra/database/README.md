@@ -20,8 +20,8 @@ Migration P1 chạy trong transaction, idempotent cho thao tác `up`, ghi ledger
 Ví dụ áp dụng trong môi trường local Docker:
 
 ```powershell
-Get-Content -Raw ..\database\migrations\20260815_01_p1_personalization.up.sql |
-  docker compose exec -T postgres-db psql -U health_user -d health_inbody -v ON_ERROR_STOP=1
+Get-Content -Raw migrations\20260815_01_p1_personalization.up.sql |
+  docker compose -f ..\docker-compose.infra.yml exec -T postgres-db psql -U health_user -d health_inbody -v ON_ERROR_STOP=1
 ```
 
 Không đưa mật khẩu vào command hoặc commit. User/database thực tế phải lấy từ
@@ -109,4 +109,4 @@ Migration `migrations/20260929_02_memory.up.sql` chạy sau P1, thêm `memory_fa
 `chat_tasks` và index retention. Chat session/message hiện hữu vẫn dùng tiếp.
 Down migration xóa hai bảng mới và dữ liệu trong chúng; cần backup trước rollback.
 ORM mới ở `backend/src/memory/models.py`; chưa chạy migration này trên database thật.
-Chi tiết [retention và triển khai](../docs/implementation-roadmap/09-day17-memory-completion-2026-09-29.md).
+Chi tiết [retention và triển khai](../../docs/implementation-roadmap/09-day17-memory-completion-2026-09-29.md).

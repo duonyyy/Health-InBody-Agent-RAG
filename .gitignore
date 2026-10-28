@@ -53,6 +53,15 @@ desktop.ini
 .idea/
 .vscode/
 
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Next.js build
+.next/
+out/
+
 # Docker/runtime volumes
 postgres_data/
 qdrant_volume/
@@ -64,6 +73,9 @@ backend/data/generated/
 # Embedding model weights and generated serving assets
 embed_serving/models/
 embed_serving/logs/
+infra/embed_serving/models/
+infra/embed_serving/logs/
+**/models/bge-m3/
 
 # Large/raw/generated datasets
 dataset/
