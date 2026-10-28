@@ -1,0 +1,19 @@
+services:
+  ocr-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      OLLAMA_URL: ${OCR_OLLAMA_URL:-http://host.docker.internal:11434}
+      OLLAMA_MODEL: ${OCR_OLLAMA_MODEL:-}
+      OLLAMA_TIMEOUT_SECONDS: ${OCR_OLLAMA_TIMEOUT_SECONDS:-45}
+    expose:
+      - "18100"
+    networks:
+      - internal-network
+    restart: unless-stopped
+
+networks:
+  internal-network:
+    external: true
+    name: internal-network
