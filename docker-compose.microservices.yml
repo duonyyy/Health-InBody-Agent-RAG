@@ -1,0 +1,56 @@
+version: '3.8'
+
+networks:
+  internal-network:
+    name: internal-network
+    external: true
+
+services:
+  # ==========================================
+  # SERVICE 1: CORE BUSINESS API (PORT 8000)
+  # ==========================================
+  core-api:
+    build:
+      context: ./core-api
+      dockerfile: Dockerfile
+    container_name: health-core-api
+    restart: always
+    environment:
+      - PORT=8000
+      - DATABASE_URL=postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres-db:5432/health_db
+      - REDIS_HOST=valkey-db
+      - AGENT_SERVICE_URL=http://agent-service:8001
+      - OCR_SERVICE_URL=http://ocr-api:18100
+      - AUTH_MODE=${AUTH_MODE:-production}
+      - FEATURE_OCR_UPLOAD=true
+    ports:
+      - "8000:8000"
+    depends_on:
+      - agent-service
+    networks:
+      - internal-network
+
+  # ==========================================
+  # SERVICE 2: AGENTIC AI PLATFORM (PORT 8001)
+  # ==========================================
+  agent-service:
+    build:
+      context: ./agent-service
+      dockerfile: Dockerfile
+    container_name: health-agent-service
+    restart: always
+    environment:
+      - PORT=8001
+      - QDRANT_URL=http://qdrant-db:6333
+      - QDRANT_COLLECTION_NAME=${QDRANT_COLLECTION_NAME:-nmk_chatbot_active}
+      - QDRANT_COLLECTION_ALIAS=${QDRANT_COLLECTION_ALIAS:-nmk_chatbot_active}
+      - CUSTOM_EMBEDDING_API_URL=${CUSTOM_EMBEDDING_API_URL:-http://embedding-api:5000}
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b-instruct}
+      - OLLAMA_HOST=http://host.docker.internal:11434
+      - REDIS_HOST=valkey-db
+      - BM25_AUTOLOAD=false
+    ports:
+      - "8001:8001"
+    networks:
+      - internal-network
