@@ -21,7 +21,7 @@ interface ProgressChartProps {
   measurements: InBodyMeasurement[];
 }
 
-type ChartMode = 'composition' | 'fat' | 'visceral' | 'all';
+type ChartMode = 'composition' | 'fat' | 'visceral';
 
 interface TooltipEntry {
   color?: string;
@@ -79,9 +79,9 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
         date: label,
         fullDate: d.toLocaleDateString('vi-VN'),
         weight: m.weight_kg,
-        smm: m.skeletal_muscle_mass_kg,
-        pbf: m.percent_body_fat,
-        bfm: m.body_fat_mass_kg,
+        smm: m.smm_kg ?? m.skeletal_muscle_mass_kg,
+        pbf: m.pbf_percent ?? m.percent_body_fat,
+        bfm: m.bfm_kg ?? m.body_fat_mass_kg,
         visceral: m.visceral_fat_level,
         bmi: m.bmi,
       };
@@ -94,7 +94,7 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
         <div>
           <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
             <Activity className="w-4 h-4 text-emerald-400" />
-            <span>Biểu đồ Tiến trình Thể trạng (Recharts Timeline)</span>
+            <span>Biểu đồ Tiến trình Thể trạng</span>
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
             Theo dõi xu hướng tái tạo thể trạng (Body Recomposition) qua các mốc đo

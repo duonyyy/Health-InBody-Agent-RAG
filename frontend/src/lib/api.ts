@@ -6,6 +6,8 @@ import {
   MemoryProposal,
   BackendHealth,
   Citation,
+  OcrResult,
+  SourceType,
 } from '@/types';
 import {
   INITIAL_PROFILE,
@@ -15,50 +17,97 @@ import {
   INITIAL_CORPUS_DOCS,
 } from './mockData';
 
-// Storage keys
-const STORAGE_PREFIX = 'inbody_agent_';
-const PROFILE_KEY = `${STORAGE_PREFIX}profile`;
-const MEASUREMENTS_KEY = `${STORAGE_PREFIX}measurements`;
-const CHECKINS_KEY = `${STORAGE_PREFIX}checkins`;
-const MEMORY_KEY = `${STORAGE_PREFIX}memory`;
+// -------------------------------------------------------------
+// Configuration & Environment Helpers
+// -------------------------------------------------------------
+const DEMO_MODE_STORAGE_KEY = 'bodywise_explicit_demo_mode';
+const BASE_URL_STORAGE_KEY = 'api_base_url';
+const DEV_USER_STORAGE_KEY = 'active_user_id';
+
+export class ApiError extends Error {
+  status: number;
+  data?: unknown;
+
+  constructor(message: string, status: number = 500, data?: unknown) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.data = data;
+  }
+}
 
 export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('api_base_url');
-    if (saved) return saved;
+    const saved = localStorage.getItem(BASE_URL_STORAGE_KEY);
+    if (saved) return saved.replace(/\/$/, '');
   }
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  return (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/$/, '');
 }
 
-export function setApiBaseUrl(url: string) {
+export function setApiBaseUrl(url: string): void {
   if (typeof window !== 'undefined') {
-    localStorage.setItem('api_base_url', url);
+    localStorage.setItem(BASE_URL_STORAGE_KEY, url.trim().replace(/\/$/, ''));
   }
+}
+
+export function getAuthMode(): 'development' | 'production' {
+  const mode = process.env.NEXT_PUBLIC_AUTH_MODE || 'development';
+  return mode.toLowerCase() === 'production' ? 'production' : 'development';
 }
 
 export function getActiveUserId(): string {
   if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('active_user_id');
-    if (saved) return saved;
+    const saved = localStorage.getItem(DEV_USER_STORAGE_KEY);
+    if (saved) return saved.trim();
   }
-  return 'demo-user';
+  return process.env.NEXT_PUBLIC_DEV_USER_ID || 'demo-user';
 }
 
-export function setActiveUserId(userId: string) {
+export function setActiveUserId(userId: string): void {
   if (typeof window !== 'undefined') {
-    localStorage.setItem('active_user_id', userId);
+    localStorage.setItem(DEV_USER_STORAGE_KEY, userId.trim());
   }
+}
+
+/**
+ * Chế độ Demo tường minh (Explicit Demo Mode):
+ * Mặc định tắt (false). Chỉ kích hoạt khi người dùng chủ động bật công tắc demo để xem mẫu UI.
+ */
+export function isExplicitDemoMode(): boolean {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem(DEMO_MODE_STORAGE_KEY) === 'true';
+  }
+  return false;
+}
+
+export function setExplicitDemoMode(enabled: boolean): void {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(DEMO_MODE_STORAGE_KEY, enabled ? 'true' : 'false');
+  }
+}
+
+function getRequestHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: 'application/json',
+    ...extraHeaders,
+  };
+
+  // Chỉ gắn X-Dev-User-Id khi ở chế độ development được cấu hình tường minh
+  if (getAuthMode() === 'development') {
+    headers['X-Dev-User-Id'] = getActiveUserId();
+  }
+  return headers;
 }
 
 // -------------------------------------------------------------
-// Health Check
+// Health Check (SCR-01, SCR-07)
 // -------------------------------------------------------------
 export async function checkBackendHealth(): Promise<BackendHealth> {
   const url = `${getApiBaseUrl()}/health`;
   const start = performance.now();
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 4000);
+    const timer = setTimeout(() => controller.abort(), 5000);
 
     const res = await fetch(url, {
       signal: controller.signal,
@@ -69,13 +118,20 @@ export async function checkBackendHealth(): Promise<BackendHealth> {
     const latency = Math.round(performance.now() - start);
     if (res.ok) {
       const data = await res.json();
+      const isHealthy = data.status === 'healthy' || data.platform_state === 'READY';
       return {
-        status: data.status === 'healthy' || data.platform_state === 'READY' ? 'healthy' : 'degraded',
+        status: isHealthy ? 'healthy' : 'degraded',
         platform_state: data.platform_state || 'READY',
         can_serve_traffic: data.can_serve_traffic ?? true,
         latency_ms: latency,
         timestamp: new Date().toISOString(),
-        dependencies: data.dependencies,
+        dependencies: {
+          postgres: Boolean(data.dependencies?.postgres ?? data.cache?.connected ?? true),
+          qdrant: Boolean(data.dependencies?.qdrant ?? data.search?.vector_active ?? true),
+          valkey: Boolean(data.dependencies?.valkey ?? data.cache?.connected ?? true),
+          embedding_api: Boolean(data.dependencies?.embedding_api ?? true),
+          llm_provider: data.llm?.provider || data.dependencies?.llm_provider || 'system_default',
+        },
       };
     }
     return {
@@ -93,75 +149,715 @@ export async function checkBackendHealth(): Promise<BackendHealth> {
 }
 
 // -------------------------------------------------------------
-// Chat Completion
+// Chat Completion (SCR-02)
 // -------------------------------------------------------------
 export async function sendChatMessageApi(
   message: string,
-  conversationId?: string,
-  history?: Array<{ role: string; content: string }>
+  conversationId?: string
 ): Promise<ChatMessage> {
+  // Nếu người dùng chủ động bật chế độ Demo thì nạp câu trả lời giả lập có cảnh báo
+  if (isExplicitDemoMode()) {
+    return generateDemoAgentResponse(message);
+  }
+
   const baseUrl = getApiBaseUrl();
-  const userId = getActiveUserId();
   const start = performance.now();
 
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 60000); // 60s hard timeout
+    // Frontend timeout 65s (lớn hơn hard timeout 60s của backend theo WP-04)
+    const timer = setTimeout(() => controller.abort(), 65000);
 
-    const res = await fetch(`${baseUrl}/chat/complete`, {
+    const res = await fetch(`${baseUrl}/agent/answer`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Dev-User-Id': userId,
-      },
+      headers: getRequestHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
-        bot_id: 'health-inbody-agent',
-        user_message: message,
-        conversation_id: conversationId,
-        sync_request: true,
-        history: history || [],
+        question: message,
+        conversation_id: conversationId || undefined,
       }),
       signal: controller.signal,
     });
     clearTimeout(timer);
 
+    const latency = Math.round(performance.now() - start);
+
     if (res.ok) {
       const data = await res.json();
-      const latency = Math.round(performance.now() - start);
-
-      const resp = data.response || data.task_result || data;
-      const content = resp.content || resp.answer || data.content || data.answer || '';
-
       return {
         id: `msg-${Date.now()}`,
         role: 'assistant',
-        content: content,
+        content: data.answer || data.content || '',
         timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
-        latency_ms: resp.latency_ms || latency,
-        fast_path: resp.fast_path || null,
-        status: resp.status || 'ok',
-        selected_agents: resp.selected_agents || [],
-        agent_trace: resp.agent_trace || [],
-        citations: resp.citations || resp.evidence || [],
-        safety_result: resp.safety_result || {},
-        personalization_used: resp.personalization_used || {},
-        errors: resp.errors || [],
+        latency_ms: data.latency_ms || latency,
+        fast_path: data.fast_path || null,
+        status: data.status || 'ok',
+        selected_agents: data.selected_agents || [],
+        agent_trace: data.agent_trace || [],
+        citations: data.citations || [],
+        safety_result: data.safety_result || {},
+        personalization_used: data.personalization_used || {},
+        errors: data.errors || [],
+        request_id: data.request_id,
+        conversation_id: data.conversation_id,
+        evidence_status: data.evidence_status,
+        limitations: data.limitations || [],
       };
     }
-  } catch (err) {
-    console.warn('Backend unavailable, using intelligent local agent fallback:', err);
-  }
 
-  // --- Intelligent Local Fallback Engine (Safety First & Vietnamese InBody Advisor) ---
-  return generateSimulatedAgentResponse(message);
+    let errorDetail = `Lỗi máy chủ (${res.status})`;
+    try {
+      const errJson = await res.json();
+      if (errJson.detail) {
+        errorDetail = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
+      }
+    } catch {
+      // ignore
+    }
+    throw new ApiError(errorDetail, res.status);
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    const isAbort = err instanceof Error && err.name === 'AbortError';
+    throw new ApiError(
+      isAbort
+        ? 'Yêu cầu vượt quá thời gian xử lý (quá 65 giây). Vui lòng thử lại.'
+        : 'Không thể kết nối đến máy chủ BodyWise Backend. Vui lòng kiểm tra cổng dịch vụ.',
+      isAbort ? 504 : 503
+    );
+  }
 }
 
-function generateSimulatedAgentResponse(message: string): ChatMessage {
+// -------------------------------------------------------------
+// Profile & Personalization (SCR-05)
+// -------------------------------------------------------------
+export async function fetchUserProfile(): Promise<UserProfile> {
+  if (isExplicitDemoMode()) {
+    return INITIAL_PROFILE;
+  }
+
+  const baseUrl = getApiBaseUrl();
+  try {
+    const res = await fetch(`${baseUrl}/me/profile`, {
+      headers: getRequestHeaders(),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        user_id: data.user_id || getActiveUserId(),
+        display_name: data.display_name || 'Người dùng BodyWise',
+        age: data.age,
+        age_range: data.age_range,
+        birth_date: data.birth_date,
+        sex: data.sex_at_birth === 'female' ? 'female' : 'male',
+        sex_at_birth: data.sex_at_birth,
+        height_cm: Number(data.height_cm) || 170,
+        activity_level: data.activity_level || 'moderate',
+        goal: data.goal,
+        health_conditions: data.medical_conditions || data.health_conditions || [],
+        medical_conditions: data.medical_conditions || [],
+        dietary_restrictions: data.dietary_preferences || data.dietary_restrictions || [],
+        dietary_preferences: data.dietary_preferences || [],
+        exercise_constraints: data.exercise_constraints || [],
+        consent_flags: data.consent_flags || { health_data_processing: true, personalization: true },
+        acknowledged_disclaimer: true,
+        created_at: data.created_at,
+        updated_at: data.updated_at,
+      };
+    }
+
+    let detail = `Không thể tải hồ sơ (${res.status})`;
+    try {
+      const errJson = await res.json();
+      if (errJson.detail) detail = errJson.detail;
+    } catch {
+      // ignore
+    }
+    throw new ApiError(detail, res.status);
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError('Không thể kết nối tới máy chủ để tải hồ sơ cá nhân.', 503);
+  }
+}
+
+export async function saveUserProfile(profile: Partial<UserProfile>): Promise<UserProfile> {
+  if (isExplicitDemoMode()) {
+    return { ...INITIAL_PROFILE, ...profile };
+  }
+
+  const baseUrl = getApiBaseUrl();
+  const payload: Record<string, unknown> = {
+    display_name: profile.display_name,
+    height_cm: profile.height_cm ? Number(profile.height_cm) : undefined,
+    sex_at_birth: profile.sex_at_birth || profile.sex,
+    activity_level: profile.activity_level,
+    goal: profile.goal,
+    dietary_preferences: profile.dietary_preferences || profile.dietary_restrictions,
+    exercise_constraints: profile.exercise_constraints,
+    medical_conditions: profile.medical_conditions || profile.health_conditions,
+    consent_flags: profile.consent_flags || { health_data_processing: true, personalization: true },
+  };
+
+  if (profile.age_range) {
+    payload.age_range = profile.age_range;
+  } else if (profile.birth_date) {
+    payload.birth_date = profile.birth_date;
+  }
+
+  try {
+    const res = await fetch(`${baseUrl}/me/profile`, {
+      method: 'PUT',
+      headers: getRequestHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+
+    if (res.ok) {
+      return await fetchUserProfile();
+    }
+
+    let detail = `Không thể cập nhật hồ sơ (${res.status})`;
+    try {
+      const errJson = await res.json();
+      if (errJson.detail) detail = errJson.detail;
+    } catch {
+      // ignore
+    }
+    throw new ApiError(detail, res.status);
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError('Lỗi kết nối khi cập nhật hồ sơ cá nhân.', 503);
+  }
+}
+
+// -------------------------------------------------------------
+// InBody Measurements (SCR-03)
+// -------------------------------------------------------------
+export async function fetchInBodyMeasurements(): Promise<InBodyMeasurement[]> {
+  if (isExplicitDemoMode()) {
+    return INITIAL_MEASUREMENTS;
+  }
+
+  const baseUrl = getApiBaseUrl();
+  try {
+    const res = await fetch(`${baseUrl}/me/measurements?limit=50`, {
+      headers: getRequestHeaders(),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const rawItems: unknown[] = Array.isArray(data)
+        ? data
+        : Array.isArray(data.measurements)
+        ? data.measurements
+        : Array.isArray(data.items)
+        ? data.items
+        : [];
+
+      return rawItems.map((rawItem: unknown, idx: number): InBodyMeasurement => {
+        const item = (rawItem || {}) as Record<string, unknown>;
+        const smm = item.smm_kg !== undefined ? Number(item.smm_kg) : (item.skeletal_muscle_mass_kg as number | undefined);
+        const bfm = item.bfm_kg !== undefined ? Number(item.bfm_kg) : (item.body_fat_mass_kg as number | undefined);
+        const pbf = item.pbf_percent !== undefined ? Number(item.pbf_percent) : (item.percent_body_fat as number | undefined);
+
+        return {
+          id: String(item.id || `meas-${idx}`),
+          user_id: item.user_id as string | undefined,
+          measured_at: (item.measured_at as string) || new Date().toISOString(),
+          weight_kg: Number(item.weight_kg) || 0,
+          height_cm: Number(item.height_cm) || 170,
+          smm_kg: smm,
+          bfm_kg: bfm,
+          pbf_percent: pbf,
+          visceral_fat_level: item.visceral_fat_level !== undefined ? Number(item.visceral_fat_level) : undefined,
+          body_water_l: item.body_water_l !== undefined ? Number(item.body_water_l) : undefined,
+          source_type: (item.source_type as SourceType) || 'manual_confirmed',
+          confirmed_by_user: (item.confirmed_by_user as boolean) ?? true,
+          confidence: item.confidence as number | undefined,
+          // Backward compatibility mappings
+          skeletal_muscle_mass_kg: smm,
+          body_fat_mass_kg: bfm,
+          percent_body_fat: pbf,
+          bmi: item.bmi ? Number(item.bmi) : undefined,
+          bmr_kcal: item.bmr_kcal ? Number(item.bmr_kcal) : undefined,
+          notes: (item.notes as string) || '',
+          source: item.source_type === 'ocr_confirmed' ? 'ocr' : 'manual',
+        };
+      });
+    }
+
+    let detail = `Không thể tải danh sách số đo InBody (${res.status})`;
+    try {
+      const errJson = await res.json();
+      if (errJson.detail) detail = errJson.detail;
+    } catch {
+      // ignore
+    }
+    throw new ApiError(detail, res.status);
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError('Không thể kết nối đến máy chủ để lấy lịch sử đo InBody.', 503);
+  }
+}
+
+export async function saveInBodyMeasurement(
+  measurement: Partial<InBodyMeasurement>
+): Promise<InBodyMeasurement> {
+  if (isExplicitDemoMode()) {
+    const entry: InBodyMeasurement = {
+      id: `meas-${Date.now()}`,
+      measured_at: measurement.measured_at || new Date().toISOString(),
+      weight_kg: Number(measurement.weight_kg) || 70,
+      height_cm: Number(measurement.height_cm) || 170,
+      smm_kg: measurement.smm_kg ?? measurement.skeletal_muscle_mass_kg,
+      bfm_kg: measurement.bfm_kg ?? measurement.body_fat_mass_kg,
+      pbf_percent: measurement.pbf_percent ?? measurement.percent_body_fat,
+      visceral_fat_level: measurement.visceral_fat_level,
+      source_type: measurement.source_type || 'manual_confirmed',
+      confirmed_by_user: true,
+      skeletal_muscle_mass_kg: measurement.smm_kg ?? measurement.skeletal_muscle_mass_kg,
+      body_fat_mass_kg: measurement.bfm_kg ?? measurement.body_fat_mass_kg,
+      percent_body_fat: measurement.pbf_percent ?? measurement.percent_body_fat,
+      bmi: measurement.bmi,
+    };
+    return entry;
+  }
+
+  const baseUrl = getApiBaseUrl();
+
+  // Đảm bảo measured_at có timezone offset hợp lệ chuẩn ISO
+  let measuredAt = measurement.measured_at;
+  if (!measuredAt || !measuredAt.includes('T')) {
+    measuredAt = new Date().toISOString();
+  } else if (!measuredAt.endsWith('Z') && !measuredAt.includes('+')) {
+    measuredAt = new Date(measuredAt).toISOString();
+  }
+
+  const payload = {
+    measured_at: measuredAt,
+    weight_kg: Number(measurement.weight_kg) || undefined,
+    height_cm: Number(measurement.height_cm) || undefined,
+    smm_kg: (measurement.smm_kg ?? measurement.skeletal_muscle_mass_kg) ? Number(measurement.smm_kg ?? measurement.skeletal_muscle_mass_kg) : undefined,
+    bfm_kg: (measurement.bfm_kg ?? measurement.body_fat_mass_kg) ? Number(measurement.bfm_kg ?? measurement.body_fat_mass_kg) : undefined,
+    pbf_percent: (measurement.pbf_percent ?? measurement.percent_body_fat) ? Number(measurement.pbf_percent ?? measurement.percent_body_fat) : undefined,
+    visceral_fat_level: measurement.visceral_fat_level !== undefined ? Number(measurement.visceral_fat_level) : undefined,
+    body_water_l: measurement.body_water_l !== undefined ? Number(measurement.body_water_l) : undefined,
+    source_type: measurement.source_type || (measurement.source === 'ocr' ? 'ocr_confirmed' : 'manual_confirmed'),
+    confirmed_by_user: measurement.confirmed_by_user ?? true,
+    confidence: measurement.confidence,
+  };
+
+  try {
+    const res = await fetch(`${baseUrl}/me/measurements`, {
+      method: 'POST',
+      headers: getRequestHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return {
+        id: String(data.id || `meas-${Date.now()}`),
+        measured_at: data.measured_at || measuredAt,
+        weight_kg: Number(data.weight_kg) || 0,
+        height_cm: Number(data.height_cm) || 170,
+        smm_kg: data.smm_kg,
+        bfm_kg: data.bfm_kg,
+        pbf_percent: data.pbf_percent,
+        visceral_fat_level: data.visceral_fat_level,
+        bmi: data.bmi,
+        source_type: data.source_type,
+        confirmed_by_user: data.confirmed_by_user,
+        skeletal_muscle_mass_kg: data.smm_kg,
+        body_fat_mass_kg: data.bfm_kg,
+        percent_body_fat: data.pbf_percent,
+      };
+    }
+
+    let detail = `Không thể lưu số đo (${res.status})`;
+    try {
+      const errJson = await res.json();
+      if (errJson.detail) detail = errJson.detail;
+    } catch {
+      // ignore
+    }
+    throw new ApiError(detail, res.status);
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError('Lỗi kết nối khi gửi số đo InBody lên máy chủ.', 503);
+  }
+}
+
+export async function deleteInBodyMeasurement(id: string): Promise<boolean> {
+  if (isExplicitDemoMode()) return true;
+
+  const baseUrl = getApiBaseUrl();
+  try {
+    const res = await fetch(`${baseUrl}/me/measurements/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: getRequestHeaders(),
+    });
+    if (res.ok || res.status === 204) return true;
+
+    let detail = `Không thể xóa số đo (${res.status})`;
+    try {
+      const errJson = await res.json();
+      if (errJson.detail) detail = errJson.detail;
+    } catch {
+      // ignore
+    }
+    throw new ApiError(detail, res.status);
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError('Lỗi kết nối khi xóa bản ghi đo.', 503);
+  }
+}
+
+// -------------------------------------------------------------
+// InBody OCR Upload (SCR-04)
+// Không tự sinh số đo giả! Trả về bản nháp để người dùng xác nhận
+// -------------------------------------------------------------
+export async function uploadInBodyOcrFile(file: File): Promise<Partial<InBodyMeasurement>> {
+  if (isExplicitDemoMode()) {
+    // Chỉ chạy trong demo mode được kích hoạt rõ ràng
+    return {
+      weight_kg: 72.4,
+      height_cm: 172,
+      smm_kg: 33.8,
+      skeletal_muscle_mass_kg: 33.8,
+      bfm_kg: 14.1,
+      body_fat_mass_kg: 14.1,
+      pbf_percent: 19.5,
+      percent_body_fat: 19.5,
+      visceral_fat_level: 6,
+      bmi: 24.47,
+      source: 'ocr',
+      source_type: 'ocr_unconfirmed',
+      confirmed_by_user: false,
+      notes: `[DEMO MẪU] Trích xuất thử nghiệm từ tệp: ${file.name}`,
+    };
+  }
+
+  const baseUrl = getApiBaseUrl();
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 65000);
+
+    const res = await fetch(`${baseUrl}/me/inbody-ocr`, {
+      method: 'POST',
+      headers: getRequestHeaders(),
+      body: formData,
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+
+    if (res.ok) {
+      const data: OcrResult = await res.json();
+      const fields = data.extracted_fields || {};
+
+      const draft: Partial<InBodyMeasurement> = {
+        weight_kg: fields.weight_kg?.value,
+        height_cm: fields.height_cm?.value,
+        smm_kg: fields.smm_kg?.value,
+        skeletal_muscle_mass_kg: fields.smm_kg?.value,
+        bfm_kg: fields.bfm_kg?.value,
+        body_fat_mass_kg: fields.bfm_kg?.value,
+        pbf_percent: fields.pbf_percent?.value,
+        percent_body_fat: fields.pbf_percent?.value,
+        visceral_fat_level: fields.visceral_fat_level?.value,
+        bmi: fields.bmi?.value,
+        source: 'ocr',
+        source_type: 'ocr_unconfirmed',
+        confirmed_by_user: false,
+        confidence: fields.weight_kg?.confidence ?? undefined,
+        notes: `Bản nháp OCR từ tệp: ${file.name} (Chờ người dùng kiểm tra & xác nhận)`,
+      };
+      return draft;
+    }
+
+    if (res.status === 404) {
+      throw new ApiError(
+        'Dịch vụ OCR chưa được kích hoạt trên máy chủ backend (FEATURE_OCR_UPLOAD đang tắt). Bạn vui lòng nhập thủ công qua tab "Ghi nhận chỉ số".',
+        404
+      );
+    }
+    if (res.status === 409) {
+      throw new ApiError(
+        'Bạn cần chấp thuận điều khoản xử lý dữ liệu sức khỏe trong mục Hồ Sơ trước khi quét OCR.',
+        409
+      );
+    }
+    if (res.status === 503 || res.status === 504 || res.status === 502) {
+      throw new ApiError(
+        'Dịch vụ AI OCR hiện đang ngoại tuyến hoặc quá tải. Vui lòng thử lại sau hoặc nhập số liệu thủ công.',
+        res.status
+      );
+    }
+
+    let detail = `Lỗi xử lý OCR (${res.status})`;
+    try {
+      const errJson = await res.json();
+      if (errJson.detail) detail = errJson.detail;
+    } catch {
+      // ignore
+    }
+    throw new ApiError(detail, res.status);
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(
+      'Không thể kết nối đến cổng dịch vụ OCR. Vui lòng kiểm tra trạng thái máy chủ.',
+      503
+    );
+  }
+}
+
+// -------------------------------------------------------------
+// Check-In Logs (SCR-05)
+// -------------------------------------------------------------
+export async function fetchCheckIns(): Promise<CheckInLog[]> {
+  if (isExplicitDemoMode()) return INITIAL_CHECKINS;
+
+  const baseUrl = getApiBaseUrl();
+  try {
+    const res = await fetch(`${baseUrl}/me/check-ins`, {
+      headers: getRequestHeaders(),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const rawItems: unknown[] = Array.isArray(data) ? data : data.check_ins || [];
+      return rawItems.map((rawCheckIn: unknown, idx: number) => {
+        const c = (rawCheckIn || {}) as Record<string, unknown>;
+        const symptomsArr = Array.isArray(c.symptoms) ? (c.symptoms as string[]) : [];
+        return {
+          id: String(c.id || `chk-${idx}`),
+          date: typeof c.checked_at === 'string' ? c.checked_at.split('T')[0] : new Date().toISOString().split('T')[0],
+          checked_at: c.checked_at as string | undefined,
+          workout_completed: ((c.adherence as number) ?? 100) > 0,
+          workout_rating: (c.soreness as number) ?? 5,
+          energy_level: (c.energy_level as number) ?? 4,
+          sleep_hours: 7.5,
+          sleep_quality: (c.sleep_quality as number) ?? 4,
+          soreness: (c.soreness as number) ?? 3,
+          unusual_symptoms: symptomsArr.join(', '),
+          symptoms: symptomsArr,
+          notes: (c.note as string) || '',
+          note: (c.note as string) || '',
+        };
+      });
+    }
+
+    if (res.status === 404 || res.status === 401) return [];
+    throw new ApiError(`Không thể lấy nhật ký check-in (${res.status})`, res.status);
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError('Lỗi kết nối khi tải nhật ký thể trạng.', 503);
+  }
+}
+
+export async function saveCheckIn(checkIn: Partial<CheckInLog>): Promise<CheckInLog> {
+  if (isExplicitDemoMode()) {
+    return {
+      id: `chk-${Date.now()}`,
+      date: checkIn.date || new Date().toISOString().split('T')[0],
+      workout_completed: checkIn.workout_completed ?? true,
+      workout_rating: checkIn.workout_rating || 5,
+      energy_level: checkIn.energy_level || 4,
+      sleep_hours: checkIn.sleep_hours || 7.5,
+      unusual_symptoms: checkIn.unusual_symptoms,
+      notes: checkIn.notes || checkIn.note,
+    };
+  }
+
+  const baseUrl = getApiBaseUrl();
+  const symptomsList = checkIn.unusual_symptoms
+    ? checkIn.unusual_symptoms.split(',').map((s) => s.trim()).filter(Boolean)
+    : checkIn.symptoms || [];
+
+  const payload = {
+    checked_at: new Date().toISOString(),
+    adherence: checkIn.workout_completed ? 100 : 0,
+    energy_level: checkIn.energy_level ? Math.max(1, Math.min(5, checkIn.energy_level)) : undefined,
+    sleep_quality: checkIn.sleep_quality ? Math.max(1, Math.min(5, checkIn.sleep_quality)) : 4,
+    soreness: checkIn.soreness ? Math.max(1, Math.min(5, checkIn.soreness)) : 3,
+    symptoms: symptomsList,
+    note: checkIn.notes || checkIn.note || undefined,
+  };
+
+  try {
+    const res = await fetch(`${baseUrl}/me/check-ins`, {
+      method: 'POST',
+      headers: getRequestHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify(payload),
+    });
+
+    if (res.ok) {
+      const saved = await res.json();
+      return {
+        id: String(saved.id || `chk-${Date.now()}`),
+        date: new Date().toISOString().split('T')[0],
+        checked_at: saved.checked_at,
+        workout_completed: (saved.adherence ?? 100) > 0,
+        workout_rating: saved.soreness ?? 5,
+        energy_level: saved.energy_level ?? 4,
+        sleep_hours: checkIn.sleep_hours || 7.5,
+        notes: saved.note || '',
+      };
+    }
+
+    let detail = `Không thể lưu check-in (${res.status})`;
+    try {
+      const errJson = await res.json();
+      if (errJson.detail) detail = errJson.detail;
+    } catch {
+      // ignore
+    }
+    throw new ApiError(detail, res.status);
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError('Lỗi kết nối khi gửi nhật ký vận động.', 503);
+  }
+}
+
+// -------------------------------------------------------------
+// Memory Facts (SCR-05)
+// -------------------------------------------------------------
+export async function fetchMemoryFacts(): Promise<MemoryProposal[]> {
+  if (isExplicitDemoMode()) return INITIAL_MEMORY_FACTS;
+
+  const baseUrl = getApiBaseUrl();
+  try {
+    const res = await fetch(`${baseUrl}/me/memory/facts`, {
+      headers: getRequestHeaders(),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const facts: unknown[] = Array.isArray(data) ? data : data.facts || [];
+      return facts.map((rawFact: unknown, idx: number): MemoryProposal => {
+        const f = (rawFact || {}) as Record<string, unknown>;
+        const statusStr = typeof f.status === 'string' ? f.status.toLowerCase() : '';
+        const status: 'pending' | 'confirmed' | 'rejected' =
+          statusStr === 'confirmed' ? 'confirmed' : statusStr === 'rejected' ? 'rejected' : 'pending';
+        return {
+          id: String(f.id || `fact-${idx}`),
+          fact: (f.text as string) || (f.fact as string) || '',
+          category: (f.kind as string) || (f.category as string) || 'personalization',
+          confidence: (f.confidence as number) || 0.95,
+          status,
+          created_at: f.created_at as string | undefined,
+        };
+      });
+    }
+
+    if (res.status === 404 || res.status === 403 || res.status === 401) {
+      return [];
+    }
+    throw new ApiError(`Không thể tải ký ức (${res.status})`, res.status);
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError('Lỗi kết nối khi tải danh sách ký ức cá nhân hóa.', 503);
+  }
+}
+
+export async function updateMemoryFactStatus(
+  id: string,
+  status: 'confirmed' | 'rejected'
+): Promise<void> {
+  if (isExplicitDemoMode()) return;
+
+  const baseUrl = getApiBaseUrl();
+  if (status === 'confirmed') {
+    const res = await fetch(`${baseUrl}/me/memory/facts/${encodeURIComponent(id)}/confirm`, {
+      method: 'POST',
+      headers: getRequestHeaders(),
+    });
+    if (!res.ok) throw new ApiError(`Không thể xác nhận ký ức (${res.status})`, res.status);
+  } else {
+    await deleteMemoryFact(id);
+  }
+}
+
+export async function deleteMemoryFact(id: string): Promise<void> {
+  if (isExplicitDemoMode()) return;
+
+  const baseUrl = getApiBaseUrl();
+  const res = await fetch(`${baseUrl}/me/memory/facts/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: getRequestHeaders(),
+  });
+  if (!res.ok && res.status !== 204 && res.status !== 404) {
+    throw new ApiError(`Không thể xóa ký ức (${res.status})`, res.status);
+  }
+}
+
+// -------------------------------------------------------------
+// Knowledge Corpus Search (SCR-06)
+// -------------------------------------------------------------
+export async function searchCorpusApi(query: string, category?: string): Promise<Citation[]> {
+  if (isExplicitDemoMode()) {
+    const q = query.toLowerCase();
+    return INITIAL_CORPUS_DOCS.filter((doc) => {
+      const matchCategory = !category || category === 'all' || doc.category === category;
+      const matchQuery = !query || doc.title.toLowerCase().includes(q) || doc.content.toLowerCase().includes(q);
+      return matchCategory && matchQuery;
+    });
+  }
+
+  const baseUrl = getApiBaseUrl();
+  try {
+    const res = await fetch(`${baseUrl}/search`, {
+      method: 'POST',
+      headers: getRequestHeaders({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        query: query.trim(),
+        limit: 8,
+        use_rerank: false,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const rawResults: unknown[] = Array.isArray(data.results) ? data.results : [];
+
+      return rawResults.map((rawItem: unknown, idx: number): Citation => {
+        const r = (rawItem || {}) as Record<string, unknown>;
+        const payload = (r.payload || {}) as Record<string, unknown>;
+        const metadata = (r.metadata || {}) as Record<string, unknown>;
+        return {
+          id: String(r.id || `cit-${idx}`),
+          title: (payload.title as string) || (r.title as string) || (metadata.title as string) || 'Tài liệu hướng dẫn y tế',
+          source: (payload.source as string) || (r.source as string) || (metadata.source as string) || 'Qdrant Knowledge Base',
+          content: (payload.content as string) || (r.content as string) || (r.text as string) || '',
+          score: typeof r.score === 'number' ? r.score : 0.85,
+          category: (payload.category as string) || (r.category as string) || 'y_te_inbody',
+        };
+      });
+    }
+
+    let detail = `Lỗi tìm kiếm (${res.status})`;
+    try {
+      const errJson = await res.json();
+      if (errJson.detail) detail = errJson.detail;
+    } catch {
+      // ignore
+    }
+    throw new ApiError(detail, res.status);
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError('Không thể kết nối đến công cụ tra cứu tri thức Qdrant.', 503);
+  }
+}
+
+// -------------------------------------------------------------
+// Demo Simulated Response Generator (Explicit Demo Mode Only)
+// -------------------------------------------------------------
+function generateDemoAgentResponse(message: string): ChatMessage {
   const lower = message.toLowerCase();
   const now = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
 
-  // 1. URGENT SAFETY FAST-PATH (< 500ms guaranteed)
-  const urgentKeywords = ['đau ngực', 'khó thở', 'tức ngực', 'ngất', 'choáng váng nặng', 'nôn ra máu', 'đột quỵ'];
+  const urgentKeywords = ['đau ngực', 'khó thở', 'tức ngực', 'ngất', 'choáng váng nặng', 'đột quỵ'];
   const hasUrgent = urgentKeywords.some((kw) => lower.includes(kw));
 
   if (hasUrgent) {
@@ -170,22 +866,17 @@ function generateSimulatedAgentResponse(message: string): ChatMessage {
       role: 'assistant',
       content:
         '⚠️ **CẢNH BÁO AN TOÀN Y TẾ KHẨN CẤP**\n\n' +
-        'Dấu hiệu bạn vừa mô tả (**đau ngực / khó thở / choáng váng**) có thể là triệu chứng của biến cố tim mạch hoặc hô hấp cấp tính.\n\n' +
+        'Dấu hiệu bạn vừa mô tả (**đau ngực / khó thở**) có thể là triệu chứng của biến cố tim mạch hoặc hô hấp cấp tính.\n\n' +
         '**Hành động cần làm ngay:**\n' +
-        '1. Dừng ngay mọi hoạt động vận động, ngồi hoặc nằm ở tư thế nửa nằm nửa ngồi thoải mái, thông thoáng.\n' +
+        '1. Dừng ngay mọi hoạt động vận động, ngồi nghỉ ở tư thế thoải mái.\n' +
         '2. Không cố gắng tiếp tục tập luyện hoặc tự ý dùng thuốc giảm đau.\n' +
-        '3. Nhờ người thân hỗ trợ hoặc gọi ngay đường dây cấp cứu **115** hoặc đến phòng cấp cứu bệnh viện gần nhất.\n\n' +
-        '*Lưu ý: Trợ lý AI chỉ mang tính tham khảo, không có chức năng cấp cứu hay chẩn đoán y khoa.*',
+        '3. Gọi ngay đường dây cấp cứu **115** hoặc đến phòng cấp cứu gần nhất.\n\n' +
+        '*Lưu ý: Trợ lý AI chỉ mang tính tham khảo, không có chức năng cấp cứu y tế.*',
       timestamp: now,
-      latency_ms: 180,
+      latency_ms: 45,
       fast_path: 'urgent_safety_triage',
       status: 'ok',
       selected_agents: ['medical_safety'],
-      agent_trace: [
-        { node: 'safety_pre_check', agent: 'deterministic_guardrail', duration_ms: 15, status: 'success', action: 'Phát hiện từ khóa triệu chứng nguy cấp tim mạch/hô hấp' },
-        { node: 'fast_path_router', agent: 'emergency_router', duration_ms: 25, status: 'success', action: 'Bỏ qua LLM và RAG search, chuyển thẳng triage y tế' },
-        { node: 'response_composer', agent: 'safety_composer', duration_ms: 140, status: 'success', action: 'Đóng gói khuyến cáo y tế chuẩn theo Bộ Y Tế' },
-      ],
       safety_result: {
         is_urgent: true,
         risk_level: 'urgent',
@@ -196,358 +887,20 @@ function generateSimulatedAgentResponse(message: string): ChatMessage {
     };
   }
 
-  // 2. BMI / INBODY METRIC TOOL-ONLY FAST-PATH
-  if (lower.includes('bmi') || lower.includes('chỉ số') || lower.includes('inbody')) {
-    return {
-      id: `msg-${Date.now()}`,
-      role: 'assistant',
-      content:
-        '📊 **Đánh giá Thể trạng & Chỉ số InBody Hiện tại** (Dữ liệu lần đo gần nhất):\n\n' +
-        '| Chỉ số | Giá trị | Chuẩn WHO Châu Á | Đánh giá |\n' +
-        '| :--- | :--- | :--- | :--- |\n' +
-        '| **Cân nặng** | **72.4 kg** | - | Giảm -4.4 kg so với mốc ban đầu (76.8 kg) |\n' +
-        '| **Chiều cao** | **172 cm** | - | - |\n' +
-        '| **BMI** | **24.47 kg/m²** | 18.5 - 22.9 | Tiền béo phì nhẹ (nhưng tỷ lệ cơ cao) |\n' +
-        '| **Cơ xương (SMM)** | **33.8 kg** | > 30 kg | Tăng ấn tượng +2.0 kg cơ nạc |\n' +
-        '| **Tỷ lệ mỡ (PBF)** | **19.5 %** | 10 - 20 % | Đã về ngưỡng **Lý tưởng** cho nam giới! |\n' +
-        '| **Mỡ nội tạng (VFL)** | **Level 6** | 1 - 9 | Mức an toàn, giảm tốt từ Level 9 |\n\n' +
-        '🎯 **Nhận xét chuyên môn:**\n' +
-        '- Quá trình tái tạo thể trạng (**Body Recomposition**) của bạn đang tiến triển rất xuất sắc: Giảm mỡ đồng thời tăng cơ bắp.\n' +
-        '- Dù BMI hơi nhỉnh (24.47) nhưng PBF ở mức 19.5% chứng tỏ trọng lượng tăng chủ yếu từ khối cơ nạc chứ không phải tích mỡ.\n' +
-        '- Bạn nên tiếp tục duy trì mức đạm 1.8g - 2.0g/kg và lịch tập kháng lực 4 buổi/tuần.',
-      timestamp: now,
-      latency_ms: 310,
-      fast_path: 'inbody_kpi_analyzer',
-      status: 'ok',
-      selected_agents: ['inbody_analyzer', 'nutrition_advisor'],
-      agent_trace: [
-        { node: 'safety_pre_check', duration_ms: 12, status: 'success', action: 'Kiểm tra an toàn: Không có rủi ro y tế' },
-        { node: 'personalization_loader', duration_ms: 45, status: 'success', action: 'Đọc hồ sơ: demo-user, 72.4kg, SMM 33.8kg, PBF 19.5%' },
-        { node: 'inbody_tool_calculator', duration_ms: 80, status: 'success', action: 'Phân loại BMI theo WPRO, tính delta tiến độ 4 tháng' },
-        { node: 'response_composer', duration_ms: 173, status: 'success', action: 'Sinh bảng tổng hợp và khuyến nghị cá nhân hóa' },
-      ],
-      personalization_used: {
-        latest_bmi: 24.47,
-        latest_pbf: 19.5,
-        profile_loaded: true,
-      },
-      citations: [
-        {
-          title: 'Tiêu chuẩn phân loại InBody & Chỉ số Thành phần Cơ thể',
-          source: 'Huong_Dan_Doc_Chi_So_InBody_2026.pdf',
-          category: 'inbody_guide',
-          score: 0.94,
-          content: 'Chỉ số PBF phản ánh tỷ lệ mỡ thực tế hơn BMI. Với nam giới châu Á, mức chuẩn nằm trong khoảng 10-20%.',
-        },
-      ],
-    };
-  }
-
-  // 3. NUTRITION / EXERCISE ADVICE
   return {
     id: `msg-${Date.now()}`,
     role: 'assistant',
     content:
-      '🥗 **Tư vấn Dinh dưỡng & Tập luyện Cá nhân hóa**:\n\n' +
-      'Dựa vào hồ sơ thể trạng của bạn (**72.4 kg, 172 cm, mục tiêu tăng cơ giảm mỡ, không dung nạp lactose**):\n\n' +
-      '### 1. Phân bổ Năng lượng & Đa lượng chất (Macros):\n' +
-      '- **Tổng Calo mục tiêu (TDEE - thâm hụt nhẹ)**: ~2,100 - 2,250 kcal/ngày.\n' +
-      '- **Chất đạm (Protein)**: ~135 - 145g (khoảng 1.9g/kg). Ưu tiên ức gà, cá thu/cá hồi, trứng, đậu hũ và whey isolate tinh khiết.\n' +
-      '- **Chất béo tốt (Fats)**: ~55 - 60g từ dầu olive, quả bơ, hạt điều, hạnh nhân.\n' +
-      '- **Carbohydrate phức hợp**: ~250g từ gạo lứt, khoai lang, yến mạch để cung cấp glycogen cho các buổi tập nặng.\n\n' +
-      '### 2. Lưu ý An toàn & Khớp:\n' +
-      '- Với ghi chú căng mỏi thắt lưng nhẹ, hãy luôn siết chặt cơ bụng (bracing core) trong các bài Squat, Deadlift hoặc Bent-over Row.\n' +
-      '- Uống tối thiểu 2.5 - 3.0 lít nước mỗi ngày để hỗ trợ thận lọc sản phẩm chuyển hóa đạm.',
+      '📊 **[Chế độ Demo Mẫu] Phân tích Thể trạng & Khuyến nghị Dinh dưỡng**:\n\n' +
+      'Đây là phản hồi minh họa mẫu của giao diện BodyWise trong chế độ Demo.\n' +
+      '- **Cân nặng:** 72.4 kg | **BMI:** 24.5 (Tiền béo phì nhẹ theo chuẩn WPRO)\n' +
+      '- **Khối cơ SMM:** 33.8 kg (Tăng trưởng tốt)\n' +
+      '- **Tỷ lệ mỡ PBF:** 19.5% (Ngưỡng an toàn)\n\n' +
+      '*Để kết nối và nhận tư vấn thật từ hệ thống AI Đa tác nhân, vui lòng tắt Chế độ Demo.*',
     timestamp: now,
-    latency_ms: 540,
+    latency_ms: 220,
     fast_path: null,
     status: 'ok',
-    selected_agents: ['nutrition_advisor', 'workout_planner'],
-    agent_trace: [
-      { node: 'safety_pre_check', duration_ms: 18, status: 'success', action: 'An toàn: Nguy cơ thấp' },
-      { node: 'agent_router', duration_ms: 92, status: 'success', action: 'Route: [nutrition_advisor, workout_planner]' },
-      { node: 'rag_dense_search', duration_ms: 165, status: 'success', action: 'Qdrant vector search: Top 3 chunks' },
-      { node: 'response_composer', duration_ms: 265, status: 'success', action: 'Tổng hợp thực đơn phù hợp kiêng lactose' },
-    ],
-    citations: [
-      {
-        title: 'Chiến lược Phân bổ Dinh dưỡng Tăng cơ Giảm mỡ (Body Recomposition)',
-        source: 'Giao_Trinh_Dinh_Duong_The_Hinh_Nang_Cao.pdf',
-        category: 'nutrition',
-        score: 0.91,
-        content: 'Để tái tạo thể trạng, duy trì thâm hụt 200-300 kcal/ngày cùng protein 1.8-2.2 g/kg trọng lượng cơ thể.',
-      },
-    ],
+    selected_agents: ['inbody_analyzer'],
   };
-}
-
-// -------------------------------------------------------------
-// Profile & Goals
-// -------------------------------------------------------------
-export async function fetchUserProfile(): Promise<UserProfile> {
-  const baseUrl = getApiBaseUrl();
-  const userId = getActiveUserId();
-  try {
-    const res = await fetch(`${baseUrl}/me/profile`, {
-      headers: { 'X-Dev-User-Id': userId },
-    });
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch {
-    // fallback
-  }
-
-  if (typeof window !== 'undefined') {
-    const local = localStorage.getItem(PROFILE_KEY);
-    if (local) return JSON.parse(local);
-  }
-  return INITIAL_PROFILE;
-}
-
-export async function saveUserProfile(profile: UserProfile): Promise<UserProfile> {
-  const baseUrl = getApiBaseUrl();
-  const userId = getActiveUserId();
-  try {
-    const res = await fetch(`${baseUrl}/me/profile`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Dev-User-Id': userId,
-      },
-      body: JSON.stringify(profile),
-    });
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch {
-    // fallback
-  }
-
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-  }
-  return profile;
-}
-
-// -------------------------------------------------------------
-// InBody Measurements
-// -------------------------------------------------------------
-export async function fetchInBodyMeasurements(): Promise<InBodyMeasurement[]> {
-  const baseUrl = getApiBaseUrl();
-  const userId = getActiveUserId();
-  try {
-    const res = await fetch(`${baseUrl}/me/measurements?limit=30`, {
-      headers: { 'X-Dev-User-Id': userId },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data)) return data;
-      if (data.items) return data.items;
-    }
-  } catch {
-    // fallback
-  }
-
-  if (typeof window !== 'undefined') {
-    const local = localStorage.getItem(MEASUREMENTS_KEY);
-    if (local) return JSON.parse(local);
-  }
-  return INITIAL_MEASUREMENTS;
-}
-
-export async function saveInBodyMeasurement(measurement: Partial<InBodyMeasurement>): Promise<InBodyMeasurement> {
-  const baseUrl = getApiBaseUrl();
-  const userId = getActiveUserId();
-
-  const newEntry: InBodyMeasurement = {
-    id: measurement.id || `meas-${Date.now()}`,
-    user_id: userId,
-    measured_at: measurement.measured_at || new Date().toISOString(),
-    weight_kg: Number(measurement.weight_kg) || 0,
-    height_cm: Number(measurement.height_cm) || 172,
-    skeletal_muscle_mass_kg: measurement.skeletal_muscle_mass_kg ? Number(measurement.skeletal_muscle_mass_kg) : undefined,
-    body_fat_mass_kg: measurement.body_fat_mass_kg ? Number(measurement.body_fat_mass_kg) : undefined,
-    percent_body_fat: measurement.percent_body_fat ? Number(measurement.percent_body_fat) : undefined,
-    visceral_fat_level: measurement.visceral_fat_level ? Number(measurement.visceral_fat_level) : undefined,
-    bmi: measurement.bmi,
-    bmr_kcal: measurement.bmr_kcal,
-    notes: measurement.notes || '',
-    source: measurement.source || 'manual',
-  };
-
-  try {
-    const res = await fetch(`${baseUrl}/me/measurements`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Dev-User-Id': userId,
-      },
-      body: JSON.stringify(newEntry),
-    });
-    if (res.ok) {
-      return await res.json();
-    }
-  } catch {
-    // fallback
-  }
-
-  // Local storage update
-  const current = await fetchInBodyMeasurements();
-  const updated = [newEntry, ...current];
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(MEASUREMENTS_KEY, JSON.stringify(updated));
-  }
-  return newEntry;
-}
-
-export async function deleteInBodyMeasurement(id: string): Promise<boolean> {
-  const baseUrl = getApiBaseUrl();
-  const userId = getActiveUserId();
-  try {
-    const res = await fetch(`${baseUrl}/me/measurements/${id}`, {
-      method: 'DELETE',
-      headers: { 'X-Dev-User-Id': userId },
-    });
-    if (res.ok) return true;
-  } catch {
-    // fallback
-  }
-
-  const current = await fetchInBodyMeasurements();
-  const filtered = current.filter((m) => m.id !== id);
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(MEASUREMENTS_KEY, JSON.stringify(filtered));
-  }
-  return true;
-}
-
-// -------------------------------------------------------------
-// InBody OCR Upload
-// -------------------------------------------------------------
-export async function uploadInBodyOcrFile(file: File): Promise<Partial<InBodyMeasurement>> {
-  const baseUrl = getApiBaseUrl();
-  const userId = getActiveUserId();
-
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const res = await fetch(`${baseUrl}/me/inbody-ocr`, {
-      method: 'POST',
-      headers: {
-        'X-Dev-User-Id': userId,
-      },
-      body: formData,
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      return data;
-    }
-  } catch {
-    console.warn('Real OCR endpoint unavailable, running client-side simulated AI OCR parser');
-  }
-
-  // Realistic OCR extraction simulation
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({
-        weight_kg: 72.8,
-        height_cm: 172,
-        skeletal_muscle_mass_kg: 33.6,
-        body_fat_mass_kg: 14.5,
-        percent_body_fat: 19.9,
-        visceral_fat_level: 6,
-        bmi: 24.61,
-        bmr_kcal: 1682,
-        source: 'ocr',
-        notes: `Trích xuất từ file: ${file.name} (Độ tin cậy OCR: 96.8%)`,
-      });
-    }, 1500);
-  });
-}
-
-// -------------------------------------------------------------
-// Check-in & Memory
-// -------------------------------------------------------------
-export async function fetchCheckIns(): Promise<CheckInLog[]> {
-  if (typeof window !== 'undefined') {
-    const local = localStorage.getItem(CHECKINS_KEY);
-    if (local) return JSON.parse(local);
-  }
-  return INITIAL_CHECKINS;
-}
-
-export async function saveCheckIn(checkIn: Partial<CheckInLog>): Promise<CheckInLog> {
-  const newLog: CheckInLog = {
-    id: `chk-${Date.now()}`,
-    date: checkIn.date || new Date().toISOString().split('T')[0],
-    workout_completed: checkIn.workout_completed ?? true,
-    workout_rating: checkIn.workout_rating || 5,
-    energy_level: checkIn.energy_level || 4,
-    sleep_hours: checkIn.sleep_hours || 7,
-    unusual_symptoms: checkIn.unusual_symptoms || '',
-    notes: checkIn.notes || '',
-  };
-
-  const current = await fetchCheckIns();
-  const updated = [newLog, ...current];
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(CHECKINS_KEY, JSON.stringify(updated));
-  }
-  return newLog;
-}
-
-export async function fetchMemoryFacts(): Promise<MemoryProposal[]> {
-  if (typeof window !== 'undefined') {
-    const local = localStorage.getItem(MEMORY_KEY);
-    if (local) return JSON.parse(local);
-  }
-  return INITIAL_MEMORY_FACTS;
-}
-
-export async function updateMemoryFactStatus(id: string, status: 'confirmed' | 'rejected'): Promise<void> {
-  const current = await fetchMemoryFacts();
-  const updated = current.map((f) => (f.id === id ? { ...f, status } : f));
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(MEMORY_KEY, JSON.stringify(updated));
-  }
-}
-
-export async function deleteMemoryFact(id: string): Promise<void> {
-  const current = await fetchMemoryFacts();
-  const updated = current.filter((f) => f.id !== id);
-  if (typeof window !== 'undefined') {
-    localStorage.setItem(MEMORY_KEY, JSON.stringify(updated));
-  }
-}
-
-// -------------------------------------------------------------
-// Corpus Search
-// -------------------------------------------------------------
-export async function searchCorpusApi(query: string, category?: string): Promise<Citation[]> {
-  const baseUrl = getApiBaseUrl();
-  try {
-    const res = await fetch(`${baseUrl}/search/corpus`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, category, limit: 5 }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data)) return data;
-      if (data.results) return data.results;
-    }
-  } catch {
-    // fallback
-  }
-
-  // Filter mock corpus
-  const q = query.toLowerCase();
-  return INITIAL_CORPUS_DOCS.filter((doc) => {
-    const matchCategory = !category || category === 'all' || doc.category === category;
-    const matchQuery = !query || doc.title.toLowerCase().includes(q) || doc.content.toLowerCase().includes(q);
-    return matchCategory && matchQuery;
-  });
 }

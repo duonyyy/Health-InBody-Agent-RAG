@@ -47,17 +47,27 @@ export default function MeasurementForm({ onSave, defaultHeight = 172 }: Measure
 
     setIsSubmitting(true);
     try {
+      const smmVal = typeof smm === 'number' ? smm : undefined;
+      const bfmVal = typeof bfm === 'number' ? bfm : undefined;
+      const pbfVal = typeof pbf === 'number' ? pbf : undefined;
+      const vflVal = typeof vfl === 'number' ? vfl : undefined;
+
       await onSave({
         measured_at: new Date(date).toISOString(),
         height_cm: heightNum,
         weight_kg: weightNum,
-        skeletal_muscle_mass_kg: typeof smm === 'number' ? smm : undefined,
-        body_fat_mass_kg: typeof bfm === 'number' ? bfm : undefined,
-        percent_body_fat: typeof pbf === 'number' ? pbf : undefined,
-        visceral_fat_level: typeof vfl === 'number' ? vfl : undefined,
+        smm_kg: smmVal,
+        bfm_kg: bfmVal,
+        pbf_percent: pbfVal,
+        skeletal_muscle_mass_kg: smmVal,
+        body_fat_mass_kg: bfmVal,
+        percent_body_fat: pbfVal,
+        visceral_fat_level: vflVal,
         bmi: currentBmi,
         bmr_kcal: currentBmr,
         notes: notes.trim(),
+        source_type: 'manual_confirmed',
+        confirmed_by_user: true,
         source: 'manual',
       });
 

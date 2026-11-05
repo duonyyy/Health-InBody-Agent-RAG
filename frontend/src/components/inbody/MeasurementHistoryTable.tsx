@@ -33,30 +33,29 @@ export default function MeasurementHistoryTable({
     }
   };
 
-  const getSourceIcon = (source?: string) => {
-    switch (source) {
-      case 'ocr':
-        return (
-          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/30">
-            <FileText className="w-3 h-3" />
-            <span>Quét OCR</span>
-          </span>
-        );
-      case 'device':
-        return (
-          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
-            <Smartphone className="w-3 h-3" />
-            <span>Máy InBody</span>
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
-            <HardDrive className="w-3 h-3" />
-            <span>Thủ công</span>
-          </span>
-        );
+  const getSourceIcon = (sourceType?: string, source?: string) => {
+    if (sourceType === 'ocr_confirmed' || source === 'ocr') {
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-300 border border-indigo-500/30">
+          <FileText className="w-3 h-3" />
+          <span>Quét OCR</span>
+        </span>
+      );
     }
+    if (sourceType === 'device_imported' || source === 'device') {
+      return (
+        <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-300 border border-emerald-500/30">
+          <Smartphone className="w-3 h-3" />
+          <span>Máy InBody</span>
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+        <HardDrive className="w-3 h-3" />
+        <span>Thủ công</span>
+      </span>
+    );
   };
 
   return (
@@ -96,8 +95,11 @@ export default function MeasurementHistoryTable({
                 year: 'numeric',
               });
 
+              const smmVal = m.smm_kg ?? m.skeletal_muscle_mass_kg;
+              const pbfVal = m.pbf_percent ?? m.percent_body_fat;
+
               const bmiClass = classifyBmiAsian(m.bmi);
-              const pbfClass = classifyPbf(m.percent_body_fat, 'male');
+              const pbfClass = classifyPbf(pbfVal, 'male');
               const vflClass = classifyVisceralFat(m.visceral_fat_level);
 
               const isConfirming = deleteConfirmId === m.id;
@@ -124,12 +126,12 @@ export default function MeasurementHistoryTable({
                     )}
                   </td>
                   <td className="py-3 px-3 font-mono font-semibold text-emerald-400">
-                    {m.skeletal_muscle_mass_kg ? `${m.skeletal_muscle_mass_kg} kg` : '-'}
+                    {smmVal ? `${smmVal} kg` : '-'}
                   </td>
                   <td className="py-3 px-3">
-                    {m.percent_body_fat ? (
+                    {pbfVal ? (
                       <div className="flex flex-col gap-0.5">
-                        <span className="font-mono font-semibold text-amber-400">{m.percent_body_fat}%</span>
+                        <span className="font-mono font-semibold text-amber-400">{pbfVal}%</span>
                         <span className={`text-[10px] px-1.5 py-0.2 rounded border w-fit ${pbfClass.badgeClass}`}>
                           {pbfClass.label}
                         </span>
@@ -148,7 +150,7 @@ export default function MeasurementHistoryTable({
                     )}
                   </td>
                   <td className="py-3 px-3 whitespace-nowrap">
-                    {getSourceIcon(m.source)}
+                    {getSourceIcon(m.source_type, m.source)}
                   </td>
                   <td className="py-3 px-3 text-right">
                     {isConfirming ? (
