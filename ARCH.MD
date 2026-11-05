@@ -328,9 +328,7 @@ Health-InBody-Agent-RAG/
 ├── infra/                   # Docker Compose, PostgreSQL, Qdrant, Valkey, Embed Serving
 ├── frontend/                # Next.js 16 Web UI
 ├── data_pipeline/           # prepare/merge/build embedding dataset
-├── contracts/               # Pydantic schemas shared across services
-├── core-api/                # Core Business API (BFF)
-├── agent-service/           # Multi-Agent Platform
+├── contracts/               # Legacy inter-service schemas; no active backend import
 ├── ocr-services/            # Tesseract OCR service
 ├── ocr-paddle-services/     # PaddleOCR service
 └── docs/                    # Architecture, roadmap, and evaluation docs

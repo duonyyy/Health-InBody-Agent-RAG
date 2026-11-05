@@ -1,4 +1,7 @@
 # BÁO CÁO NGHIÊN CỨU & BẢN THIẾT KẾ KIẾN TRÚC
+
+> **Lưu trữ lịch sử — không triển khai:** Ngày 2026-11-05 người dùng chọn phát triển trong `backend/` gộp và rút `core-api/`, `agent-service/`. Các lệnh, sơ đồ và kết luận tách service bên dưới chỉ là đề xuất cũ; xem `docs/KE_HOACH_NANG_CAP_DU_AN_2026.md` phiên bản 3.0 để làm tiếp.
+
 ## PHÂN TÁCH VẬT LÝ BACKEND THÀNH 2 MICROSERVICES: CORE-API VÀ AGENT-SERVICE
 **Dự án:** Health / InBody Multi-Agent RAG Platform (KLTN & MWG AI Engineer Portfolio)  
 **Tài liệu:** `docs/backend/NGHIEN_CUU_TACH_BACKEND_MICROSERVICES_PHUONG_AN_B.md`  
