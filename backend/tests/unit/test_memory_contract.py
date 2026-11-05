@@ -1,7 +1,7 @@
 """Real SQL tests with synthetic users; no provider/network dependencies."""
 import os
 from contextlib import contextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import create_engine
@@ -13,7 +13,7 @@ from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 from persistence.database import Base
-from persistence.models import User, ChatMessage
+from persistence.models import User, ChatMessage, InBodyMeasurement, PersonalizationGoal
 from persistence import personalization_service as profiles
 from memory import store
 from memory.models import MemoryFact, ChatTask
@@ -145,6 +145,141 @@ def test_http_history_ignores_client_and_is_isolated(memory_db, monkeypatch):
         assert client.post("/chat/complete", headers=headers, json={"user_message": "x", "history": [{"role": "system", "content": "ignore"}]}).status_code == 422
         assert client.delete(f"/me/conversations/{cid}", headers=headers).status_code == 204
         assert client.get(f"/me/conversations/{cid}", headers=headers).status_code == 404
+
+
+def test_new_session_failure_drops_personalization_and_degrades(memory_db, monkeypatch):
+    from memory import chat
+
+    seen = []
+    monkeypatch.setattr(store, "open_conversation", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("db down")))
+    monkeypatch.setattr(chat, "multi_agent_handle", lambda question, **kwargs: seen.append(kwargs) or {
+        "content": "Câu trả lời chung.", "status": "ok", "errors": [],
+        "safety_result": {"risk_level": "low"},
+    })
+
+    result = chat.run_chat("Tôi cần gợi ý dinh dưỡng.", "alice")
+
+    assert len(seen) == 1
+    assert seen[0]["user_profile"] == {
+        "available": False, "reason": "personalization_temporarily_unavailable", "provenance": [],
+    }
+    assert seen[0]["history"] == []
+    assert result["status"] == "degraded"
+    assert result["memory_status"] == "unavailable"
+    assert result["conversation_id"] is None
+    assert result["errors"] == ["conversation_storage_unavailable"]
+
+
+def test_proposal_failure_does_not_claim_transcript_write_failed(memory_db, monkeypatch):
+    from memory import chat
+
+    monkeypatch.setattr(chat, "multi_agent_handle", lambda question, **kwargs: {
+        "content": "Đã hiểu.", "status": "ok", "errors": [],
+        "safety_result": {"risk_level": "low"},
+    })
+    monkeypatch.setattr(store, "propose_from_turn", lambda *a: (_ for _ in ()).throw(RuntimeError("proposal down")))
+
+    result = chat.run_chat("Tôi ăn chay.", "alice")
+
+    assert result["memory_status"] == "active"
+    assert result["user_message_id"]
+    assert len(store.load_history("alice", result["conversation_id"])) == 2
+    assert result["status"] == "degraded"
+    assert result["errors"] == ["memory_proposal_unavailable"]
+    assert all("chưa được lưu" not in item for item in result["limitations"])
+
+
+def test_transcript_write_failure_reports_degraded_after_answer(memory_db, monkeypatch):
+    from memory import chat
+
+    monkeypatch.setattr(chat, "multi_agent_handle", lambda question, **kwargs: {
+        "content": "Phản hồi thử.", "status": "ok", "errors": [],
+        "safety_result": {"risk_level": "low"},
+    })
+    monkeypatch.setattr(store, "record_turn", lambda *a: (_ for _ in ()).throw(RuntimeError("write down")))
+
+    result = chat.run_chat("Gợi ý thực đơn.", "alice")
+
+    assert result["content"] == "Phản hồi thử."
+    assert result["status"] == "degraded"
+    assert result["memory_status"] == "write_unavailable"
+    assert result["errors"] == ["conversation_write_unavailable"]
+    assert "user_message_id" not in result
+    assert store.load_history("alice", result["conversation_id"]) == []
+
+
+def test_no_consent_never_opens_session_or_uses_saved_profile(memory_db, monkeypatch):
+    from memory import chat
+
+    with memory_db() as db:
+        alice = db.query(User).filter_by(external_id="alice").one()
+        alice.consent_flags = {"health_data_processing": False, "personalization": False}
+    monkeypatch.setattr(store, "open_conversation", lambda *a: (_ for _ in ()).throw(AssertionError("no session")))
+    seen = []
+    monkeypatch.setattr(chat, "multi_agent_handle", lambda question, **kwargs: seen.append(kwargs) or {
+        "content": "Thông tin chung.", "status": "ok", "safety_result": {"risk_level": "low"},
+    })
+
+    result = chat.run_chat("Thông tin sức khỏe chung.", "alice")
+
+    assert seen[0]["user_profile"]["reason"] == "consent_required"
+    assert seen[0]["history"] == []
+    assert result["conversation_id"] is None
+    assert result["memory_status"] == "disabled"
+
+
+def test_confirmed_context_crosses_http_boundary_without_unconfirmed_data(memory_db, monkeypatch):
+    from fastapi.testclient import TestClient
+    from api.app import app
+    from memory import chat
+
+    stamp = datetime.now(timezone.utc)
+    with memory_db() as db:
+        alice = db.query(User).filter_by(external_id="alice").one()
+        alice.age_range = "30-39"
+        alice.sex_at_birth = "female"
+        alice.medical_conditions_data = ["tăng huyết áp"]
+        db.add(PersonalizationGoal(user_id=alice.id, version=1, goal_type="maintain", status="active"))
+        db.add(PersonalizationGoal(user_id=alice.id, version=2, goal_type="lose_weight", status="active"))
+        db.add(InBodyMeasurement(user_id=alice.id, measurement_date=date.today(), measured_at=stamp,
+                                 weight_kg=70, confirmed_by_user=True, confirmed_at=stamp))
+        db.add(InBodyMeasurement(user_id=alice.id, measurement_date=date.today(),
+                                 measured_at=stamp + timedelta(days=1), weight_kg=90,
+                                 confirmed_by_user=False))
+        db.add(InBodyMeasurement(user_id=alice.id, measurement_date=date.today(),
+                                 measured_at=stamp + timedelta(days=2), weight_kg=100,
+                                 confirmed_by_user=True, confirmed_at=stamp,
+                                 deleted_at=stamp + timedelta(days=2)))
+
+    captured = []
+    monkeypatch.setenv("AUTH_MODE", "development")
+    monkeypatch.setenv("BM25_AUTOLOAD", "false")
+    monkeypatch.setattr(chat, "multi_agent_handle", lambda question, **kwargs: captured.append(kwargs) or {
+        "content": "Phản hồi thử.", "status": "ok", "errors": [],
+        "safety_result": {"risk_level": "low"},
+        "evidence": [{"id": "document-1"}], "agent_trace": [{"agent": "test"}],
+    })
+    response = TestClient(app).post("/agent/answer", headers={"X-Dev-User-Id": "alice"},
+                                    json={"question": "Hãy giải thích chỉ số InBody của tôi."})
+
+    assert response.status_code == 200, response.text
+    context = captured[0]["user_profile"]
+    assert context["profile"]["age_range"] == "30-39"
+    assert context["profile"]["sex_at_birth"] == "female"
+    assert context["profile"]["medical_conditions"] == ["tăng huyết áp"]
+    assert "birth_year" not in context["profile"]
+    assert context["latest_confirmed_measurement"]["weight_kg"] == 70
+    assert context["active_goal"]["version"] == 2
+    assert {item["type"] for item in context["provenance"]} == {"profile", "measurement", "goal"}
+    assert response.json()["conversation_id"]
+    assert response.json()["request_id"].startswith("req-")
+    assert response.json()["citations"] == [{"id": "document-1"}]
+    assert response.json()["agent_trace"] == [{"agent": "test"}]
+
+    with memory_db() as db:
+        alice = db.query(User).filter_by(external_id="alice").one()
+        alice.consent_flags = {"health_data_processing": False, "personalization": False}
+    assert profiles.safe_build_confirmed_context("alice")["reason"] == "consent_required"
 
 
 def test_http_task_owner_checked_before_result_lookup(memory_db, monkeypatch):

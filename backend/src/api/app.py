@@ -378,6 +378,7 @@ async def agent_answer(data: AgentRequest, current_user: CurrentUser = Depends(g
     )
     return {
         "answer": response["content"],
+        "request_id": response.get("request_id"),
         "conversation_id": response.get("conversation_id"),
         "memory_status": response.get("memory_status"),
         "memory_proposals": response.get("memory_proposals", []),

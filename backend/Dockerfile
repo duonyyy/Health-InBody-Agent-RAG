@@ -1,12 +1,12 @@
-FROM python:3.10.12-slim-bullseye
+FROM python:3.10-slim-bookworm
 
-RUN apt update -y \
-    && apt-get install \
+RUN apt-get update \
+    && apt-get install --no-install-recommends \
         python3-dev \
         default-libmysqlclient-dev \
         build-essential \
         pkg-config -y \
-    && apt-get clean
+    && rm -rf /var/lib/apt/lists/*
 
 # set work directory
 WORKDIR /usr/src/app

@@ -930,6 +930,7 @@ def build_confirmed_personalization_context(subject: str) -> Dict[str, Any]:
                 PersonalizationGoal.user_id == user.id,
                 PersonalizationGoal.status == "active",
             )
+            .order_by(PersonalizationGoal.version.desc())
             .first()
         )
         provenance: List[Dict[str, Any]] = [
