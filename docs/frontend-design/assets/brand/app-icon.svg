@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="appBgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="50%" stop-color="#090E17"/>
+      <stop offset="100%" stop-color="#042F2E"/>
+    </linearGradient>
+    <linearGradient id="appMarkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2DD4BF"/>
+      <stop offset="50%" stop-color="#0D9488"/>
+      <stop offset="100%" stop-color="#38BDF8"/>
+    </linearGradient>
+    <linearGradient id="appSecGrad" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#14B8A6"/>
+    </linearGradient>
+    <filter id="appGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="24" flood-color="#0D9488" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <!-- Squircle container -->
+  <rect width="512" height="512" rx="128" fill="url(#appBgGrad)"/>
+  <rect x="2" y="2" width="508" height="508" rx="126" stroke="#1E293B" stroke-width="4" fill="none"/>
+  <!-- Mark Group Scaled -->
+  <g transform="translate(106, 106) scale(3)" filter="url(#appGlow)">
+    <path d="M 50 12 A 38 38 0 1 1 16 64" fill="none" stroke="url(#appMarkGrad)" stroke-width="7.5" stroke-linecap="round"/>
+    <path d="M 50 26 A 24 24 0 1 0 72 60" fill="none" stroke="url(#appSecGrad)" stroke-width="6" stroke-linecap="round"/>
+    <path d="M 50 26 C 50 40, 68 46, 68 58 C 68 68, 59 74, 50 74 C 41 74, 34 68, 34 58 C 34 44, 50 30, 50 26 Z" fill="url(#appMarkGrad)"/>
+    <circle cx="50" cy="58" r="4.5" fill="#FFFFFF"/>
+  </g>
+</svg>

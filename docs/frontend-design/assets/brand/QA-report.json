@@ -1,0 +1,266 @@
+{
+  "source": "Bảng nhận diện thương hiệu BodyWise(1).png",
+  "input_dimensions": [
+    1672,
+    941
+  ],
+  "original_status": "Pixel-based screenshot, not original logo vectors",
+  "geometry_method": "Source-contour-guided, curvature-smoothed editable cubic Bézier exterior and figure insets; shared geometry for all variants",
+  "typeface": "Inter Bold / Inter Regular (outline substitute; original font unconfirmed)",
+  "palette": {
+    "Porcelain Sand": "#F8FAFC",
+    "White": "#FFFFFF",
+    "Deep Slate Navy": "#0F172A",
+    "Vital Teal": "#0D9488",
+    "Teal Light": "#14B8A6",
+    "Bio Sky": "#0284C7",
+    "Sky Light": "#38BDF8",
+    "Sampled pale green": "#7DCA80"
+  },
+  "green_samples": [
+    {
+      "xy": [
+        306,
+        248
+      ],
+      "rgb": "#7DCA80"
+    },
+    {
+      "xy": [
+        282,
+        281
+      ],
+      "rgb": "#69C48C"
+    },
+    {
+      "xy": [
+        253,
+        303
+      ],
+      "rgb": "#45BE99"
+    }
+  ],
+  "favicon_ico_sizes": [
+    [
+      16,
+      16
+    ],
+    [
+      32,
+      32
+    ],
+    [
+      48,
+      48
+    ]
+  ],
+  "export_count": 50,
+  "files": [
+    "source/logo-master.svg",
+    "logo/svg/logo-mark.svg",
+    "source/construction-grid.svg",
+    "logo/svg/logo-horizontal-light.svg",
+    "logo/svg/logo-horizontal-dark.svg",
+    "logo/svg/logo-tagline-light.svg",
+    "logo/svg/logo-tagline-dark.svg",
+    "logo/svg/logo-stacked.svg",
+    "logo/svg/logo-mono-black.svg",
+    "logo/svg/logo-mono-white.svg",
+    "logo/png/logo-mark@1x.png",
+    "logo/png/logo-mark@2x.png",
+    "logo/png/logo-mark@4x.png",
+    "logo/png/logo-horizontal-light@1x.png",
+    "logo/png/logo-horizontal-light@2x.png",
+    "logo/png/logo-horizontal-light@4x.png",
+    "logo/png/logo-horizontal-dark@1x.png",
+    "logo/png/logo-horizontal-dark@2x.png",
+    "logo/png/logo-horizontal-dark@4x.png",
+    "logo/png/logo-tagline-light@1x.png",
+    "logo/png/logo-tagline-light@2x.png",
+    "logo/png/logo-tagline-light@4x.png",
+    "logo/png/logo-tagline-dark@1x.png",
+    "logo/png/logo-tagline-dark@2x.png",
+    "logo/png/logo-tagline-dark@4x.png",
+    "logo/png/logo-stacked@1x.png",
+    "logo/png/logo-stacked@2x.png",
+    "logo/png/logo-stacked@4x.png",
+    "logo/png/logo-mono-black@1x.png",
+    "logo/png/logo-mono-black@2x.png",
+    "logo/png/logo-mono-black@4x.png",
+    "logo/png/logo-mono-white@1x.png",
+    "logo/png/logo-mono-white@2x.png",
+    "logo/png/logo-mono-white@4x.png",
+    "favicon/favicon.svg",
+    "favicon/favicon-16.png",
+    "favicon/favicon-32.png",
+    "favicon/favicon-48.png",
+    "favicon/favicon.ico",
+    "app-icons/apple-touch-icon.png",
+    "app-icons/icon-192.png",
+    "app-icons/icon-512.png",
+    "app-icons/icon-maskable-512.png",
+    "previews/logo-variants.png",
+    "previews/light-dark-comparison.png",
+    "previews/favicon-size-test.png",
+    "previews/reconstruction-comparison.png",
+    "QA-report.json",
+    "README.md",
+    "previews/icon-alignment-before-after.png"
+  ],
+  "pixel_dimensions": {
+    "logo/png/logo-mark@1x.png": [
+      216,
+      184
+    ],
+    "logo/png/logo-mark@2x.png": [
+      432,
+      368
+    ],
+    "logo/png/logo-mark@4x.png": [
+      864,
+      736
+    ],
+    "logo/png/logo-horizontal-light@1x.png": [
+      596,
+      184
+    ],
+    "logo/png/logo-horizontal-light@2x.png": [
+      1192,
+      368
+    ],
+    "logo/png/logo-horizontal-light@4x.png": [
+      2384,
+      736
+    ],
+    "logo/png/logo-horizontal-dark@1x.png": [
+      596,
+      184
+    ],
+    "logo/png/logo-horizontal-dark@2x.png": [
+      1192,
+      368
+    ],
+    "logo/png/logo-horizontal-dark@4x.png": [
+      2384,
+      736
+    ],
+    "logo/png/logo-tagline-light@1x.png": [
+      596,
+      184
+    ],
+    "logo/png/logo-tagline-light@2x.png": [
+      1192,
+      368
+    ],
+    "logo/png/logo-tagline-light@4x.png": [
+      2384,
+      736
+    ],
+    "logo/png/logo-tagline-dark@1x.png": [
+      596,
+      184
+    ],
+    "logo/png/logo-tagline-dark@2x.png": [
+      1192,
+      368
+    ],
+    "logo/png/logo-tagline-dark@4x.png": [
+      2384,
+      736
+    ],
+    "logo/png/logo-stacked@1x.png": [
+      350,
+      268
+    ],
+    "logo/png/logo-stacked@2x.png": [
+      700,
+      536
+    ],
+    "logo/png/logo-stacked@4x.png": [
+      1400,
+      1072
+    ],
+    "logo/png/logo-mono-black@1x.png": [
+      350,
+      268
+    ],
+    "logo/png/logo-mono-black@2x.png": [
+      700,
+      536
+    ],
+    "logo/png/logo-mono-black@4x.png": [
+      1400,
+      1072
+    ],
+    "logo/png/logo-mono-white@1x.png": [
+      350,
+      268
+    ],
+    "logo/png/logo-mono-white@2x.png": [
+      700,
+      536
+    ],
+    "logo/png/logo-mono-white@4x.png": [
+      1400,
+      1072
+    ],
+    "favicon/favicon-16.png": [
+      16,
+      16
+    ],
+    "favicon/favicon-32.png": [
+      32,
+      32
+    ],
+    "favicon/favicon-48.png": [
+      48,
+      48
+    ],
+    "app-icons/apple-touch-icon.png": [
+      180,
+      180
+    ],
+    "app-icons/icon-192.png": [
+      192,
+      192
+    ],
+    "app-icons/icon-512.png": [
+      512,
+      512
+    ],
+    "app-icons/icon-maskable-512.png": [
+      512,
+      512
+    ],
+    "previews/logo-variants.png": [
+      1440,
+      1080
+    ],
+    "previews/light-dark-comparison.png": [
+      1200,
+      540
+    ],
+    "previews/favicon-size-test.png": [
+      1250,
+      470
+    ],
+    "previews/reconstruction-comparison.png": [
+      1280,
+      490
+    ]
+  },
+  "validation_errors": [],
+  "known_differences": [
+    "Curvature-smoothed contours closely follow raster silhouette, but original Bézier control points are unavailable.",
+    "Inter Bold is an approximation of unidentifiable source font.",
+    "Gradient stops approximate sampled original; original color tokens remain unchanged.",
+    "Icon source at 16px has reduced internal detail due to rasterization; no geometry altered.",
+    "192px app icon dark navy background follows explicit deliverable rule; its reference card shows a light background."
+  ],
+  "source_mask_similarity": {
+    "method": "Intersection-over-Union of transparency silhouettes against saturated logo pixels in exact source crop",
+    "old_percent": 80.61,
+    "corrected_percent": 93.09,
+    "note": "Objective contour overlap in raster screenshot; not a vector fidelity guarantee"
+  }
+}
