@@ -1,6 +1,15 @@
 <div align="center">
 
-# 🩺 Health & InBody Autonomous Multi-Agent RAG System
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/frontend-design/assets/brand/logo-tagline-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="docs/frontend-design/assets/brand/logo-tagline-light.svg">
+  <img alt="BodyWise — Trợ lý Thể trạng & Dinh dưỡng AI" src="docs/frontend-design/assets/brand/logo-tagline-dark.svg" width="480">
+</picture>
+
+<br />
+<br />
+
+# 🩺 BodyWise — Health & InBody Autonomous Multi-Agent RAG System
 
 **Hệ thống Trợ lý AI Đa tác nhân Tư vấn Sức khỏe & Phân tích Chỉ số InBody với Cơ chế Kiểm soát An toàn Y tế Đa tầng**
 
@@ -171,7 +180,7 @@ $$\text{Hybrid Score} = (0.6 \times \text{Score}_{\text{Dense}}) + (0.4 \times \
 
 | Tầng kiến trúc | Công nghệ lựa chọn | Lý do lựa chọn & Giá trị mang lại |
 |---|---|---|
-| **Web Frontend** | **Next.js 16 (App Router)**, React 19, Tailwind CSS, TypeScript | Hiệu năng render tối ưu, SSR mượt mà, giao diện Dashboard chỉ số InBody trực quan. |
+| **Web Frontend & UI** | **Next.js 16 (App Router)**, React 19, Tailwind CSS, TypeScript, [BodyWise Design System](docs/frontend-design/assets/README.md) | Hiệu năng render tối ưu, SSR mượt mà, bộ nhận diện thương hiệu SVG vector và Dashboard chỉ số InBody trực quan. |
 | **API Backend** | **FastAPI**, Pydantic v2, Uvicorn | Bất đồng bộ (Async I/O), tự động sinh OpenAPI spec, thời gian phản hồi microsecond. |
 | **Orchestration** | **LangGraph**, StateGraph | Quản lý state luồng hội thoại phân nhánh phức tạp, dễ dàng trace log và ngắt mạch. |
 | **Vector DB** | **Qdrant** | Viết bằng Rust, hiệu năng lọc Payload cực nhanh, hỗ trợ Cosine distance chuẩn xác. |
@@ -179,7 +188,7 @@ $$\text{Hybrid Score} = (0.6 \times \text{Score}_{\text{Dense}}) + (0.4 \times \
 | **Lexical Search** | **BM25 Snapshot (Gzip)** | Zero-overhead startup, chính xác tuyệt đối với mã số, thuật ngữ viết tắt (BMI, PBF, SMM). |
 | **Database** | **PostgreSQL** + SQLAlchemy ORM | Lưu trữ quan hệ ACID vững chắc: tài khoản, lịch sử đo InBody, profile người dùng. |
 | **Cache & Task** | **Valkey / Redis**, Celery | Cache câu trả lời RAG an toàn, xử lý các tác vụ nền bất đồng bộ (OCR, Indexing). |
-| **Infrastructure** | **Docker & Docker Compose** | Đóng gói microservices nhất quán giữa môi trường phát triển và môi trường thực tế. |
+| **Infrastructure** | **Docker & Docker Compose** | Chạy backend FastAPI gộp cùng PostgreSQL, Qdrant, Valkey và embedding service. |
 
 ---
 

@@ -1,0 +1,18 @@
+{
+  "system": "BodyWise Domain Iconography v1.0",
+  "grid": "24x24 px vector",
+  "style": "Clean geometric stroke (2.0px), stroke-linecap round",
+  "icons": [
+    "bmi.svg",
+    "pbf.svg",
+    "smm.svg",
+    "vfl.svg",
+    "bfm.svg",
+    "nutrition.svg",
+    "workout.svg",
+    "ocr-scan.svg",
+    "safety-shield.svg",
+    "memory-facts.svg",
+    "evidence-doc.svg"
+  ]
+}
