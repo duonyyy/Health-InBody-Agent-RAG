@@ -55,13 +55,13 @@ export default function CorpusSearch() {
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
       {/* Search Header & Bar */}
-      <div className="glass-card rounded-2xl p-6 border border-slate-800/80 bg-slate-900/60 shadow-lg space-y-4">
+      <div className="rounded-2xl p-6 border border-slate-200 bg-white shadow-xs space-y-4">
         <div>
-          <h3 className="text-base font-bold text-slate-100 flex items-center gap-2">
-            <Search className="w-5 h-5 text-emerald-400" />
+          <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+            <Search className="w-5 h-5 text-teal-600" />
             <span>Thư viện Tri thức & RAG Corpus</span>
           </h3>
-          <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+          <p className="text-xs text-slate-600 mt-1 leading-relaxed">
             Tra cứu văn bản chuẩn hóa trên tập tài liệu y tế, chuẩn InBody, dinh dưỡng thể thao và an toàn sức khỏe.
           </p>
         </div>
@@ -75,12 +75,12 @@ export default function CorpusSearch() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Nhập từ khóa tìm kiếm (Ví dụ: Tiêu chuẩn PBF nam, đau ngực khó thở, thâm hụt calo, creatine...)"
-              className="w-full pl-10 pr-24 py-3 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 text-sm focus:outline-none focus:border-emerald-500 shadow-inner"
+              className="w-full pl-10 pr-28 py-3 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 text-sm focus:bg-white focus:outline-none focus:border-teal-600 shadow-inner"
             />
             <button
               type="submit"
               disabled={isSearching || !query.trim()}
-              className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:bg-slate-800 disabled:text-slate-500 text-slate-950 font-bold text-xs shadow-md transition-all active:scale-95 flex items-center gap-1.5"
+              className="absolute right-2 top-1/2 -translate-y-1/2 px-4 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-xs shadow-sm transition-all active:scale-95 flex items-center gap-1.5"
             >
               {isSearching ? (
                 <>
@@ -95,7 +95,7 @@ export default function CorpusSearch() {
 
           {/* Category Filters */}
           <div className="flex flex-wrap items-center gap-2 text-xs pt-1">
-            <span className="text-slate-400 flex items-center gap-1 text-[11px]">
+            <span className="text-slate-500 flex items-center gap-1 text-[11px] font-medium">
               <Filter className="w-3 h-3 text-slate-400" />
               <span>Chủ đề:</span>
             </span>
@@ -113,8 +113,8 @@ export default function CorpusSearch() {
                 onClick={() => handleCategoryChange(cat.id)}
                 className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${
                   category === cat.id
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm'
-                    : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-slate-200'
+                    ? 'bg-teal-50 text-teal-800 border border-teal-200 font-bold shadow-xs'
+                    : 'bg-slate-100 text-slate-600 border border-slate-200 hover:text-slate-900 hover:bg-slate-200/60'
                 }`}
               >
                 {cat.label}
@@ -126,17 +126,17 @@ export default function CorpusSearch() {
 
       {/* Error state */}
       {errorMessage && (
-        <div className="p-4 rounded-2xl bg-rose-950/60 border border-rose-800 text-rose-200 text-xs flex items-start justify-between gap-3 shadow-lg">
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-start justify-between gap-3 shadow-xs">
           <div className="flex items-start gap-2.5">
-            <AlertCircle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
+            <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="font-semibold text-rose-300">Không thể thực hiện tra cứu tài liệu</p>
-              <p className="text-rose-400/90 mt-0.5">{errorMessage}</p>
+              <p className="font-semibold text-rose-800">Không thể thực hiện tra cứu tài liệu</p>
+              <p className="text-rose-700 mt-0.5">{errorMessage}</p>
             </div>
           </div>
           <button
             onClick={() => handleSearch()}
-            className="px-3 py-1.5 rounded-lg bg-rose-900/60 hover:bg-rose-800 text-rose-100 font-semibold border border-rose-700/80 flex-shrink-0 flex items-center gap-1.5"
+            className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-semibold flex-shrink-0 flex items-center gap-1.5 transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Thử lại</span>
@@ -150,11 +150,11 @@ export default function CorpusSearch() {
           {[1, 2, 3].map((i) => (
             <div
               key={i}
-              className="glass-card rounded-2xl p-4 border border-slate-800/80 bg-slate-900/40 animate-pulse space-y-3"
+              className="rounded-2xl p-4 border border-slate-200 bg-white space-y-3 shadow-xs animate-pulse"
             >
-              <div className="h-4 bg-slate-800 rounded w-1/3" />
-              <div className="h-14 bg-slate-800/60 rounded-xl" />
-              <div className="h-3 bg-slate-800/40 rounded w-1/4" />
+              <div className="h-4 bg-slate-200 rounded w-1/3" />
+              <div className="h-14 bg-slate-100 rounded-xl" />
+              <div className="h-3 bg-slate-200 rounded w-1/4" />
             </div>
           ))}
         </div>
@@ -163,9 +163,9 @@ export default function CorpusSearch() {
       {/* Results Section */}
       {!isSearching && !errorMessage && hasSearched && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between text-xs text-slate-400 px-1 font-medium">
+          <div className="flex items-center justify-between text-xs text-slate-600 px-1 font-medium">
             <span>
-              Tìm thấy <strong className="text-emerald-400">{results.length}</strong> đoạn tài liệu phù hợp:
+              Tìm thấy <strong className="text-teal-700">{results.length}</strong> đoạn tài liệu phù hợp:
             </span>
             <span className="text-[11px] text-slate-500">
               Điểm tương đồng phản ánh độ trùng khớp ngữ nghĩa của thuật toán Vector/BM25
@@ -173,14 +173,14 @@ export default function CorpusSearch() {
           </div>
 
           {results.length === 0 ? (
-            <div className="glass-card rounded-2xl p-8 border border-slate-800/80 bg-slate-900/40 text-center space-y-3">
-              <div className="w-12 h-12 rounded-2xl bg-slate-800/60 text-slate-400 flex items-center justify-center mx-auto border border-slate-700">
+            <div className="rounded-2xl p-8 border border-slate-200 bg-white text-center space-y-3 shadow-xs">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center mx-auto border border-slate-200">
                 <BookOpen className="w-6 h-6" />
               </div>
-              <h4 className="text-sm font-semibold text-slate-200">
+              <h4 className="text-sm font-semibold text-slate-900">
                 Không tìm thấy đoạn trích phù hợp
               </h4>
-              <p className="text-xs text-slate-400 max-w-md mx-auto">
+              <p className="text-xs text-slate-600 max-w-md mx-auto">
                 Không có tài liệu nào trong thư viện trùng khớp với từ khóa &ldquo;{query}&rdquo; thuộc chủ đề đã chọn. Bạn hãy thử từ khóa ngắn hơn hoặc chọn &ldquo;Tất cả tài liệu&rdquo;.
               </p>
             </div>
@@ -191,31 +191,31 @@ export default function CorpusSearch() {
                 return (
                   <div
                     key={idx}
-                    className="glass-card rounded-2xl p-4 border border-slate-800/80 bg-slate-900/60 shadow-md space-y-2.5 hover:border-emerald-500/30 transition-colors"
+                    className="rounded-2xl p-4 border border-slate-200 bg-white shadow-xs space-y-2.5 hover:border-teal-500 transition-colors"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-2">
-                        <FileText className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                        <h4 className="font-bold text-slate-100 text-sm">{doc.title}</h4>
+                        <FileText className="w-4 h-4 text-teal-600 flex-shrink-0" />
+                        <h4 className="font-bold text-slate-900 text-sm">{doc.title}</h4>
                       </div>
                       <span
-                        className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800 font-mono font-semibold flex-shrink-0"
+                        className="text-[11px] px-2.5 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200 font-mono font-semibold flex-shrink-0"
                         title="Độ tương đồng ngữ nghĩa vector/BM25, không phải độ chính xác y khoa"
                       >
                         Tương đồng: {scorePct}%
                       </span>
                     </div>
 
-                    <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/70 p-3.5 rounded-xl border border-slate-800/80 font-serif italic selection:bg-emerald-500/30">
+                    <p className="text-xs text-slate-800 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-200 font-serif italic selection:bg-teal-100">
                       &ldquo;{doc.content}&rdquo;
                     </p>
 
-                    <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1.5 border-t border-slate-800/60">
-                      <span className="font-mono text-slate-400 truncate max-w-md">
+                    <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1.5 border-t border-slate-100">
+                      <span className="font-mono text-slate-600 truncate max-w-md">
                         Nguồn trích dẫn: {doc.source}
                       </span>
                       {doc.category && (
-                        <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 uppercase text-[10px] tracking-wider font-semibold flex-shrink-0">
+                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 uppercase text-[10px] tracking-wider font-semibold flex-shrink-0 border border-slate-200">
                           {doc.category}
                         </span>
                       )}
@@ -230,14 +230,14 @@ export default function CorpusSearch() {
 
       {/* Initial empty helper */}
       {!hasSearched && !isSearching && (
-        <div className="glass-card rounded-2xl p-8 border border-slate-800/80 bg-slate-900/30 text-center space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/20">
+        <div className="rounded-2xl p-8 border border-slate-200 bg-white text-center space-y-3 shadow-xs">
+          <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mx-auto border border-teal-200">
             <Layers className="w-6 h-6" />
           </div>
-          <h4 className="text-sm font-semibold text-slate-200">
+          <h4 className="text-sm font-semibold text-slate-900">
             Tra cứu trực tiếp trên Corpus đã lập chỉ mục
           </h4>
-          <p className="text-xs text-slate-400 max-w-lg mx-auto leading-relaxed">
+          <p className="text-xs text-slate-600 max-w-lg mx-auto leading-relaxed">
             Dữ liệu bao gồm các hướng dẫn phân tích InBody, tiêu chuẩn mỡ nội tạng WHO WPRO, phác đồ an toàn y tế và nguyên tắc dinh dưỡng kháng lực. Nhập câu hỏi để bắt đầu.
           </p>
         </div>

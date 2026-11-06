@@ -21,9 +21,9 @@ export interface UserProfile {
   age?: number;
   age_range?: string;
   birth_date?: string;
-  sex: SexType;
+  sex?: SexType;
   sex_at_birth?: SexAtBirthType;
-  height_cm: number;
+  height_cm?: number;
   activity_level?: ActivityLevelType;
   goal?: GoalType;
   health_conditions?: string[];

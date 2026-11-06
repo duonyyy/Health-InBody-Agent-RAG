@@ -1,6 +1,7 @@
 import {
   ChatMessage,
   UserProfile,
+  UserGoal,
   InBodyMeasurement,
   CheckInLog,
   MemoryProposal,
@@ -23,6 +24,7 @@ import {
 const DEMO_MODE_STORAGE_KEY = 'bodywise_explicit_demo_mode';
 const BASE_URL_STORAGE_KEY = 'api_base_url';
 const DEV_USER_STORAGE_KEY = 'active_user_id';
+let accessToken: string | null = null;
 
 export class ApiError extends Error {
   status: number;
@@ -33,11 +35,15 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.status = status;
     this.data = data;
+    if (status === 401 && accessToken) {
+      accessToken = null;
+      if (typeof window !== 'undefined') window.dispatchEvent(new Event('bodywise-auth-expired'));
+    }
   }
 }
 
 export function getApiBaseUrl(): string {
-  if (typeof window !== 'undefined') {
+  if (getAuthMode() === 'development' && typeof window !== 'undefined') {
     const saved = localStorage.getItem(BASE_URL_STORAGE_KEY);
     if (saved) return saved.replace(/\/$/, '');
   }
@@ -45,14 +51,39 @@ export function getApiBaseUrl(): string {
 }
 
 export function setApiBaseUrl(url: string): void {
-  if (typeof window !== 'undefined') {
+  if (getAuthMode() === 'development' && typeof window !== 'undefined') {
     localStorage.setItem(BASE_URL_STORAGE_KEY, url.trim().replace(/\/$/, ''));
   }
 }
 
 export function getAuthMode(): 'development' | 'production' {
-  const mode = process.env.NEXT_PUBLIC_AUTH_MODE || 'development';
-  return mode.toLowerCase() === 'production' ? 'production' : 'development';
+  const mode = process.env.NEXT_PUBLIC_AUTH_MODE || 'production';
+  return mode.toLowerCase() === 'development' ? 'development' : 'production';
+}
+
+export function hasAccessToken(): boolean {
+  return Boolean(accessToken);
+}
+
+export function clearAccessToken(): void {
+  accessToken = null;
+}
+
+export async function authenticateAccount(username: string, password: string, register = false): Promise<void> {
+  const res = await fetch(`${getApiBaseUrl()}/auth/${register ? 'register' : 'login'}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new ApiError(typeof data.detail === 'string' ? data.detail : `Đăng nhập thất bại (${res.status}).`, res.status);
+  }
+  const data = await res.json();
+  if (data.token_type !== 'bearer' || typeof data.access_token !== 'string') {
+    throw new ApiError('Máy chủ trả phiên đăng nhập không hợp lệ.', 502);
+  }
+  accessToken = data.access_token;
 }
 
 export function getActiveUserId(): string {
@@ -74,6 +105,7 @@ export function setActiveUserId(userId: string): void {
  * Mặc định tắt (false). Chỉ kích hoạt khi người dùng chủ động bật công tắc demo để xem mẫu UI.
  */
 export function isExplicitDemoMode(): boolean {
+  if (getAuthMode() !== 'development') return false;
   if (typeof window !== 'undefined') {
     return localStorage.getItem(DEMO_MODE_STORAGE_KEY) === 'true';
   }
@@ -95,6 +127,8 @@ function getRequestHeaders(extraHeaders: Record<string, string> = {}): Record<st
   // Chỉ gắn X-Dev-User-Id khi ở chế độ development được cấu hình tường minh
   if (getAuthMode() === 'development') {
     headers['X-Dev-User-Id'] = getActiveUserId();
+  } else if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
   }
   return headers;
 }
@@ -103,7 +137,7 @@ function getRequestHeaders(extraHeaders: Record<string, string> = {}): Record<st
 // Health Check (SCR-01, SCR-07)
 // -------------------------------------------------------------
 export async function checkBackendHealth(): Promise<BackendHealth> {
-  const url = `${getApiBaseUrl()}/health`;
+  const url = `${getApiBaseUrl()}/health/ready`;
   const start = performance.now();
   try {
     const controller = new AbortController();
@@ -116,22 +150,16 @@ export async function checkBackendHealth(): Promise<BackendHealth> {
     clearTimeout(timer);
 
     const latency = Math.round(performance.now() - start);
-    if (res.ok) {
+    if (res.ok || res.status === 503) {
       const data = await res.json();
-      const isHealthy = data.status === 'healthy' || data.platform_state === 'READY';
+      const isHealthy = res.ok && data.status === 'ready';
       return {
         status: isHealthy ? 'healthy' : 'degraded',
-        platform_state: data.platform_state || 'READY',
-        can_serve_traffic: data.can_serve_traffic ?? true,
+        platform_state: data.status,
+        can_serve_traffic: isHealthy,
         latency_ms: latency,
         timestamp: new Date().toISOString(),
-        dependencies: {
-          postgres: Boolean(data.dependencies?.postgres ?? data.cache?.connected ?? true),
-          qdrant: Boolean(data.dependencies?.qdrant ?? data.search?.vector_active ?? true),
-          valkey: Boolean(data.dependencies?.valkey ?? data.cache?.connected ?? true),
-          embedding_api: Boolean(data.dependencies?.embedding_api ?? true),
-          llm_provider: data.llm?.provider || data.dependencies?.llm_provider || 'system_default',
-        },
+        dependencies: data.dependencies,
       };
     }
     return {
@@ -243,36 +271,29 @@ export async function fetchUserProfile(): Promise<UserProfile> {
     if (res.ok) {
       const data = await res.json();
       return {
-        user_id: data.user_id || getActiveUserId(),
-        display_name: data.display_name || 'Người dùng BodyWise',
+        user_id: data.user_id || '',
+        display_name: data.display_name || '',
         age: data.age,
         age_range: data.age_range,
         birth_date: data.birth_date,
-        sex: data.sex_at_birth === 'female' ? 'female' : 'male',
+        sex: data.sex_at_birth === 'female' || data.sex_at_birth === 'male' ? data.sex_at_birth : undefined,
         sex_at_birth: data.sex_at_birth,
-        height_cm: Number(data.height_cm) || 170,
-        activity_level: data.activity_level || 'moderate',
+        height_cm: data.height_cm == null ? undefined : Number(data.height_cm),
+        activity_level: data.activity_level || undefined,
         goal: data.goal,
         health_conditions: data.medical_conditions || data.health_conditions || [],
         medical_conditions: data.medical_conditions || [],
         dietary_restrictions: data.dietary_preferences || data.dietary_restrictions || [],
         dietary_preferences: data.dietary_preferences || [],
         exercise_constraints: data.exercise_constraints || [],
-        consent_flags: data.consent_flags || { health_data_processing: true, personalization: true },
-        acknowledged_disclaimer: true,
+        consent_flags: data.consent_flags || { health_data_processing: false, personalization: false },
+        acknowledged_disclaimer: Boolean(data.acknowledged_disclaimer),
         created_at: data.created_at,
         updated_at: data.updated_at,
       };
     }
 
-    let detail = `Không thể tải hồ sơ (${res.status})`;
-    try {
-      const errJson = await res.json();
-      if (errJson.detail) detail = errJson.detail;
-    } catch {
-      // ignore
-    }
-    throw new ApiError(detail, res.status);
+    throw new ApiError(`Không thể tải hồ sơ (${res.status}).`, res.status);
   } catch (err: unknown) {
     if (err instanceof ApiError) throw err;
     throw new ApiError('Không thể kết nối tới máy chủ để tải hồ sơ cá nhân.', 503);
@@ -294,18 +315,19 @@ export async function saveUserProfile(profile: Partial<UserProfile>): Promise<Us
     dietary_preferences: profile.dietary_preferences || profile.dietary_restrictions,
     exercise_constraints: profile.exercise_constraints,
     medical_conditions: profile.medical_conditions || profile.health_conditions,
-    consent_flags: profile.consent_flags || { health_data_processing: true, personalization: true },
+    consent_flags: profile.consent_flags,
   };
 
   if (profile.age_range) {
     payload.age_range = profile.age_range;
+    payload.birth_date = null;
   } else if (profile.birth_date) {
     payload.birth_date = profile.birth_date;
   }
 
   try {
     const res = await fetch(`${baseUrl}/me/profile`, {
-      method: 'PUT',
+      method: 'PATCH',
       headers: getRequestHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(payload),
     });
@@ -314,18 +336,40 @@ export async function saveUserProfile(profile: Partial<UserProfile>): Promise<Us
       return await fetchUserProfile();
     }
 
-    let detail = `Không thể cập nhật hồ sơ (${res.status})`;
-    try {
-      const errJson = await res.json();
-      if (errJson.detail) detail = errJson.detail;
-    } catch {
-      // ignore
-    }
-    throw new ApiError(detail, res.status);
+    throw new ApiError(res.status === 409
+      ? 'Không thể lưu dữ liệu sức khỏe khi chưa đồng ý xử lý dữ liệu.'
+      : `Không thể cập nhật hồ sơ (${res.status}).`, res.status);
   } catch (err: unknown) {
     if (err instanceof ApiError) throw err;
     throw new ApiError('Lỗi kết nối khi cập nhật hồ sơ cá nhân.', 503);
   }
+}
+
+export async function fetchCurrentGoal(): Promise<UserGoal | null> {
+  if (isExplicitDemoMode()) return null;
+  const res = await fetch(`${getApiBaseUrl()}/me/goals/current`, { headers: getRequestHeaders() });
+  if (!res.ok) throw new ApiError(`Không thể tải mục tiêu (${res.status}).`, res.status);
+  const data = await res.json();
+  return data.goal || null;
+}
+
+export async function saveCurrentGoal(goal: UserGoal): Promise<UserGoal> {
+  if (!goal.goal_type) throw new ApiError('Vui lòng chọn loại mục tiêu.', 422);
+  const res = await fetch(`${getApiBaseUrl()}/me/goals/current`, {
+    method: 'PUT', headers: getRequestHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({
+      goal_type: goal.goal_type,
+      target_weight_kg: goal.target_weight_kg,
+      target_date: goal.target_date || undefined,
+      status: 'active',
+    }),
+  });
+  if (!res.ok) {
+    throw new ApiError(res.status === 409
+      ? 'Cần đồng ý xử lý dữ liệu sức khỏe hoặc điều chỉnh tốc độ thay đổi cân nặng mục tiêu.'
+      : `Không thể lưu mục tiêu (${res.status}).`, res.status);
+  }
+  return await res.json();
 }
 
 // -------------------------------------------------------------
@@ -352,25 +396,28 @@ export async function fetchInBodyMeasurements(): Promise<InBodyMeasurement[]> {
         ? data.items
         : [];
 
-      return rawItems.map((rawItem: unknown, idx: number): InBodyMeasurement => {
+      return rawItems.map((rawItem: unknown): InBodyMeasurement | null => {
         const item = (rawItem || {}) as Record<string, unknown>;
+        if (typeof item.id !== 'string' || typeof item.measured_at !== 'string' ||
+            item.weight_kg == null || item.height_cm == null ||
+            !Number.isFinite(Number(item.weight_kg)) || !Number.isFinite(Number(item.height_cm))) return null;
         const smm = item.smm_kg !== undefined ? Number(item.smm_kg) : (item.skeletal_muscle_mass_kg as number | undefined);
         const bfm = item.bfm_kg !== undefined ? Number(item.bfm_kg) : (item.body_fat_mass_kg as number | undefined);
         const pbf = item.pbf_percent !== undefined ? Number(item.pbf_percent) : (item.percent_body_fat as number | undefined);
 
         return {
-          id: String(item.id || `meas-${idx}`),
+          id: item.id,
           user_id: item.user_id as string | undefined,
-          measured_at: (item.measured_at as string) || new Date().toISOString(),
-          weight_kg: Number(item.weight_kg) || 0,
-          height_cm: Number(item.height_cm) || 170,
+          measured_at: item.measured_at,
+          weight_kg: Number(item.weight_kg),
+          height_cm: Number(item.height_cm),
           smm_kg: smm,
           bfm_kg: bfm,
           pbf_percent: pbf,
           visceral_fat_level: item.visceral_fat_level !== undefined ? Number(item.visceral_fat_level) : undefined,
           body_water_l: item.body_water_l !== undefined ? Number(item.body_water_l) : undefined,
-          source_type: (item.source_type as SourceType) || 'manual_confirmed',
-          confirmed_by_user: (item.confirmed_by_user as boolean) ?? true,
+          source_type: item.source_type as SourceType | undefined,
+          confirmed_by_user: item.confirmed_by_user as boolean | undefined,
           confidence: item.confidence as number | undefined,
           // Backward compatibility mappings
           skeletal_muscle_mass_kg: smm,
@@ -381,7 +428,7 @@ export async function fetchInBodyMeasurements(): Promise<InBodyMeasurement[]> {
           notes: (item.notes as string) || '',
           source: item.source_type === 'ocr_confirmed' ? 'ocr' : 'manual',
         };
-      });
+      }).filter((item): item is InBodyMeasurement => item !== null);
     }
 
     let detail = `Không thể tải danh sách số đo InBody (${res.status})`;
@@ -454,11 +501,15 @@ export async function saveInBodyMeasurement(
 
     if (res.ok) {
       const data = await res.json();
+      if (typeof data.id !== 'string' || typeof data.measured_at !== 'string' ||
+          data.weight_kg == null || data.height_cm == null) {
+        throw new ApiError('Máy chủ trả số đo chưa đầy đủ.', 502);
+      }
       return {
-        id: String(data.id || `meas-${Date.now()}`),
-        measured_at: data.measured_at || measuredAt,
-        weight_kg: Number(data.weight_kg) || 0,
-        height_cm: Number(data.height_cm) || 170,
+        id: data.id,
+        measured_at: data.measured_at,
+        weight_kg: Number(data.weight_kg),
+        height_cm: Number(data.height_cm),
         smm_kg: data.smm_kg,
         bfm_kg: data.bfm_kg,
         pbf_percent: data.pbf_percent,
@@ -542,7 +593,7 @@ export async function uploadInBodyOcrFile(file: File): Promise<Partial<InBodyMea
 
   try {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 65000);
+    const timer = setTimeout(() => controller.abort(), 110000);
 
     const res = await fetch(`${baseUrl}/me/inbody-ocr`, {
       method: 'POST',
@@ -830,7 +881,7 @@ export async function searchCorpusApi(query: string, category?: string): Promise
           title: (payload.title as string) || (r.title as string) || (metadata.title as string) || 'Tài liệu hướng dẫn y tế',
           source: (payload.source as string) || (r.source as string) || (metadata.source as string) || 'Qdrant Knowledge Base',
           content: (payload.content as string) || (r.content as string) || (r.text as string) || '',
-          score: typeof r.score === 'number' ? r.score : 0.85,
+          score: typeof r.similarity_score === 'number' ? r.similarity_score : typeof r.score === 'number' ? r.score : undefined,
           category: (payload.category as string) || (r.category as string) || 'y_te_inbody',
         };
       });

@@ -42,20 +42,20 @@ interface CustomTooltipProps {
 function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
   if (active && payload && payload.length) {
     return (
-      <div className="glass-panel p-3 rounded-xl border border-slate-700 bg-slate-900/95 text-xs shadow-2xl space-y-1.5">
-        <div className="font-semibold text-slate-300 pb-1 border-b border-slate-800">
+      <div className="p-3.5 rounded-xl border border-slate-200 bg-white text-xs shadow-xl space-y-1.5">
+        <div className="font-bold text-slate-800 pb-1 border-b border-slate-100">
           Ngày: {payload[0]?.payload?.fullDate || label}
         </div>
         {payload.map((entry, index) => (
           <div key={index} className="flex items-center justify-between gap-4">
-            <span className="flex items-center gap-1.5 text-slate-400">
+            <span className="flex items-center gap-1.5 text-slate-600">
               <span
                 className="w-2.5 h-2.5 rounded-full"
                 style={{ backgroundColor: entry.color }}
               />
               <span>{entry.name}:</span>
             </span>
-            <span className="font-bold text-slate-100 font-mono">
+            <span className="font-bold text-slate-900 font-mono">
               {entry.value} {entry.unit || ''}
             </span>
           </div>
@@ -88,47 +88,47 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
     });
 
   return (
-    <div className="glass-card rounded-2xl p-5 border border-slate-800/80 bg-slate-900/60 shadow-lg">
+    <div className="rounded-2xl p-6 border border-slate-200 bg-white shadow-xs">
       {/* Chart Header & Controls */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
         <div>
-          <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
-            <Activity className="w-4 h-4 text-emerald-400" />
+          <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+            <Activity className="w-4 h-4 text-teal-600" />
             <span>Biểu đồ Tiến trình Thể trạng</span>
           </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-500 mt-0.5">
             Theo dõi xu hướng tái tạo thể trạng (Body Recomposition) qua các mốc đo
           </p>
         </div>
 
         {/* View Switcher Tabs */}
-        <div className="flex items-center p-1 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+        <div className="flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200 text-xs">
           <button
             onClick={() => setMode('composition')}
-            className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
               mode === 'composition'
-                ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-white text-teal-900 shadow-xs border border-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             Cân nặng & Cơ
           </button>
           <button
             onClick={() => setMode('fat')}
-            className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
               mode === 'fat'
-                ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-white text-teal-900 shadow-xs border border-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             Mỡ & % Mỡ (PBF)
           </button>
           <button
             onClick={() => setMode('visceral')}
-            className={`px-3 py-1.5 rounded-lg font-medium transition-all ${
+            className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
               mode === 'visceral'
-                ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-white text-teal-900 shadow-xs border border-slate-200/80'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             Mỡ Nội tạng
@@ -139,7 +139,7 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
       {/* Chart Canvas */}
       <div className="h-72 w-full">
         {chartData.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-xs text-slate-500">
+          <div className="h-full flex items-center justify-center text-xs text-slate-400">
             Chưa có đủ dữ liệu để vẽ biểu đồ
           </div>
         ) : (
@@ -148,15 +148,15 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
               <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <defs>
                   <linearGradient id="weightGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#38bdf8" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#38bdf8" stopOpacity={0.0} />
+                    <stop offset="5%" stopColor="#0284c7" stopOpacity={0.25} />
+                    <stop offset="95%" stopColor="#0284c7" stopOpacity={0.0} />
                   </linearGradient>
                   <linearGradient id="smmGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#10b981" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#10b981" stopOpacity={0.0} />
+                    <stop offset="5%" stopColor="#0d9488" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#0d9488" stopOpacity={0.0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} />
                 <YAxis stroke="#64748b" fontSize={11} domain={['dataMin - 2', 'dataMax + 2']} />
                 <Tooltip content={<CustomTooltip />} />
@@ -168,7 +168,7 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
                   type="monotone"
                   dataKey="weight"
                   name="Cân nặng (kg)"
-                  stroke="#38bdf8"
+                  stroke="#0284c7"
                   strokeWidth={2.5}
                   fillOpacity={1}
                   fill="url(#weightGrad)"
@@ -178,7 +178,7 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
                   type="monotone"
                   dataKey="smm"
                   name="Cơ xương SMM (kg)"
-                  stroke="#10b981"
+                  stroke="#0d9488"
                   strokeWidth={2.5}
                   fillOpacity={1}
                   fill="url(#smmGrad)"
@@ -187,7 +187,7 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
               </AreaChart>
             ) : mode === 'fat' ? (
               <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} />
                 <YAxis stroke="#64748b" fontSize={11} domain={['dataMin - 2', 'dataMax + 2']} />
                 <Tooltip content={<CustomTooltip />} />
@@ -199,24 +199,24 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
                   type="monotone"
                   dataKey="pbf"
                   name="Tỷ lệ mỡ PBF (%)"
-                  stroke="#f59e0b"
+                  stroke="#d97706"
                   strokeWidth={2.5}
-                  dot={{ r: 4, fill: '#f59e0b' }}
+                  dot={{ r: 4, fill: '#d97706' }}
                   unit="%"
                 />
                 <Line
                   type="monotone"
                   dataKey="bfm"
                   name="Khối lượng mỡ (kg)"
-                  stroke="#ec4899"
+                  stroke="#db2777"
                   strokeWidth={2}
-                  dot={{ r: 4, fill: '#ec4899' }}
+                  dot={{ r: 4, fill: '#db2777' }}
                   unit="kg"
                 />
               </LineChart>
             ) : (
               <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.5} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                 <XAxis dataKey="date" stroke="#64748b" fontSize={11} tickLine={false} />
                 <YAxis stroke="#64748b" fontSize={11} domain={[0, 15]} />
                 <Tooltip content={<CustomTooltip />} />
@@ -226,11 +226,11 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
                 />
                 <ReferenceLine
                   y={9}
-                  stroke="#ef4444"
+                  stroke="#e11d48"
                   strokeDasharray="4 4"
                   label={{
-                    value: 'Ngưỡng an toàn (Level 9)',
-                    fill: '#f87171',
+                    value: 'Ngưỡng an toàn (Cấp 9)',
+                    fill: '#e11d48',
                     fontSize: 10,
                     position: 'top',
                   }}
@@ -239,10 +239,10 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
                   type="monotone"
                   dataKey="visceral"
                   name="Mỡ nội tạng (VFL)"
-                  stroke="#a855f7"
+                  stroke="#7c3aed"
                   strokeWidth={2.5}
-                  dot={{ r: 4, fill: '#a855f7' }}
-                  unit="Level"
+                  dot={{ r: 4, fill: '#7c3aed' }}
+                  unit="Cấp"
                 />
               </LineChart>
             )}

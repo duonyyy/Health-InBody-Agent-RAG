@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { BookOpen, ChevronDown, ChevronUp, FileText, ExternalLink } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronUp, FileText } from 'lucide-react';
 import { Citation } from '@/types';
 
 interface CitationsViewProps {
@@ -27,9 +27,9 @@ export default function CitationsView({ citations }: CitationsViewProps) {
   if (!citations || citations.length === 0) return null;
 
   return (
-    <div className="mt-3 pt-3 border-t border-slate-800/80">
-      <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300 mb-2">
-        <BookOpen className="w-3.5 h-3.5 text-teal-400" />
+    <div className="mt-3 pt-3 border-t border-slate-200">
+      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 mb-2">
+        <BookOpen className="w-3.5 h-3.5 text-teal-600" />
         <span>Tài liệu trích dẫn & Nguồn chứng cứ y sinh ({citations.length})</span>
       </div>
 
@@ -45,7 +45,7 @@ export default function CitationsView({ citations }: CitationsViewProps) {
           return (
             <div
               key={idx}
-              className="rounded-xl border border-slate-800 bg-slate-950/70 hover:border-slate-700 transition-colors overflow-hidden"
+              className="rounded-xl border border-slate-200 bg-slate-50/70 hover:border-slate-300 transition-colors overflow-hidden"
             >
               <button
                 onClick={() => setExpandedId(isExpanded ? null : idx)}
@@ -53,15 +53,15 @@ export default function CitationsView({ citations }: CitationsViewProps) {
                 className="w-full px-3 py-2 text-left flex items-center justify-between text-xs gap-2"
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <FileText className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                  <FileText className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
                   <span
-                    className="font-medium text-slate-200 truncate"
+                    className="font-medium text-slate-800 truncate"
                     dangerouslySetInnerHTML={{ __html: safeTitle }}
                   />
                   {scorePct !== null && (
                     <span
                       title="Chỉ số tương đồng ngữ nghĩa đối chiếu vector/từ khóa (Không phải độ chính xác y khoa)"
-                      className="text-[10px] px-1.5 py-0.5 rounded bg-teal-950/80 text-teal-300 border border-teal-800/60 font-mono flex-shrink-0"
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200 font-mono font-semibold flex-shrink-0"
                     >
                       Tương đồng {scorePct}%
                     </span>
@@ -69,35 +69,25 @@ export default function CitationsView({ citations }: CitationsViewProps) {
                 </div>
 
                 {isExpanded ? (
-                  <ChevronUp className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                  <ChevronUp className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
                 ) : (
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
                 )}
               </button>
 
               {isExpanded && (
-                <div className="p-3 bg-slate-900/60 border-t border-slate-800/80 text-xs text-slate-300 leading-relaxed space-y-2">
+                <div className="p-3 bg-white border-t border-slate-200 text-xs text-slate-700 leading-relaxed space-y-2">
                   <p
-                    className="italic text-slate-300 bg-slate-950/80 p-2.5 rounded-lg border border-slate-800 font-serif leading-relaxed"
+                    className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 font-serif italic text-slate-800"
                     dangerouslySetInnerHTML={{ __html: `&ldquo;${safeContent}&rdquo;` }}
                   />
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-400 pt-1">
-                    <span className="font-mono text-slate-400">
-                      Nguồn: <span dangerouslySetInnerHTML={{ __html: safeSource }} />
-                    </span>
-                    {cite.url && (
-                      <a
-                        href={cite.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-teal-400 hover:underline"
-                      >
-                        <span>Xem liên kết</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    )}
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+                    <span
+                      className="truncate max-w-[280px] font-mono text-[10px]"
+                      dangerouslySetInnerHTML={{ __html: `Tệp nguồn: ${safeSource}` }}
+                    />
                     {cite.category && (
-                      <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[10px] uppercase font-semibold">
+                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium uppercase text-[10px] border border-slate-200">
                         {cite.category}
                       </span>
                     )}

@@ -171,12 +171,12 @@ export default function ChatContainer({
         {/* Loading state indicator */}
         {isLoading && (
           <div className="flex items-start gap-3.5 mb-6 animate-pulse">
-            <div className="w-9 h-9 rounded-xl bg-slate-900 border border-teal-500/30 flex items-center justify-center p-1.5 shadow-md shadow-teal-500/20">
-              <Sparkles className="w-5 h-5 animate-spin text-teal-400" />
+            <div className="w-9 h-9 rounded-xl bg-white border border-teal-200 flex items-center justify-center p-1.5 shadow-sm flex-shrink-0">
+              <Sparkles className="w-5 h-5 animate-spin text-teal-600" />
             </div>
-            <div className="glass-card rounded-2xl rounded-tl-sm p-4 border border-slate-800/80 shadow-md">
-              <div className="flex items-center gap-2 text-xs text-slate-300">
-                <Loader2 className="w-4 h-4 animate-spin text-teal-400" />
+            <div className="bg-white rounded-2xl rounded-tl-sm p-4 border border-slate-200 shadow-sm">
+              <div className="flex items-center gap-2 text-xs text-slate-700 font-medium">
+                <Loader2 className="w-4 h-4 animate-spin text-teal-600" />
                 <span>Trợ lý Đa tác tử BodyWise đang xử lý & tra cứu kho tri thức...</span>
               </div>
             </div>
@@ -192,7 +192,7 @@ export default function ChatContainer({
           <QuickPrompts onSelectPrompt={(p) => handleSendMessage(p)} />
         )}
 
-        <div className="relative glass-panel rounded-2xl border border-slate-800 focus-within:border-teal-500/60 focus-within:ring-2 focus-within:ring-teal-500/20 transition-all shadow-xl bg-slate-900/90 p-2">
+        <div className="relative rounded-2xl border border-slate-300 focus-within:border-teal-600 focus-within:ring-3 focus-within:ring-teal-500/15 transition-all shadow-md bg-white p-2">
           <textarea
             ref={textareaRef}
             value={input}
@@ -201,18 +201,18 @@ export default function ChatContainer({
             placeholder="Hỏi về chỉ số InBody, thực đơn dinh dưỡng, bài tập hoặc triệu chứng sức khỏe... (Enter để gửi, Shift+Enter xuống dòng)"
             rows={1}
             disabled={isLoading}
-            className="w-full bg-transparent text-slate-100 placeholder-slate-500 text-sm px-3 py-2 focus:outline-none resize-none max-h-36 min-h-[44px]"
+            className="w-full bg-transparent text-slate-900 placeholder-slate-400 text-sm px-3 py-2 focus:outline-none resize-none max-h-36 min-h-[44px]"
           />
 
-          <div className="flex items-center justify-between px-3 pt-1 border-t border-slate-800/60 mt-1">
-            <div className="flex items-center gap-2 sm:gap-3 text-[11px] text-slate-400">
-              <span className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
+          <div className="flex items-center justify-between px-3 pt-2 border-t border-slate-100 mt-1">
+            <div className="flex items-center gap-2 sm:gap-3 text-[11px] text-slate-500">
+              <span className="flex items-center gap-1.5 font-medium">
+                <span className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
                 <span className="hidden sm:inline">Kiểm soát An toàn Y tế Hoạt động</span>
                 <span className="sm:hidden">An toàn Active</span>
               </span>
               {conversationId && (
-                <span className="hidden md:inline font-mono text-[10px] text-slate-500">
+                <span className="hidden md:inline font-mono text-[10px] text-slate-400">
                   ID: {conversationId.slice(0, 8)}
                 </span>
               )}
@@ -220,10 +220,10 @@ export default function ChatContainer({
                 <button
                   type="button"
                   onClick={handleResetChat}
-                  className="flex items-center gap-1 text-slate-400 hover:text-teal-300 transition-colors ml-1 hover:bg-slate-800/80 px-2 py-0.5 rounded-lg"
+                  className="flex items-center gap-1 text-slate-500 hover:text-teal-700 transition-colors ml-1 hover:bg-slate-100 px-2 py-0.5 rounded-lg font-medium"
                   title="Mở phiên hội thoại mới trên giao diện (Không xóa dữ liệu trên máy chủ)"
                 >
-                  <PlusCircle className="w-3 h-3 text-teal-400" />
+                  <PlusCircle className="w-3 h-3 text-teal-600" />
                   <span>Đoạn chat mới</span>
                 </button>
               )}
@@ -232,10 +232,10 @@ export default function ChatContainer({
             <button
               onClick={() => handleSendMessage()}
               disabled={!input.trim() || isLoading}
-              className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md ${
+              className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
                 input.trim() && !isLoading
-                  ? 'bg-gradient-to-r from-teal-500 to-sky-500 text-slate-950 hover:brightness-110 shadow-teal-500/25 active:scale-95'
-                  : 'bg-slate-800 text-slate-400 cursor-not-allowed'
+                  ? 'bg-gradient-to-r from-teal-600 to-emerald-600 text-white hover:brightness-105 active:scale-95'
+                  : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
               }`}
             >
               {isLoading ? (

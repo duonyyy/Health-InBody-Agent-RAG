@@ -1,4 +1,6 @@
 import pytest
+import jwt
+from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException
 from starlette.requests import Request
 
@@ -63,3 +65,39 @@ def test_legacy_path_must_match_current_user_and_be_explicitly_enabled(monkeypat
     with pytest.raises(HTTPException) as exc_info:
         require_legacy_user_match("user-a", identity)
     assert exc_info.value.status_code == 404
+
+
+def test_production_jwt_requires_signature_issuer_audience_and_expiry(monkeypatch):
+    monkeypatch.setenv("AUTH_MODE", "production")
+    monkeypatch.setenv("JWT_SIGNING_KEY", "test-only-" + "k" * 64)
+    monkeypatch.setenv("JWT_ISSUER", "bodywise-test")
+    monkeypatch.setenv("JWT_AUDIENCE", "bodywise-test-web")
+    now = datetime.now(timezone.utc)
+    claims = {
+        "sub": "user-a", "iss": "bodywise-test", "aud": "bodywise-test-web",
+        "iat": now, "nbf": now, "exp": now + timedelta(minutes=10), "jti": "test-jti",
+    }
+    token = jwt.encode(claims, "test-only-" + "k" * 64, algorithm="HS256")
+    assert get_current_user(_request({"Authorization": f"Bearer {token}"})).subject == "user-a"
+    assert get_current_user(_request({"Authorization": f"Bearer {token}", "X-Dev-User-Id": "user-b"})).subject == "user-a"
+
+    for change in (
+        {"aud": "other-app"},
+        {"iss": "other-issuer"},
+        {"exp": now - timedelta(seconds=1)},
+        {"sub": "../../bad"},
+    ):
+        bad = jwt.encode({**claims, **change}, "test-only-" + "k" * 64, algorithm="HS256")
+        with pytest.raises(HTTPException) as exc_info:
+            get_current_user(_request({"Authorization": f"Bearer {bad}"}))
+        assert exc_info.value.status_code == 401
+
+    forged = jwt.encode(claims, "test-only-" + "x" * 64, algorithm="HS256")
+    with pytest.raises(HTTPException) as exc_info:
+        get_current_user(_request({"Authorization": f"Bearer {forged}"}))
+    assert exc_info.value.status_code == 401
+
+    monkeypatch.delenv("JWT_SIGNING_KEY")
+    with pytest.raises(HTTPException) as exc_info:
+        get_current_user(_request({"Authorization": f"Bearer {token}"}))
+    assert exc_info.value.status_code == 401

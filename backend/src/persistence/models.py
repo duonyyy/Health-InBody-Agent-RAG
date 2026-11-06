@@ -67,6 +67,18 @@ class User(Base, TimestampMixin):
     chat_sessions = relationship("ChatSession", back_populates="user")
 
 
+class AuthCredential(Base):
+    """First-party sign-in secret; health profile data remains in users."""
+    __tablename__ = "auth_credentials"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    username: Mapped[str] = mapped_column(String(40), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
 class InBodyMeasurement(Base, TimestampMixin):
     __tablename__ = "inbody_measurements"
 

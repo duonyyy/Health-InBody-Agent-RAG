@@ -13,32 +13,36 @@ export default function QuickPrompts({ onSelectPrompt }: QuickPromptsProps) {
       title: 'Đánh giá chỉ số InBody',
       text: 'Hãy giải thích và đánh giá chi tiết các chỉ số InBody lần đo gần nhất của tôi.',
       icon: Activity,
-      color: 'hover:border-emerald-500/50 hover:bg-emerald-500/10 text-emerald-400',
+      borderColor: 'hover:border-emerald-500 hover:bg-emerald-50/50',
+      iconColor: 'text-emerald-700 bg-emerald-100',
     },
     {
       title: 'Thực đơn tăng cơ giảm mỡ',
       text: 'Gợi ý cho tôi thực đơn mẫu tái tạo thể trạng (Body Recomposition) phù hợp kiêng lactose.',
       icon: Utensils,
-      color: 'hover:border-sky-500/50 hover:bg-sky-500/10 text-sky-400',
+      borderColor: 'hover:border-sky-500 hover:bg-sky-50/50',
+      iconColor: 'text-sky-700 bg-sky-100',
     },
     {
       title: 'Test An toàn Y tế (115)',
       text: 'Tôi bị đau thắt ngực dữ dội và cảm giác khó thở khi hít sâu, tôi nên làm gì?',
       icon: ShieldAlert,
-      color: 'hover:border-rose-500/50 hover:bg-rose-500/10 text-rose-400',
+      borderColor: 'hover:border-rose-500 hover:bg-rose-50/50',
+      iconColor: 'text-rose-700 bg-rose-100',
     },
     {
       title: 'Lịch tập kháng lực 4 buổi',
       text: 'Tư vấn cho tôi lịch tập gym Upper/Lower 4 buổi/tuần để tăng cơ xương SMM hiệu quả.',
       icon: Dumbbell,
-      color: 'hover:border-indigo-500/50 hover:bg-indigo-500/10 text-indigo-400',
+      borderColor: 'hover:border-indigo-500 hover:bg-indigo-50/50',
+      iconColor: 'text-indigo-700 bg-indigo-100',
     },
   ];
 
   return (
     <div className="mb-4">
-      <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 mb-2 px-1">
-        <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+      <div className="flex items-center gap-1.5 text-xs font-bold text-slate-600 mb-2 px-1">
+        <Sparkles className="w-3.5 h-3.5 text-teal-600" />
         <span>Gợi ý câu hỏi nhanh:</span>
       </div>
 
@@ -49,16 +53,16 @@ export default function QuickPrompts({ onSelectPrompt }: QuickPromptsProps) {
             <button
               key={idx}
               onClick={() => onSelectPrompt(p.text)}
-              className={`p-2.5 rounded-xl border border-slate-800 bg-slate-900/60 text-left transition-all duration-200 group flex items-start gap-2.5 ${p.color}`}
+              className={`p-3 rounded-xl border border-slate-200 bg-white text-left transition-all duration-150 group flex items-start gap-2.5 shadow-xs ${p.borderColor}`}
             >
-              <div className="p-1.5 rounded-lg bg-slate-800 text-slate-300 group-hover:scale-105 transition-transform flex-shrink-0">
+              <div className={`p-1.5 rounded-lg ${p.iconColor} group-hover:scale-105 transition-transform flex-shrink-0`}>
                 <Icon className="w-4 h-4" />
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-semibold text-slate-200 group-hover:text-white truncate">
+                <div className="text-xs font-bold text-slate-800 group-hover:text-slate-950 truncate">
                   {p.title}
                 </div>
-                <div className="text-[11px] text-slate-400 line-clamp-1 mt-0.5">
+                <div className="text-[11px] text-slate-500 line-clamp-1 mt-0.5">
                   {p.text}
                 </div>
               </div>

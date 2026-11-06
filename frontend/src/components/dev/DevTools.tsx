@@ -36,13 +36,13 @@ export default function DevTools({ initialHealth }: DevToolsProps) {
   const [testSymptom, setTestSymptom] = useState('Đau ngực khó thở khi chạy bộ');
   const [toolOutput, setToolOutput] = useState<ToolOutputData | null>(null);
 
-  const isDev = process.env.NODE_ENV !== 'production' || getAuthMode() === 'development';
+  const isDev = getAuthMode() === 'development';
 
   if (!isDev) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-16 text-center space-y-3">
-        <ShieldCheck className="w-12 h-12 text-slate-500 mx-auto" />
-        <h3 className="text-base font-bold text-slate-300">Công cụ Kỹ thuật (DevTools) bị vô hiệu hóa</h3>
+        <ShieldCheck className="w-12 h-12 text-slate-400 mx-auto" />
+        <h3 className="text-base font-bold text-slate-800">Công cụ Kỹ thuật (DevTools) bị vô hiệu hóa</h3>
         <p className="text-xs text-slate-500">
           Màn hình này chỉ dành riêng cho môi trường phát triển (development) theo quy định an toàn hệ thống.
         </p>
@@ -123,22 +123,22 @@ export default function DevTools({ initialHealth }: DevToolsProps) {
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
       {/* System Health Inspector */}
-      <div className="glass-card rounded-2xl p-5 border border-slate-800/80 bg-slate-900/60 shadow-lg space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+      <div className="rounded-2xl p-5 border border-slate-200 bg-white shadow-xs space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+            <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center border border-teal-200">
               <Server className="w-4 h-4" />
             </div>
             <div>
-              <h4 className="font-bold text-sm text-slate-100">Giám sát Trạng thái Backend & Hạ tầng</h4>
-              <p className="text-xs text-slate-400">Kiểm tra kết nối tới FastAPI, PostgreSQL, Qdrant và Valkey</p>
+              <h4 className="font-bold text-sm text-slate-900">Giám sát Trạng thái Backend & Hạ tầng</h4>
+              <p className="text-xs text-slate-500">Kiểm tra kết nối tới FastAPI, PostgreSQL, Qdrant và Valkey</p>
             </div>
           </div>
 
           <button
             onClick={handlePingHealth}
             disabled={isChecking}
-            className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
+            className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs border border-slate-200"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isChecking ? 'animate-spin' : ''}`} />
             <span>{isChecking ? 'Đang kiểm tra...' : 'Ping /health'}</span>
@@ -146,16 +146,16 @@ export default function DevTools({ initialHealth }: DevToolsProps) {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-          <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
-            <span className="text-slate-400 text-[11px] block mb-1">Trạng thái API</span>
-            <div className="flex items-center gap-1.5 font-bold text-slate-100">
+          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <span className="text-slate-500 text-[11px] block mb-1">Trạng thái API</span>
+            <div className="flex items-center gap-1.5 font-bold text-slate-800">
               <span
                 className={`w-2 h-2 rounded-full ${
                   health?.status === 'healthy'
-                    ? 'bg-emerald-400'
+                    ? 'bg-teal-500'
                     : health?.status === 'degraded'
-                    ? 'bg-amber-400'
-                    : 'bg-rose-400'
+                    ? 'bg-amber-500'
+                    : 'bg-rose-500'
                 }`}
               />
               <span className="capitalize">
@@ -168,20 +168,20 @@ export default function DevTools({ initialHealth }: DevToolsProps) {
             </div>
           </div>
 
-          <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
-            <span className="text-slate-400 text-[11px] block mb-1">Độ trễ Mạng (Ping)</span>
-            <span className="font-bold font-mono text-emerald-400 text-sm">
+          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <span className="text-slate-500 text-[11px] block mb-1">Độ trễ Mạng (Ping)</span>
+            <span className="font-bold font-mono text-teal-700 text-sm">
               {health?.latency_ms !== undefined ? `${health.latency_ms} ms` : 'Chưa đo'}
             </span>
           </div>
 
-          <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
-            <span className="text-slate-400 text-[11px] block mb-1">Cơ sở dữ liệu (PostgreSQL)</span>
-            <div className="flex items-center gap-1.5 font-semibold text-slate-200">
+          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <span className="text-slate-500 text-[11px] block mb-1">Cơ sở dữ liệu (PostgreSQL)</span>
+            <div className="flex items-center gap-1.5 font-semibold text-slate-700">
               <Database className="w-3.5 h-3.5 text-slate-400" />
               <span>
                 {health?.dependencies?.postgres === false ? (
-                  <span className="text-rose-400">Không sẵn sàng</span>
+                  <span className="text-rose-600">Không sẵn sàng</span>
                 ) : (
                   <span>Sẵn sàng</span>
                 )}
@@ -189,13 +189,13 @@ export default function DevTools({ initialHealth }: DevToolsProps) {
             </div>
           </div>
 
-          <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800">
-            <span className="text-slate-400 text-[11px] block mb-1">Vector DB (Qdrant)</span>
-            <div className="flex items-center gap-1.5 font-semibold text-slate-200">
-              <Cpu className="w-3.5 h-3.5 text-indigo-400" />
+          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <span className="text-slate-500 text-[11px] block mb-1">Vector DB (Qdrant)</span>
+            <div className="flex items-center gap-1.5 font-semibold text-slate-700">
+              <Cpu className="w-3.5 h-3.5 text-indigo-600" />
               <span>
                 {health?.dependencies?.qdrant === false ? (
-                  <span className="text-rose-400">Không sẵn sàng</span>
+                  <span className="text-rose-600">Không sẵn sàng</span>
                 ) : (
                   <span>BGE-M3 (1024-dim)</span>
                 )}
@@ -205,8 +205,8 @@ export default function DevTools({ initialHealth }: DevToolsProps) {
         </div>
 
         {health?.status === 'offline' && (
-          <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-800/80 text-amber-200 text-xs flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
+          <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
             <span>
               Backend FastAPI hiện chưa kết nối được. Vui lòng đảm bảo tiến trình backend đang chạy tại cổng 8000 hoặc khởi động Docker Compose.
             </span>
@@ -215,15 +215,15 @@ export default function DevTools({ initialHealth }: DevToolsProps) {
       </div>
 
       {/* Tool Sandbox Runner */}
-      <div className="glass-card rounded-2xl p-5 border border-slate-800/80 bg-slate-900/60 shadow-lg space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+      <div className="rounded-2xl p-5 border border-slate-200 bg-white shadow-xs space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30">
+            <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-700 flex items-center justify-center border border-indigo-200">
               <Terminal className="w-4 h-4" />
             </div>
             <div>
-              <h4 className="font-bold text-sm text-slate-100">Hộp cát Kiểm thử Công cụ (Deterministic Tools Sandbox)</h4>
-              <p className="text-xs text-slate-400">
+              <h4 className="font-bold text-sm text-slate-900">Hộp cát Kiểm thử Công cụ (Deterministic Tools Sandbox)</h4>
+              <p className="text-xs text-slate-500">
                 Thực thi các thuật toán tính toán độc lập không phụ thuộc LLM (BMI, BMR/TDEE, Guardrail An toàn Y tế)
               </p>
             </div>
@@ -239,8 +239,8 @@ export default function DevTools({ initialHealth }: DevToolsProps) {
             }}
             className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
               selectedTool === 'bmi'
-                ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/30'
-                : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-slate-200'
+                ? 'bg-indigo-600 text-white font-bold shadow-sm'
+                : 'bg-slate-100 text-slate-600 border border-slate-200 hover:text-slate-900 hover:bg-slate-200/60'
             }`}
           >
             Tính BMI & Phân loại WHO Châu Á
@@ -252,8 +252,8 @@ export default function DevTools({ initialHealth }: DevToolsProps) {
             }}
             className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
               selectedTool === 'tdee'
-                ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/30'
-                : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-slate-200'
+                ? 'bg-indigo-600 text-white font-bold shadow-sm'
+                : 'bg-slate-100 text-slate-600 border border-slate-200 hover:text-slate-900 hover:bg-slate-200/60'
             }`}
           >
             Tính BMR & TDEE Macros Kháng lực
@@ -265,8 +265,8 @@ export default function DevTools({ initialHealth }: DevToolsProps) {
             }}
             className={`px-3 py-1.5 rounded-xl font-medium transition-all ${
               selectedTool === 'safety'
-                ? 'bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/30'
-                : 'bg-slate-950 text-slate-400 border border-slate-800 hover:text-slate-200'
+                ? 'bg-indigo-600 text-white font-bold shadow-sm'
+                : 'bg-slate-100 text-slate-600 border border-slate-200 hover:text-slate-900 hover:bg-slate-200/60'
             }`}
           >
             Kiểm thử Tiền lọc An toàn Y tế (Fast-path)
@@ -274,25 +274,25 @@ export default function DevTools({ initialHealth }: DevToolsProps) {
         </div>
 
         {/* Tool input fields */}
-        <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 text-xs space-y-3">
+        <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-3">
           {selectedTool === 'bmi' && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-slate-400 mb-1">Cân nặng (kg)</label>
+                <label className="block text-slate-600 font-medium mb-1">Cân nặng (kg)</label>
                 <input
                   type="number"
                   value={testWeight}
                   onChange={(e) => setTestWeight(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 font-mono"
+                  className="w-full px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-900 font-mono focus:outline-none focus:border-indigo-600"
                 />
               </div>
               <div>
-                <label className="block text-slate-400 mb-1">Chiều cao (cm)</label>
+                <label className="block text-slate-600 font-medium mb-1">Chiều cao (cm)</label>
                 <input
                   type="number"
                   value={testHeight}
                   onChange={(e) => setTestHeight(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 font-mono"
+                  className="w-full px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-900 font-mono focus:outline-none focus:border-indigo-600"
                 />
               </div>
             </div>
@@ -301,30 +301,30 @@ export default function DevTools({ initialHealth }: DevToolsProps) {
           {selectedTool === 'tdee' && (
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-slate-400 mb-1">Cân nặng (kg)</label>
+                <label className="block text-slate-600 font-medium mb-1">Cân nặng (kg)</label>
                 <input
                   type="number"
                   value={testWeight}
                   onChange={(e) => setTestWeight(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 font-mono"
+                  className="w-full px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-900 font-mono focus:outline-none focus:border-indigo-600"
                 />
               </div>
               <div>
-                <label className="block text-slate-400 mb-1">Chiều cao (cm)</label>
+                <label className="block text-slate-600 font-medium mb-1">Chiều cao (cm)</label>
                 <input
                   type="number"
                   value={testHeight}
                   onChange={(e) => setTestHeight(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 font-mono"
+                  className="w-full px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-900 font-mono focus:outline-none focus:border-indigo-600"
                 />
               </div>
               <div>
-                <label className="block text-slate-400 mb-1">Tuổi</label>
+                <label className="block text-slate-600 font-medium mb-1">Tuổi</label>
                 <input
                   type="number"
                   value={testAge}
                   onChange={(e) => setTestAge(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100 font-mono"
+                  className="w-full px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-900 font-mono focus:outline-none focus:border-indigo-600"
                 />
               </div>
             </div>
@@ -332,12 +332,12 @@ export default function DevTools({ initialHealth }: DevToolsProps) {
 
           {selectedTool === 'safety' && (
             <div>
-              <label className="block text-slate-400 mb-1">Mô tả triệu chứng người dùng</label>
+              <label className="block text-slate-600 font-medium mb-1">Mô tả triệu chứng người dùng</label>
               <input
                 type="text"
                 value={testSymptom}
                 onChange={(e) => setTestSymptom(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-slate-100"
+                className="w-full px-3 py-2 rounded-lg bg-white border border-slate-300 text-slate-900 focus:outline-none focus:border-indigo-600"
               />
             </div>
           )}
@@ -345,7 +345,7 @@ export default function DevTools({ initialHealth }: DevToolsProps) {
           <div className="flex justify-end pt-1">
             <button
               onClick={handleExecuteTool}
-              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md shadow-emerald-600/30 flex items-center gap-1.5"
+              className="px-4 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition-colors"
             >
               <Play className="w-3.5 h-3.5 fill-white" />
               <span>Chạy kiểm thử</span>
@@ -355,14 +355,14 @@ export default function DevTools({ initialHealth }: DevToolsProps) {
 
         {/* Tool Output JSON preview */}
         {toolOutput && (
-          <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2 animate-in fade-in">
-            <div className="flex items-center justify-between text-xs pb-1 border-b border-slate-800">
-              <span className="font-semibold text-emerald-400">Kết quả phản hồi JSON:</span>
+          <div className="p-4 rounded-xl bg-white border border-slate-200 space-y-2 shadow-xs animate-in fade-in">
+            <div className="flex items-center justify-between text-xs pb-1 border-b border-slate-100">
+              <span className="font-semibold text-teal-700">Kết quả phản hồi JSON:</span>
               <span className="text-slate-500 font-mono text-[11px]">
                 Thời gian: {toolOutput.execution_time_ms ?? 0} ms
               </span>
             </div>
-            <pre className="font-mono text-xs text-slate-200 overflow-x-auto p-2.5 bg-slate-900/60 rounded-lg">
+            <pre className="font-mono text-xs text-slate-800 overflow-x-auto p-2.5 bg-slate-50 border border-slate-200 rounded-lg">
               {JSON.stringify(toolOutput, null, 2)}
             </pre>
           </div>

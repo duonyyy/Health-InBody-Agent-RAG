@@ -2,15 +2,15 @@
 
 @layer base {
   :root {
-    --background: #090d16;
-    --surface: #0f172a;
-    --surface-elevated: #1e293b;
-    --border: #334155;
-    --foreground: #f8fafc;
-    --muted: #94a3b8;
-    --primary: #10b981;
-    --primary-glow: rgba(16, 185, 129, 0.25);
-    --accent: #6366f1;
+    --background: #f8fafc;        /* Slate 50 - Nền sáng sạch sẽ */
+    --surface: #ffffff;           /* White - Bề mặt thẻ */
+    --surface-elevated: #f1f5f9;  /* Slate 100 */
+    --border: #e2e8f0;           /* Slate 200 */
+    --foreground: #0f172a;       /* Slate 900 */
+    --muted: #475569;            /* Slate 600 */
+    --primary: #0d9488;          /* Teal 600 */
+    --primary-glow: rgba(13, 148, 136, 0.2);
+    --accent: #0284c7;           /* Sky 600 */
   }
 
   body {
@@ -22,60 +22,60 @@
   }
 }
 
-/* Custom modern scrollbar */
+/* Custom modern scrollbar cho Light Theme */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: #f1f5f9;
 }
 ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: #cbd5e1;
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: #94a3b8;
 }
 
-/* Glassmorphism utilities */
+/* Glassmorphism utilities chuyển sang thẻ trắng thanh lịch */
 .glass-panel {
-  background: rgba(15, 23, 42, 0.75);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
 }
 
 .glass-card {
-  background: rgba(30, 41, 59, 0.6);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
 }
 
 .glass-card-hover {
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .glass-card-hover:hover {
   transform: translateY(-2px);
-  border-color: rgba(16, 185, 129, 0.3);
-  box-shadow: 0 12px 30px -10px rgba(16, 185, 129, 0.15);
+  border-color: #99f6e4;
+  box-shadow: 0 10px 25px -5px rgba(13, 148, 136, 0.1);
 }
 
 /* Glow effects */
 .glow-primary {
-  box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.35);
+  box-shadow: 0 0 20px -3px rgba(13, 148, 136, 0.25);
 }
 
 .glow-accent {
-  box-shadow: 0 0 25px -5px rgba(99, 102, 241, 0.35);
+  box-shadow: 0 0 20px -3px rgba(2, 132, 199, 0.25);
 }
 
-/* Markdown prose styling */
+/* Markdown prose styling trên nền sáng */
 .prose-chat {
   font-size: 0.95rem;
   line-height: 1.65;
-  color: #e2e8f0;
+  color: #1e293b;
 }
 .prose-chat p {
   margin-bottom: 0.75rem;
@@ -84,7 +84,7 @@
   margin-bottom: 0;
 }
 .prose-chat strong {
-  color: #f1f5f9;
+  color: #0f172a;
   font-weight: 600;
 }
 .prose-chat ul, .prose-chat ol {
@@ -102,7 +102,7 @@
   margin-bottom: 0.25rem;
 }
 .prose-chat h1, .prose-chat h2, .prose-chat h3, .prose-chat h4 {
-  color: #34d399;
+  color: #0f766e;
   font-weight: 700;
   margin-top: 1rem;
   margin-bottom: 0.5rem;
@@ -115,23 +115,24 @@
   font-size: 0.875rem;
 }
 .prose-chat th {
-  background: rgba(30, 41, 59, 0.8);
-  color: #38bdf8;
+  background: #f1f5f9;
+  color: #0369a1;
   font-weight: 600;
   text-align: left;
   padding: 0.5rem 0.75rem;
-  border: 1px solid #334155;
+  border: 1px solid #e2e8f0;
 }
 .prose-chat td {
   padding: 0.5rem 0.75rem;
-  border: 1px solid #334155;
-  background: rgba(15, 23, 42, 0.4);
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
 }
 .prose-chat code {
-  background: #1e293b;
-  color: #a7f3d0;
+  background: #f1f5f9;
+  color: #0d9488;
   padding: 0.15rem 0.4rem;
   border-radius: 4px;
   font-size: 0.85em;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  border: 1px solid #e2e8f0;
 }

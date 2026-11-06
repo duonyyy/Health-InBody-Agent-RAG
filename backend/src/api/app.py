@@ -13,12 +13,16 @@ except Exception:
     AsyncResult = None
 
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from sqlalchemy import text as sql_text
 from starlette.concurrency import run_in_threadpool
 
 from agents import get_multi_agent_summary, multi_agent_handle
 from llm.client import get_llm_runtime_config
 from core.cache import cache_health_check
+from core.cache import get_redis_client
 from core.config import DEFAULT_COLLECTION_NAME, DEFAULT_VECTOR_SIZE
 from health.tools import (
     calculate_bmi,
@@ -44,6 +48,7 @@ from llm.summarizer import summarize_health_report, summarize_text
 from jobs.tasks import index_document_v2, index_health_documents, llm_handle_message
 from core.utils import setup_logging
 from api.personalization import router as personalization_router
+from api.auth import router as auth_router
 from api.inbody_ocr import router as inbody_ocr_router
 from api.personalization import _execute
 from api.memory import router as memory_router
@@ -56,6 +61,7 @@ from persistence.personalization_service import (
     redacted_context,
     safe_build_confirmed_context,
 )
+from persistence.database import engine as database_engine
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -71,7 +77,16 @@ app = FastAPI(
         "hybrid search, indexing và summarization."
     ),
 )
+_cors_origins = [value.strip() for value in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if value.strip()]
+if os.getenv("AUTH_MODE", "production").strip().lower() == "development" and not _cors_origins:
+    _cors_origins = ["http://localhost:3000", "http://127.0.0.1:3000"]
+app.add_middleware(
+    CORSMiddleware, allow_origins=_cors_origins, allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type", "X-Dev-User-Id"],
+)
 app.include_router(personalization_router)
+app.include_router(auth_router)
 if os.getenv("FEATURE_OCR_UPLOAD", "false").strip().lower() in {"1", "true", "yes", "on"}:
     app.include_router(inbody_ocr_router)
 app.include_router(memory_router)
@@ -222,6 +237,44 @@ async def health():
     }
 
 
+def _readiness_report() -> dict:
+    """Probe core dependencies without returning credentials or health records."""
+    import requests
+
+    dependencies = {"postgres": False, "qdrant": False, "valkey": False, "embedding_api": None}
+    try:
+        with database_engine.connect() as connection:
+            connection.execute(sql_text("SELECT 1"))
+        dependencies["postgres"] = True
+    except Exception as exc:
+        logger.warning("Readiness PostgreSQL probe failed (%s)", type(exc).__name__)
+    try:
+        redis_client = get_redis_client()
+        dependencies["valkey"] = bool(redis_client and redis_client.ping())
+    except Exception as exc:
+        logger.warning("Readiness Valkey probe failed (%s)", type(exc).__name__)
+    with requests.Session() as session:
+        session.trust_env = False
+        probes = [("qdrant", os.getenv("QDRANT_URL", "http://qdrant-db:6333").rstrip("/") + "/healthz")]
+        if os.getenv("CUSTOM_EMBEDDING_ENABLED", "true").lower() == "true":
+            probes.append(("embedding_api", os.getenv("CUSTOM_EMBEDDING_API_URL", "http://embedding-api:5000").rstrip("/") + "/health"))
+        for name, url in probes:
+            try:
+                dependencies[name] = session.get(url, timeout=2).status_code == 200
+            except requests.RequestException as exc:
+                logger.warning("Readiness %s probe failed (%s)", name, type(exc).__name__)
+                dependencies[name] = False
+    ready = all(value is not False for value in dependencies.values())
+    return {"status": "ready" if ready else "degraded", "dependencies": dependencies,
+            "llm_provider": "not_checked"}
+
+
+@app.get("/health/ready")
+async def readiness():
+    result = await run_in_threadpool(_readiness_report)
+    return JSONResponse(result, status_code=200 if result["status"] == "ready" else 503)
+
+
 @app.get("/users/{user_id}/profile")
 async def user_profile(user_id: str, current_user: CurrentUser = Depends(get_current_user)):
     require_legacy_user_match(user_id, current_user)
@@ -294,7 +347,8 @@ async def complete(data: CompleteRequest, current_user: CurrentUser = Depends(ge
         data.sync_request,
     )
 
-    if data.sync_request:
+    # Emergency requests must never wait for Celery or task storage.
+    if data.sync_request or check_medical_safety(data.user_message).get("risk_level") == "urgent":
         try:
             request_started = time.perf_counter()
             response = await run_in_threadpool(

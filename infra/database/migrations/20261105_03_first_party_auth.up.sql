@@ -1,0 +1,9 @@
+BEGIN;
+CREATE TABLE IF NOT EXISTS auth_credentials (
+    user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    username VARCHAR(40) NOT NULL UNIQUE,
+    password_hash VARCHAR(255) NOT NULL,
+    active BOOLEAN NOT NULL DEFAULT TRUE
+);
+INSERT INTO schema_migrations(version) VALUES ('20261105_03_first_party_auth') ON CONFLICT DO NOTHING;
+COMMIT;

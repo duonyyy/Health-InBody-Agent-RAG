@@ -9,32 +9,44 @@ import ProfileAndGoals from '@/components/profile/ProfileAndGoals';
 import CorpusSearch from '@/components/search/CorpusSearch';
 import DevTools from '@/components/dev/DevTools';
 import { BackendHealth, InBodyMeasurement, UserProfile } from '@/types';
-import { checkBackendHealth, fetchInBodyMeasurements, fetchUserProfile } from '@/lib/api';
+import { checkBackendHealth, fetchInBodyMeasurements, fetchUserProfile, clearAccessToken, getAuthMode, hasAccessToken } from '@/lib/api';
+import AuthPanel from '@/components/auth/AuthPanel';
 import { BrandLogo } from '@/components/branding/BrandLogo';
 import { Menu, X } from 'lucide-react';
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<TabType>('chat');
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab') as TabType;
+      if (tabParam && ['chat', 'inbody', 'profile', 'search', ...(getAuthMode() === 'development' ? ['dev'] : [])].includes(tabParam)) {
+        return tabParam;
+      }
+    }
+    return 'chat';
+  });
   const [health, setHealth] = useState<BackendHealth | null>(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [latestMeasurement, setLatestMeasurement] = useState<InBodyMeasurement | null>(null);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [authenticated, setAuthenticated] = useState(() => getAuthMode() === 'development' || hasAccessToken());
+  const [authEpoch, setAuthEpoch] = useState(0);
+
+  useEffect(() => {
+    const expire = () => {
+      setAuthenticated(false);
+      setUserProfile(null);
+      setLatestMeasurement(null);
+    };
+    window.addEventListener('bodywise-auth-expired', expire);
+    return () => window.removeEventListener('bodywise-auth-expired', expire);
+  }, []);
 
   // Ref để gọi làm mới phiên chat từ Header
   const chatResetRef = useRef<(() => void) | null>(null);
 
-  // Đọc tab từ URL search params khi tải trang (SCR deep-linking)
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get('tab') as TabType;
-      if (tabParam && ['chat', 'inbody', 'profile', 'search', 'dev'].includes(tabParam)) {
-        setActiveTab(tabParam);
-      }
-    }
-  }, []);
-
   const handleSelectTab = useCallback((tab: TabType) => {
+    if (tab === 'dev' && getAuthMode() !== 'development') return;
     setActiveTab(tab);
     setIsMobileMenuOpen(false);
     if (typeof window !== 'undefined') {
@@ -69,6 +81,7 @@ export default function Home() {
 
   // Lấy dữ liệu profile và số đo gần nhất
   const refreshUserContext = useCallback(async () => {
+    if (!authenticated) return;
     try {
       const [measurements, profile] = await Promise.allSettled([
         fetchInBodyMeasurements(),
@@ -87,10 +100,11 @@ export default function Home() {
     } catch {
       // Backend offline hoặc chưa có dữ liệu
     }
-  }, []);
+  }, [authenticated]);
 
   // Lấy dữ liệu ban đầu
   useEffect(() => {
+    if (!authenticated) return;
     let ignore = false;
     const initUserContext = async () => {
       try {
@@ -117,10 +131,14 @@ export default function Home() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [authenticated, authEpoch]);
+
+  if (!authenticated) {
+    return <AuthPanel onAuthenticated={() => { setAuthenticated(true); setAuthEpoch((value) => value + 1); }} />;
+  }
 
   return (
-    <div className="flex h-screen bg-[#070b14] text-slate-100 overflow-hidden font-sans">
+    <div className="flex h-screen bg-slate-50 text-slate-900 overflow-hidden font-sans">
       {/* Desktop Sidebar */}
       <div className="hidden md:flex">
         <Sidebar
@@ -135,7 +153,7 @@ export default function Home() {
       {isMobileMenuOpen && (
         <div className="fixed inset-0 z-50 md:hidden flex">
           <div
-            className="fixed inset-0 bg-black/75 backdrop-blur-sm"
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm"
             onClick={() => setIsMobileMenuOpen(false)}
           />
           <div className="relative z-10 w-72 h-full">
@@ -149,7 +167,7 @@ export default function Home() {
           <button
             onClick={() => setIsMobileMenuOpen(false)}
             aria-label="Đóng thanh điều hướng di động"
-            className="absolute top-4 right-4 z-20 p-2 text-slate-300 hover:text-white rounded-xl bg-slate-900 border border-slate-700"
+            className="absolute top-4 right-4 z-20 p-2 text-slate-600 hover:text-slate-900 rounded-xl bg-white border border-slate-200 shadow-md"
           >
             <X className="w-5 h-5" />
           </button>
@@ -157,28 +175,28 @@ export default function Home() {
       )}
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col h-screen min-w-0 overflow-hidden bg-slate-50">
         {/* Mobile top bar */}
-        <div className="md:hidden flex items-center justify-between px-4 py-2.5 bg-slate-950 border-b border-slate-800">
+        <div className="md:hidden flex items-center justify-between px-4 py-2.5 bg-white border-b border-slate-200 shadow-xs">
           <button
             onClick={() => setIsMobileMenuOpen(true)}
             aria-label="Mở danh mục điều hướng"
-            className="p-1.5 text-slate-300 hover:text-white rounded-lg bg-slate-900 border border-slate-800"
+            className="p-1.5 text-slate-700 hover:text-slate-900 rounded-lg bg-slate-100 border border-slate-200"
           >
             <Menu className="w-5 h-5" />
           </button>
-          <BrandLogo theme="dark" compact height={32} href="/" />
-          <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+          <BrandLogo theme="light" compact height={32} href="/" />
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
             <span
               className={`w-2 h-2 rounded-full ${
                 health?.status === 'healthy'
-                  ? 'bg-teal-400'
+                  ? 'bg-teal-500'
                   : health?.status === 'degraded'
-                  ? 'bg-amber-400'
-                  : 'bg-rose-400'
+                  ? 'bg-amber-500'
+                  : 'bg-rose-500'
               }`}
             />
-            <span className="text-[10px] uppercase font-mono">
+            <span className="text-[10px] uppercase font-mono font-semibold">
               {health?.status === 'healthy' ? 'Online' : 'Offline'}
             </span>
           </div>
@@ -188,9 +206,17 @@ export default function Home() {
           activeTab={activeTab}
           onNewChat={() => chatResetRef.current?.()}
           latestMeasurement={latestMeasurement}
+          onLogout={() => {
+            clearAccessToken();
+            setUserProfile(null);
+            setLatestMeasurement(null);
+            setAuthenticated(false);
+            setActiveTab('chat');
+            setAuthEpoch((value) => value + 1);
+          }}
         />
 
-        <main className="flex-1 overflow-y-auto bg-gradient-to-b from-[#090d16] to-[#060910]">
+        <main className="flex-1 overflow-y-auto bg-slate-50">
           {activeTab === 'chat' && (
             <ChatContainer
               onRegisterReset={(resetFn) => {
@@ -206,7 +232,7 @@ export default function Home() {
             <ProfileAndGoals onProfileSaved={refreshUserContext} />
           )}
           {activeTab === 'search' && <CorpusSearch />}
-          {activeTab === 'dev' && <DevTools initialHealth={health} />}
+          {activeTab === 'dev' && getAuthMode() === 'development' && <DevTools initialHealth={health} />}
         </main>
       </div>
     </div>

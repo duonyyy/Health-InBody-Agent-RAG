@@ -31,7 +31,7 @@ export default function Sidebar({
   health,
   userName = 'Người dùng',
 }: SidebarProps) {
-  const isDevEnvironment = process.env.NODE_ENV !== 'production' || getAuthMode() === 'development';
+  const isDevEnvironment = getAuthMode() === 'development';
   const isDemo = isExplicitDemoMode();
 
   const navItems: Array<{
@@ -81,15 +81,15 @@ export default function Sidebar({
   }
 
   return (
-    <aside className="w-72 flex-shrink-0 flex flex-col h-screen glass-panel border-r border-slate-800/80 bg-slate-950/90 select-none">
+    <aside className="w-72 flex-shrink-0 flex flex-col h-screen border-r border-slate-200 bg-white select-none shadow-xs">
       {/* Brand Header */}
-      <div className="p-4 border-b border-slate-800/60">
-        <BrandLogo theme="dark" href="/" priority />
+      <div className="p-4 border-b border-slate-200">
+        <BrandLogo theme="light" href="/" priority />
       </div>
 
       {/* Navigation List */}
       <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto">
-        <div className="px-3 pb-2 text-[11px] font-semibold tracking-wider uppercase text-slate-400">
+        <div className="px-3 pb-2 text-[11px] font-semibold tracking-wider uppercase text-slate-500">
           Chức năng chính
         </div>
 
@@ -102,23 +102,25 @@ export default function Sidebar({
               onClick={() => setActiveTab(item.id)}
               className={`w-full text-left px-3.5 py-2.5 rounded-xl flex items-center justify-between transition-all duration-200 group ${
                 isActive
-                  ? 'bg-gradient-to-r from-teal-500/20 to-sky-500/10 border border-teal-500/40 text-teal-200 shadow-sm'
-                  : 'text-slate-300 hover:bg-slate-800/50 hover:text-slate-100 border border-transparent'
+                  ? 'bg-teal-50 border border-teal-200 text-teal-900 shadow-xs'
+                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-transparent'
               }`}
             >
               <div className="flex items-center gap-3">
                 <div
                   className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
                     isActive
-                      ? 'bg-teal-500 text-slate-950 font-semibold shadow-md shadow-teal-500/30'
-                      : 'bg-slate-800 text-slate-400 group-hover:text-slate-200 group-hover:bg-slate-700'
+                      ? 'bg-teal-600 text-white font-semibold shadow-sm'
+                      : 'bg-slate-100 text-slate-500 group-hover:text-slate-800 group-hover:bg-slate-200'
                   }`}
                 >
                   <Icon className="w-4 h-4" />
                 </div>
                 <div>
-                  <div className="text-sm font-medium">{item.label}</div>
-                  <div className="text-[11px] text-slate-400">{item.desc}</div>
+                  <div className={`text-sm ${isActive ? 'font-bold text-teal-950' : 'font-medium'}`}>
+                    {item.label}
+                  </div>
+                  <div className="text-[11px] text-slate-500">{item.desc}</div>
                 </div>
               </div>
 
@@ -126,16 +128,16 @@ export default function Sidebar({
                 <span
                   className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
                     isActive
-                      ? 'bg-teal-500/30 text-teal-300 border border-teal-500/40'
-                      : 'bg-slate-800 text-slate-400 border border-slate-700'
+                      ? 'bg-teal-100 text-teal-800 border border-teal-300 font-semibold'
+                      : 'bg-slate-100 text-slate-600 border border-slate-200'
                   }`}
                 >
                   {item.badge}
                 </span>
               ) : (
                 <ChevronRight
-                  className={`w-4 h-4 text-slate-400 transition-transform ${
-                    isActive ? 'text-teal-400 translate-x-0.5' : 'group-hover:translate-x-0.5'
+                  className={`w-4 h-4 transition-transform ${
+                    isActive ? 'text-teal-600 translate-x-0.5' : 'text-slate-400 group-hover:translate-x-0.5'
                   }`}
                 />
               )}
@@ -145,16 +147,16 @@ export default function Sidebar({
       </nav>
 
       {/* Bottom Health & User Status */}
-      <div className="p-3 border-t border-slate-800/60 space-y-2.5 bg-slate-950/60">
+      <div className="p-3 border-t border-slate-200 space-y-2.5 bg-slate-50">
         {/* Demo banner indicator if explicit demo mode is on */}
         {isDemo && (
-          <div className="px-3 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[11px] font-medium text-center">
+          <div className="px-3 py-1 rounded-lg bg-amber-50 border border-amber-300 text-amber-800 text-[11px] font-semibold text-center">
             Đang bật Chế độ Demo Dữ liệu Mẫu
           </div>
         )}
 
         {/* Backend Connectivity Status */}
-        <div className="px-3 py-2 rounded-lg bg-slate-900/90 border border-slate-800 flex items-center justify-between text-xs">
+        <div className="px-3 py-2 rounded-lg bg-white border border-slate-200 flex items-center justify-between text-xs shadow-xs">
           <div className="flex items-center gap-2">
             <span className="relative flex h-2 w-2">
               <span
@@ -169,14 +171,14 @@ export default function Sidebar({
               <span
                 className={`relative inline-flex rounded-full h-2 w-2 ${
                   health?.status === 'healthy'
-                    ? 'bg-teal-500'
+                    ? 'bg-teal-600'
                     : health?.status === 'degraded'
                     ? 'bg-amber-500'
                     : 'bg-rose-500'
                 }`}
               />
             </span>
-            <span className="text-slate-300 font-medium">
+            <span className="text-slate-700 font-medium">
               {health?.status === 'healthy'
                 ? 'Máy chủ Sẵn sàng'
                 : health?.status === 'degraded'
@@ -185,11 +187,11 @@ export default function Sidebar({
             </span>
           </div>
 
-          <div className="flex items-center gap-1 text-[11px] text-slate-400">
+          <div className="flex items-center gap-1 text-[11px] text-slate-500 font-mono">
             {health?.status === 'offline' ? (
-              <WifiOff className="w-3.5 h-3.5 text-rose-400" />
+              <WifiOff className="w-3.5 h-3.5 text-rose-500" />
             ) : (
-              <Wifi className="w-3.5 h-3.5 text-teal-400" />
+              <Wifi className="w-3.5 h-3.5 text-teal-600" />
             )}
             <span>{health?.latency_ms ? `${health.latency_ms}ms` : '--'}</span>
           </div>
@@ -198,24 +200,24 @@ export default function Sidebar({
         {/* User Card */}
         <div className="flex items-center justify-between px-2 py-1">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-teal-500 to-sky-500 flex items-center justify-center text-xs font-bold text-slate-950 shadow-sm">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-teal-600 to-sky-600 flex items-center justify-center text-xs font-bold text-white shadow-sm">
               BW
             </div>
             <div>
-              <div className="text-xs font-semibold text-slate-200">{userName}</div>
-              <div className="text-[10px] text-slate-400 font-mono">
+              <div className="text-xs font-semibold text-slate-800">{userName}</div>
+              <div className="text-[10px] text-slate-500 font-mono">
                 {getAuthMode() === 'development' ? `Dev ID: ${getActiveUserId()}` : 'Xác thực Máy chủ'}
               </div>
             </div>
           </div>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-teal-300 border border-slate-700">
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-teal-700 font-semibold border border-slate-200">
             P1 Beta
           </span>
         </div>
 
         {/* Medical disclaimer note */}
-        <div className="flex items-start gap-1.5 px-2 text-[10px] text-slate-400 leading-tight">
-          <ShieldCheck className="w-3.5 h-3.5 text-teal-400 flex-shrink-0 mt-0.5" />
+        <div className="flex items-start gap-1.5 px-2 text-[10px] text-slate-500 leading-tight">
+          <ShieldCheck className="w-3.5 h-3.5 text-teal-600 flex-shrink-0 mt-0.5" />
           <span>Thông tin tham khảo thể trạng, không thay thế chẩn đoán y khoa.</span>
         </div>
       </div>
