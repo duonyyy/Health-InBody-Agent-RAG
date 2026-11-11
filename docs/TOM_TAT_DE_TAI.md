@@ -17,7 +17,7 @@ Do đó, đề tài xây dựng một hệ thống trợ lý thông minh đa tá
   - `SafetyAgent`: Kiểm soát rủi ro y tế, ngăn chặn chẩn đoán hoặc kê đơn sai quy định.
 - **Fast-path bảo vệ an toàn y tế:** Phản hồi tức thì (< 50ms) đối với các triệu chứng nguy hiểm (đau ngực, khó thở, ngất xỉu) mà không thông qua LLM để loại trừ hoàn toàn nguy cơ ảo giác.
 - **Theo dõi tiến bộ (Progress Tracking):** Lưu trữ lịch sử đo theo thời gian của từng người dùng, tính toán chênh lệch (`delta`) giữa các lần đo và chỉ dùng dữ liệu đã được người dùng xác nhận để cá nhân hóa lời khuyên.
-- **Hỗ trợ tiếng Việt:** Giao diện trực quan qua Streamlit Web UI, giải thích rõ ràng và có trích dẫn nguồn tài liệu tham khảo.
+- **Hỗ trợ tiếng Việt:** Giao diện trực quan qua Next.js 16 Web UI, giải thích rõ ràng và có trích dẫn nguồn tài liệu tham khảo.
 
 ### 3. Phạm vi hệ thống
 - **Đầu vào (Input):**
@@ -36,7 +36,7 @@ Do đó, đề tài xây dựng một hệ thống trợ lý thông minh đa tá
 - **LLM & Inference:** Hỗ trợ linh hoạt Ollama (Qwen 8B, v.v.) và OpenAI API.
 - **Retrieval & Vector DB:** Qdrant Vector Database, mô hình embedding BAAI/BGE-M3 (1024-dim), kết hợp BM25 sparse snapshot (Hybrid Search).
 - **Database & Cache:** PostgreSQL (lưu profile, goal, measurement, plan), Valkey/Redis (cache & Celery broker).
-- **Frontend:** Streamlit.
+- **Frontend:** Next.js 16, TypeScript, Tailwind CSS.
 - **Containerization:** Docker & Docker Compose.
 
 ### 5. Lộ trình phát triển tiếp theo (Roadmap)
