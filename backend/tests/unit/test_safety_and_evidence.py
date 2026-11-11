@@ -169,7 +169,8 @@ def test_medical_caution_routing_skips_plan_and_web_agents():
 
     result = graph.supervisor_agent(state)
 
-    assert result["selected_agents"] == [graph.RAG_AGENT]
+    assert result["selected_agents"] == [graph.KNOWLEDGE_AGENT]
+    assert result["selected_capabilities"] == [graph.RAG_AGENT]
     assert any(
         item["action"] == "restrict_medical_caution_route"
         for item in result["agent_trace"]

@@ -41,6 +41,8 @@ from .constants import (
     AGENT_REQUEST_TIMEOUT_SECONDS,
     GENERAL_CHAT_AGENT,
     INBODY_AGENT,
+    KNOWLEDGE_AGENT,
+    LIFESTYLE_AGENT,
     NUTRITION_AGENT,
     PERSONALIZATION_CONTEXT_AGENT,
     QDRANT_SEARCH_RESERVE_SECONDS,
@@ -54,6 +56,7 @@ from .constants import (
     SUPERVISOR_AGENT,
     TRAINING_AGENT,
     WEB_SEARCH_AGENT,
+    SPECIALIST_BY_CAPABILITY,
 )
 from .context import (
     _bounded_timeout,
@@ -81,6 +84,7 @@ from .nodes import (
     web_search_agent,
 )
 from .state import AgentState, append_error, append_trace
+from .specialists import inbody_specialist, knowledge_specialist, lifestyle_specialist
 
 logger = logging.getLogger(__name__)
 
@@ -102,24 +106,18 @@ def _build_graph():
     graph = StateGraph(AgentState)
     graph.add_node("normalize_question", normalize_question_agent)
     graph.add_node("supervisor", supervisor_agent)
-    graph.add_node("inbody_agent", inbody_agent)
-    graph.add_node("nutrition_agent", nutrition_agent)
-    graph.add_node("training_agent", training_agent)
-    graph.add_node("rag_agent", rag_agent)
-    graph.add_node("web_search_agent", web_search_agent)
-    graph.add_node("general_chat_agent", general_chat_agent)
+    graph.add_node("inbody_specialist", inbody_specialist)
+    graph.add_node("lifestyle_specialist", lifestyle_specialist)
+    graph.add_node("knowledge_specialist", knowledge_specialist)
     graph.add_node("safety_agent", safety_agent)
     graph.add_node("response_composer", response_composer_agent)
 
     graph.set_entry_point("normalize_question")
     graph.add_edge("normalize_question", "supervisor")
-    graph.add_edge("supervisor", "inbody_agent")
-    graph.add_edge("inbody_agent", "nutrition_agent")
-    graph.add_edge("nutrition_agent", "training_agent")
-    graph.add_edge("training_agent", "rag_agent")
-    graph.add_edge("rag_agent", "web_search_agent")
-    graph.add_edge("web_search_agent", "general_chat_agent")
-    graph.add_edge("general_chat_agent", "safety_agent")
+    graph.add_edge("supervisor", "inbody_specialist")
+    graph.add_edge("inbody_specialist", "lifestyle_specialist")
+    graph.add_edge("lifestyle_specialist", "knowledge_specialist")
+    graph.add_edge("knowledge_specialist", "safety_agent")
     graph.add_edge("safety_agent", "response_composer")
     graph.add_edge("response_composer", END)
     return graph.compile()
@@ -129,17 +127,39 @@ def _run_sequential(state: AgentState) -> AgentState:
     for node in [
         normalize_question_agent,
         supervisor_agent,
-        inbody_agent,
-        nutrition_agent,
-        training_agent,
-        rag_agent,
-        web_search_agent,
-        general_chat_agent,
+        inbody_specialist,
+        lifestyle_specialist,
+        knowledge_specialist,
         safety_agent,
         response_composer_agent,
     ]:
         state = node(state)
     return state
+
+
+_WORKFLOW_STAGE_NAMES = {
+    PERSONALIZATION_CONTEXT_AGENT: "ContextLoader",
+    SUPERVISOR_AGENT: "IntentRouter",
+    SAFETY_AGENT: "SafetyGuard",
+    RESPONSE_COMPOSER_AGENT: "AnswerComposer",
+}
+
+
+def _public_activity(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Keep capability provenance while exposing only three agent identities."""
+    public_items = []
+    for item in items:
+        original = item.get("agent")
+        public_name = SPECIALIST_BY_CAPABILITY.get(original, _WORKFLOW_STAGE_NAMES.get(original, original))
+        if public_name == original:
+            public_items.append(item)
+            continue
+        public_item = dict(item)
+        public_item["agent"] = public_name
+        if original in SPECIALIST_BY_CAPABILITY and original != public_name:
+            public_item["capability"] = original
+        public_items.append(public_item)
+    return public_items
 
 
 def _response_from_state(state: AgentState) -> Dict[str, Any]:
@@ -149,9 +169,10 @@ def _response_from_state(state: AgentState) -> Dict[str, Any]:
         "content": state.get("final_answer") or _fallback_answer(state),
         "status": "degraded" if errors else "ok",
         "fast_path": state.get("fast_path"),
-        "agent_trace": state.get("agent_trace") or [],
+        "agent_trace": _public_activity(state.get("agent_trace") or []),
         "selected_agents": state.get("selected_agents") or [],
-        "tool_results": state.get("tool_results") or [],
+        "selected_capabilities": state.get("selected_capabilities") or [],
+        "tool_results": _public_activity(state.get("tool_results") or []),
         "retrieved_docs": state.get("retrieved_docs") or [],
         "evidence": state.get("evidence") or [],
         "claim_evidence_links": state.get("claim_evidence_links") or [],
@@ -194,6 +215,7 @@ def multi_agent_handle(
         "limitations": [],
         "agent_trace": [],
         "errors": [],
+        "selected_capabilities": [],
         "deadline_monotonic": (
             time.monotonic() + AGENT_REQUEST_TIMEOUT_SECONDS
         ),
@@ -233,7 +255,8 @@ def multi_agent_handle(
     if memory_answer is not None and safety.get("risk_level") == "low":
         initial_state["final_answer"] = memory_answer
         initial_state["fast_path"] = "personal_memory"
-        initial_state["selected_agents"] = ["PersonalMemoryAgent"]
+        initial_state["selected_agents"] = [KNOWLEDGE_AGENT]
+        initial_state["selected_capabilities"] = ["PersonalMemoryAgent"]
         append_trace(initial_state, "PersonalMemoryAgent", "recall_confirmed_personal_data", "success",
                      "Read current owner-scoped records; no medical evidence was created.")
         return _response_from_state(initial_state)
@@ -287,7 +310,7 @@ def multi_agent_handle(
 def get_multi_agent_summary() -> Dict[str, Any]:
     return {
         "domain": "health_inbody",
-        "orchestration": "LangGraph Multi-Agent RAG MVP",
+        "orchestration": "LangGraph three-specialist RAG beta",
         "entrypoint": "multi_agent_handle",
         "runtime_budget": {
             "request_timeout_seconds": AGENT_REQUEST_TIMEOUT_SECONDS,
@@ -301,42 +324,19 @@ def get_multi_agent_summary() -> Dict[str, Any]:
         },
         "agents": [
             {
-                "name": PERSONALIZATION_CONTEXT_AGENT,
-                "responsibility": "Load saved user profile and latest InBody measurement for personalization.",
-            },
-            {
-                "name": SUPERVISOR_AGENT,
-                "responsibility": "Select one or more specialist agents from the user question.",
-            },
-            {
                 "name": INBODY_AGENT,
                 "responsibility": "Calculate BMI and evaluate PBF/visceral fat from text metrics.",
             },
             {
-                "name": RAG_AGENT,
-                "responsibility": "Rewrite query, hybrid search Health/InBody corpus, rerank context.",
+                "name": LIFESTYLE_AGENT,
+                "responsibility": "Suggest nutrition and basic exercise plans when the required inputs are available.",
             },
             {
-                "name": NUTRITION_AGENT,
-                "responsibility": "Suggest protein range and calorie strategy.",
-            },
-            {
-                "name": TRAINING_AGENT,
-                "responsibility": "Suggest a basic weekly training plan.",
-            },
-            {
-                "name": WEB_SEARCH_AGENT,
-                "responsibility": "Search recent health web context when freshness is requested.",
-            },
-            {
-                "name": SAFETY_AGENT,
-                "responsibility": "Always run medical safety guardrail.",
-            },
-            {
-                "name": RESPONSE_COMPOSER_AGENT,
-                "responsibility": "Compose the final answer from agent outputs and safety context.",
+                "name": KNOWLEDGE_AGENT,
+                "responsibility": "Retrieve corpus or fresh web context and handle general chat.",
             },
         ],
+        "workflow_stages": ["ContextLoader", "IntentRouter", "SafetyGuard", "AnswerComposer"],
         "trace_schema": {
             "agent": "Agent name",
             "action": "Action performed",

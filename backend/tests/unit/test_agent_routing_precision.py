@@ -13,8 +13,9 @@ def test_supervisor_does_not_falsely_select_nutrition_for_training_words():
         "errors": [],
     }
     result = supervisor_agent(state)
-    assert graph.TRAINING_AGENT in result["selected_agents"]
-    assert graph.NUTRITION_AGENT not in result["selected_agents"]
+    assert graph.TRAINING_AGENT in result["selected_capabilities"]
+    assert graph.NUTRITION_AGENT not in result["selected_capabilities"]
+    assert result["selected_agents"] == [graph.LIFESTYLE_AGENT]
 
 
 def test_supervisor_does_not_falsely_select_nutrition_for_pronoun_ban():
@@ -25,8 +26,9 @@ def test_supervisor_does_not_falsely_select_nutrition_for_pronoun_ban():
         "errors": [],
     }
     result = supervisor_agent(state)
-    assert graph.TRAINING_AGENT in result["selected_agents"]
-    assert graph.NUTRITION_AGENT not in result["selected_agents"]
+    assert graph.TRAINING_AGENT in result["selected_capabilities"]
+    assert graph.NUTRITION_AGENT not in result["selected_capabilities"]
+    assert result["selected_agents"] == [graph.LIFESTYLE_AGENT]
 
 
 def test_supervisor_selects_nutrition_for_vietnamese_menu_keywords():
@@ -37,7 +39,8 @@ def test_supervisor_selects_nutrition_for_vietnamese_menu_keywords():
         "errors": [],
     }
     result = supervisor_agent(state)
-    assert graph.NUTRITION_AGENT in result["selected_agents"]
+    assert graph.NUTRITION_AGENT in result["selected_capabilities"]
+    assert graph.LIFESTYLE_AGENT in result["selected_agents"]
 
 
 def test_supervisor_selects_training_for_gym_keywords():
@@ -48,7 +51,8 @@ def test_supervisor_selects_training_for_gym_keywords():
         "errors": [],
     }
     result = supervisor_agent(state)
-    assert graph.TRAINING_AGENT in result["selected_agents"]
+    assert graph.TRAINING_AGENT in result["selected_capabilities"]
+    assert graph.LIFESTYLE_AGENT in result["selected_agents"]
 
 
 def test_web_search_agent_ignores_search_error_strings(monkeypatch):

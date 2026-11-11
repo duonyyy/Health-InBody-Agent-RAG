@@ -19,6 +19,7 @@ from ..constants import (
     SUPERVISOR_AGENT,
     TRAINING_AGENT,
     WEB_SEARCH_AGENT,
+    public_specialists,
 )
 from ..context import _has_any, _question
 from ..parsing import (
@@ -153,12 +154,13 @@ def supervisor_agent(state: AgentState) -> AgentState:
             "warning",
             "Restricted routing to medical-safety retrieval; skipped plan and web agents.",
         )
-    state["selected_agents"] = deduped
+    state["selected_capabilities"] = deduped
+    state["selected_agents"] = public_specialists(deduped)
     append_trace(
         state,
         SUPERVISOR_AGENT,
         "select_agents",
         "success",
-        "Selected agents: {}".format(", ".join(deduped)),
+        "Selected specialists: {}".format(", ".join(state["selected_agents"])),
     )
     return state

@@ -276,7 +276,7 @@ def response_composer_agent(state: AgentState) -> AgentState:
     vietnamese_llm_fn = getattr(graph_mod, "vietnamese_llm_chat_complete", _default_vietnamese_llm_chat_complete)
 
     question = _question(state)
-    selected = state.get("selected_agents") or []
+    selected = state.get("selected_capabilities") or state.get("selected_agents") or []
     state["claim_evidence_links"] = []
     if _remaining_seconds(state) < 1:
         append_error(state, "Request deadline exhausted before response composition")

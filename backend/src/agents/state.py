@@ -13,6 +13,7 @@ class AgentState(TypedDict, total=False):
     latest_measurement: Dict[str, Any]
     standalone_question: str
     selected_agents: List[str]
+    selected_capabilities: List[str]
     tool_results: List[Dict[str, Any]]
     retrieved_docs: List[Dict[str, Any]]
     composer_docs: List[Dict[str, Any]]

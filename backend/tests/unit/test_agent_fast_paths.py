@@ -48,7 +48,7 @@ def test_urgent_safety_returns_without_llm_or_retrieval(monkeypatch):
 
     assert result["status"] == "ok"
     assert result["fast_path"] == "urgent_safety"
-    assert result["selected_agents"] == [graph.SAFETY_AGENT]
+    assert result["selected_agents"] == []
     assert result["safety_result"]["risk_level"] == "urgent"
     assert "dừng tập ngay" in result["content"].lower()
     assert result["retrieved_docs"] == []
@@ -121,7 +121,8 @@ def test_greeting_returns_without_llm_or_retrieval(monkeypatch):
 
     assert result["status"] == "ok"
     assert result["fast_path"] == "general_chat"
-    assert result["selected_agents"] == [graph.GENERAL_CHAT_AGENT]
+    assert result["selected_agents"] == [graph.KNOWLEDGE_AGENT]
+    assert result["selected_capabilities"] == [graph.GENERAL_CHAT_AGENT]
     assert "BMI" in result["content"]
     assert result["retrieved_docs"] == []
     assert result["errors"] == []
@@ -137,8 +138,9 @@ def test_supervisor_matches_unaccented_training_query():
 
     result = graph.supervisor_agent(state)
 
-    assert graph.TRAINING_AGENT in result["selected_agents"]
-    assert graph.GENERAL_CHAT_AGENT not in result["selected_agents"]
+    assert graph.TRAINING_AGENT in result["selected_capabilities"]
+    assert graph.LIFESTYLE_AGENT in result["selected_agents"]
+    assert graph.GENERAL_CHAT_AGENT not in result["selected_capabilities"]
 
 
 def test_unaccented_measurements_are_parsed_for_bmi(monkeypatch):

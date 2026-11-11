@@ -10,6 +10,7 @@ from health.tools import (
 from .constants import (
     GENERAL_CHAT_AGENT,
     INBODY_AGENT,
+    KNOWLEDGE_AGENT,
     RESPONSE_COMPOSER_AGENT,
     SAFETY_AGENT,
 )
@@ -42,7 +43,8 @@ def _urgent_answer() -> str:
 
 
 def _apply_urgent_fast_path(state: AgentState, safety: Dict[str, Any]) -> AgentState:
-    state["selected_agents"] = [SAFETY_AGENT]
+    state["selected_agents"] = []
+    state["selected_capabilities"] = []
     state["safety_result"] = safety
     state["final_answer"] = _urgent_answer()
     state["fast_path"] = "urgent_safety"
@@ -82,7 +84,8 @@ def _try_general_fast_path(state: AgentState) -> Optional[AgentState]:
     ):
         return None
 
-    state["selected_agents"] = [GENERAL_CHAT_AGENT]
+    state["selected_agents"] = [KNOWLEDGE_AGENT]
+    state["selected_capabilities"] = [GENERAL_CHAT_AGENT]
     state["final_answer"] = (
         "Xin chào! Mình có thể giúp bạn tính và giải thích BMI, PBF, mỡ nội tạng, "
         "tham khảo mục tiêu dinh dưỡng và xây lịch tập cơ bản. "
@@ -238,6 +241,7 @@ def _try_inbody_fast_path(state: AgentState) -> Optional[AgentState]:
         "Safety risk level: low.",
     )
     state["selected_agents"] = [INBODY_AGENT]
+    state["selected_capabilities"] = [INBODY_AGENT]
     state["tool_results"] = results
     state["final_answer"] = "\n".join(answer_lines)
     state["fast_path"] = "inbody_tools"
