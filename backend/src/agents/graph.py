@@ -241,6 +241,8 @@ def multi_agent_handle(
 
     safety = check_medical_safety(question, _medical_conditions(initial_state))
     initial_state["safety_result"] = safety
+    append_trace(initial_state, SAFETY_AGENT, "precheck_medical_safety", "success",
+                 f"Safety risk level: {safety.get('risk_level', 'unknown')}.")
     if safety.get("risk_level") == "urgent":
         return _response_from_state(_apply_urgent_fast_path(initial_state, safety))
 
@@ -302,7 +304,8 @@ def multi_agent_handle(
             "error",
             "Graph failed; returned safe fallback answer.",
         )
-        safety = check_medical_safety(question)
+        # Retain the original precheck, including confirmed profile conditions.
+        # Rechecking only the text here would silently downgrade medical caution.
         initial_state["safety_result"] = safety
         initial_state["final_answer"] = _fallback_answer(initial_state)
         final_state = initial_state

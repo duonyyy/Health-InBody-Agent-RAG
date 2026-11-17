@@ -34,7 +34,24 @@ from ..state import AgentState, append_error, append_trace
 logger = logging.getLogger(__name__)
 
 
+def _select_agents(state: AgentState, capabilities: List[str]) -> AgentState:
+    state["selected_capabilities"] = list(dict.fromkeys(capabilities))
+    state["selected_agents"] = public_specialists(state["selected_capabilities"])
+    append_trace(
+        state, SUPERVISOR_AGENT, "select_agents", "success",
+        "Selected specialists: {}".format(", ".join(state["selected_agents"])),
+    )
+    return state
+
+
 def supervisor_agent(state: AgentState) -> AgentState:
+    if (state.get("safety_result") or {}).get("risk_level") == "medical_caution":
+        # Restrict before any fallback route classifier can call a provider.
+        append_trace(
+            state, SAFETY_AGENT, "restrict_medical_caution_route", "warning",
+            "Restricted routing to medical-safety retrieval; skipped plan and web agents.",
+        )
+        return _select_agents(state, [RAG_AGENT])
     question = _question(state)
     text = normalize_match_text(question)
     selected: List[str] = []
@@ -137,30 +154,4 @@ def supervisor_agent(state: AgentState) -> AgentState:
         else:
             selected.append(GENERAL_CHAT_AGENT)
 
-    deduped = []
-    for agent_name in selected:
-        if agent_name not in deduped:
-            deduped.append(agent_name)
-
-    if (state.get("safety_result") or {}).get("risk_level") == "medical_caution":
-        # A symptom, medication or known condition must not be turned into an
-        # automated nutrition/training plan. Retrieve only safety context; the
-        # SafetyAgent and composer will preserve the cautionary response.
-        deduped = [RAG_AGENT]
-        append_trace(
-            state,
-            SAFETY_AGENT,
-            "restrict_medical_caution_route",
-            "warning",
-            "Restricted routing to medical-safety retrieval; skipped plan and web agents.",
-        )
-    state["selected_capabilities"] = deduped
-    state["selected_agents"] = public_specialists(deduped)
-    append_trace(
-        state,
-        SUPERVISOR_AGENT,
-        "select_agents",
-        "success",
-        "Selected specialists: {}".format(", ".join(state["selected_agents"])),
-    )
-    return state
+    return _select_agents(state, selected)

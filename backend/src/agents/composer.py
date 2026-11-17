@@ -266,6 +266,9 @@ def _insufficient_evidence_answer(state: AgentState) -> str:
     safety = state.get("safety_result") or {}
     if safety.get("disclaimer"):
         chunks.append(f"Lưu ý an toàn: {safety['disclaimer']}")
+    if safety.get("risk_level") in {"urgent", "medical_caution"}:
+        chunks.append(safety.get("recommended_action") or
+                      "Hãy tham khảo bác sĩ/chuyên gia y tế trước khi thay đổi kế hoạch.")
     return "\n\n".join(chunks)
 
 

@@ -1,6 +1,6 @@
 # Kế hoạch sửa code sau rà soát ngày 2026-11-17
 
-**Trạng thái: FIX-01 SOURCE_READY; FIX-02–05 PLANNED.** FIX-01 có 220 test và 8 HTTP check biệt lập đạt, chưa deploy container sản phẩm. Xem [báo cáo FIX-01](reports/upgrade-2026/fix01-health-input-2026-11-17.md).
+**Trạng thái: FIX-01–02 SOURCE_READY; FIX-03–05 PLANNED.** Sau FIX-02, 253 test và 9 HTTP check biệt lập đạt; chưa deploy container sản phẩm. Xem [báo cáo FIX-01](reports/upgrade-2026/fix01-health-input-2026-11-17.md) và [báo cáo FIX-02](reports/upgrade-2026/fix02-greeting-safety-2026-11-17.md).
 
 Nguồn: [báo cáo rà soát](reports/upgrade-2026/project-review-2026-11-17.md), revision `a024500` và source hiện tại. Tài liệu này bổ sung kế hoạch nâng cấp 2026, xử lý F1–F6 trước các WP tối ưu tiếp theo.
 
@@ -171,11 +171,11 @@ Mỗi đợt ghi vào `docs/reports/upgrade-2026/` tên finding, reproduction tr
 | Đợt | Source | Test | Runtime |
 |---|---|---|---|
 | FIX-01 | SOURCE_READY | 217 unit + 3 API integration đạt | 8/8 HTTP biệt lập đạt; chưa deploy container/PostgreSQL |
-| FIX-02 | PLANNED | NOT_RUN sau sửa | NOT_RUN |
+| FIX-02 | SOURCE_READY | 250 unit + 3 integration đạt; 33 regression mới | 9/9 HTTP fast-path biệt lập đạt; health timeout, caution/Qdrant/provider thật NOT_RUN |
 | FIX-03 | PLANNED | NOT_RUN sau nâng | NOT_RUN |
 | FIX-04 | PLANNED | NOT_RUN sau sửa | NOT_RUN |
 | FIX-05 | Chờ FIX-01–04 | Chờ môi trường | Docker chưa sẵn sàng |
 
 ## 9. Chỉ dẫn bắt đầu cho coding agent
 
-Đọc AGENTS.md, báo cáo rà soát, báo cáo FIX-01 và tài liệu này; kiểm tra git status/diff. FIX-01 đã sửa và kiểm chứng trên source/HTTP biệt lập, không làm lại nếu chưa có regression mới. Đợt tiếp theo là FIX-02 khi được giao triển khai. Tiếp tục lần lượt theo gate; không đổi graph architecture, không mở Zep, không làm migration corpus hay commit/push ngoài yêu cầu. Mọi tuyên bố hoàn thành phải phân biệt source, test trong process, HTTP runtime và browser.
+Đọc AGENTS.md, báo cáo rà soát, báo cáo FIX-01/FIX-02 và tài liệu này; kiểm tra git status/diff. FIX-01–02 đã sửa và kiểm chứng theo phạm vi từng báo cáo, không làm lại nếu chưa có regression mới. Đợt tiếp theo là FIX-03 khi được giao triển khai. Tiếp tục lần lượt theo gate; không đổi graph architecture, không mở Zep, không làm migration corpus hay commit/push ngoài yêu cầu. Mọi tuyên bố hoàn thành phải phân biệt source, test trong process, HTTP runtime và browser.

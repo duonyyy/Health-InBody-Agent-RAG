@@ -1,5 +1,6 @@
 """Deterministic fast-paths for urgent safety, greetings, and direct InBody calculations."""
 
+import re
 from typing import Any, Dict, List, Optional
 
 from health.tools import (
@@ -64,24 +65,21 @@ def _apply_urgent_fast_path(state: AgentState, safety: Dict[str, Any]) -> AgentS
 
 
 def _try_general_fast_path(state: AgentState) -> Optional[AgentState]:
+    if (state.get("safety_result") or {}).get("risk_level") != "low":
+        return None
     question = _question(state)
-    text = normalize_match_text(question)
-    greeting_patterns = [
-        "xin chao",
-        "chao ban",
-        "hello",
-        "hi",
-        "cam on",
-        "ban la ai",
-        "ban giup duoc gi",
-        "co the giup gi",
-    ]
-    if not any(
-        re_pattern in f" {text} "
-        if len(re_pattern) > 2
-        else f" {re_pattern} " in f" {text} "
-        for re_pattern in greeting_patterns
-    ):
+    # Admit only complete social/capability phrases. An unmatched remainder
+    # (including a health question) must reach the regular routing path.
+    text = re.sub(r"[^\w\s]", " ", normalize_match_text(question))
+    text = " ".join(text.split())
+    phrase = (
+        r"(?:(?:xin chao|chao|hello|hi)(?: ban)?"
+        r"|(?:rat )?cam on(?: ban)?(?: rat nhieu| nhieu)?"
+        r"|ban la ai"
+        r"|(?:ban )?(?:co the )?giup (?:duoc )?gi(?: cho (?:toi|minh))?"
+        r"|ban co the lam (?:duoc )?gi)"
+    )
+    if not re.fullmatch(rf"{phrase}(?:\s+{phrase})*(?:\s+(?:a|nhe))?", text):
         return None
 
     state["selected_agents"] = [KNOWLEDGE_AGENT]
@@ -96,13 +94,6 @@ def _try_general_fast_path(state: AgentState) -> Optional[AgentState]:
     state["evidence"] = []
     state["evidence_status"] = "not_required"
     state["limitations"] = []
-    append_trace(
-        state,
-        SAFETY_AGENT,
-        "precheck_medical_safety",
-        "success",
-        "Safety risk level: low.",
-    )
     append_trace(
         state,
         GENERAL_CHAT_AGENT,
@@ -122,6 +113,8 @@ def _try_general_fast_path(state: AgentState) -> Optional[AgentState]:
 
 def _try_inbody_fast_path(state: AgentState) -> Optional[AgentState]:
     """Return deterministic InBody calculations when no broader advice is requested."""
+    if (state.get("safety_result") or {}).get("risk_level") != "low":
+        return None
     question = _question(state)
     text = normalize_match_text(question)
     if _has_any(
@@ -232,13 +225,6 @@ def _try_inbody_fast_path(state: AgentState) -> Optional[AgentState]:
     answer_lines.append(
         "\nCác chỉ số trên chỉ dùng để sàng lọc/tham khảo; nên đọc cùng thành phần cơ thể, "
         "tiền sử sức khỏe và triệu chứng thực tế."
-    )
-    append_trace(
-        state,
-        SAFETY_AGENT,
-        "precheck_medical_safety",
-        "success",
-        "Safety risk level: low.",
     )
     state["selected_agents"] = [INBODY_AGENT]
     state["selected_capabilities"] = [INBODY_AGENT]
