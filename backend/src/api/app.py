@@ -12,7 +12,7 @@ try:
 except Exception:
     AsyncResult = None
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -32,6 +32,7 @@ from health.tools import (
     suggest_nutrition_goal,
     suggest_training_plan,
 )
+from health.validation import InvalidHealthInput, validate_health_input
 from persistence.personalization import (
     add_inbody_measurement,
     get_user_profile,
@@ -90,6 +91,11 @@ app.include_router(auth_router)
 if os.getenv("FEATURE_OCR_UPLOAD", "false").strip().lower() in {"1", "true", "yes", "on"}:
     app.include_router(inbody_ocr_router)
 app.include_router(memory_router)
+
+
+@app.exception_handler(InvalidHealthInput)
+async def invalid_health_input_handler(request: Request, exc: InvalidHealthInput) -> JSONResponse:
+    return JSONResponse(status_code=422, content={"detail": str(exc), "code": "invalid_health_input"})
 
 
 @app.on_event("startup")
@@ -348,7 +354,10 @@ async def complete(data: CompleteRequest, current_user: CurrentUser = Depends(ge
     )
 
     # Emergency requests must never wait for Celery or task storage.
-    if data.sync_request or check_medical_safety(data.user_message).get("risk_level") == "urgent":
+    urgent = check_medical_safety(data.user_message).get("risk_level") == "urgent"
+    if not urgent:
+        validate_health_input(data.user_message)
+    if data.sync_request or urgent:
         try:
             request_started = time.perf_counter()
             response = await run_in_threadpool(
@@ -365,6 +374,8 @@ async def complete(data: CompleteRequest, current_user: CurrentUser = Depends(ge
             )
             return {"response": response}
         except HTTPException:
+            raise
+        except InvalidHealthInput:
             raise
         except Exception as e:
             logger.error("Chat sync failed (%s)", type(e).__name__)

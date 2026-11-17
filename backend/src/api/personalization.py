@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel
 
 from auth.context import CurrentUser, get_current_user, personalization_debug_enabled
+from health.validation import InvalidHealthInput
 from memory import sync as memory_sync
 from persistence import personalization_service as service
 from persistence.schemas import (
@@ -62,6 +63,8 @@ def delete_memory(current_user: CurrentUser = Depends(get_current_user)):
 def _execute(operation, *args, **kwargs):
     try:
         return operation(*args, **kwargs)
+    except InvalidHealthInput:
+        raise
     except service.PersonalizationError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.public_message) from exc
     except Exception as exc:

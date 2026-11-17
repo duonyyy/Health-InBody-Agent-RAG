@@ -1,17 +1,9 @@
 """Text parsing helpers shared by Health/InBody agents."""
 
 import re
-import unicodedata
 from typing import List, Optional
 
-
-def normalize_match_text(text: str) -> str:
-    """Normalize Vietnamese text for deterministic matching while preserving words."""
-    normalized = unicodedata.normalize("NFD", (text or "").lower())
-    without_marks = "".join(
-        char for char in normalized if unicodedata.category(char) != "Mn"
-    )
-    return re.sub(r"\s+", " ", without_marks.replace("đ", "d")).strip()
+from health.validation import extract_health_metric, normalize_match_text
 
 
 def extract_number_after_patterns(text: str, patterns: List[str]) -> Optional[float]:
@@ -32,59 +24,19 @@ def extract_number_after_patterns(text: str, patterns: List[str]) -> Optional[fl
 
 
 def extract_weight_kg(text: str) -> Optional[float]:
-    return extract_number_after_patterns(
-        text,
-        [
-            r"(\d+(?:[\.,]\d+)?)\s*(?:kg|kilo|ký|ky|cân|can)\b",
-            r"(?:nặng|cân nặng)\s*(?:là|=|:)?\s*(\d+(?:[\.,]\d+)?)",
-        ],
-    )
+    return extract_health_metric(text, "weight_kg")
 
 
 def extract_height_cm(text: str) -> Optional[float]:
-    # 1. Handle Vietnamese "1m70", "1m7", "1m68", "1 m 75" format first
-    m_pattern = re.search(
-        r"(?:^|[^\w.,])([12])\s*m\s*(\d{1,2})\b",
-        (text or "").lower(),
-    )
-    if m_pattern:
-        m = int(m_pattern.group(1))
-        cm_part = m_pattern.group(2)
-        cm = int(cm_part) * 10 if len(cm_part) == 1 else int(cm_part)
-        return float(m * 100 + cm)
-
-    height = extract_number_after_patterns(
-        text,
-        [
-            r"(\d+(?:[\.,]\d+)?)\s*cm\b",
-            r"(?:cao|chiều cao)\s*(?:là|=|:)?\s*(\d+(?:[\.,]\d+)?)",
-            r"(\d(?:[\.,]\d+)?)\s*m\b",
-        ],
-    )
-    if height and height < 3:
-        return height * 100
-    return height
+    return extract_health_metric(text, "height_cm")
 
 
 def extract_pbf(text: str) -> Optional[float]:
-    return extract_number_after_patterns(
-        text,
-        [
-            r"(?:pbf|phần trăm mỡ|phan tram mo|tỷ lệ mỡ|ty le mo|ti le mo|body\s*fat|bf)\s*(?:là|=|:)?\s*(\d+(?:[\.,]\d+)?)",
-            r"mỡ cơ thể\s*(?:là|=|:)?\s*(\d+(?:[\.,]\d+)?)",
-            r"(\d+(?:[\.,]\d+)?)\s*%\s*(?:mỡ|fat|pbf)",
-        ],
-    )
+    return extract_health_metric(text, "pbf_percent")
 
 
 def extract_visceral_fat(text: str) -> Optional[float]:
-    return extract_number_after_patterns(
-        text,
-        [
-            r"mỡ nội tạng\s*(?:level|mức|là|=|:)?\s*(\d+(?:[\.,]\d+)?)",
-            r"visceral fat\s*(?:level|là|=|:)?\s*(\d+(?:[\.,]\d+)?)",
-        ],
-    )
+    return extract_health_metric(text, "visceral_fat_level")
 
 
 def extract_sex(text: str) -> Optional[str]:

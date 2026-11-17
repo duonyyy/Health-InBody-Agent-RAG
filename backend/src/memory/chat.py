@@ -3,6 +3,7 @@ import logging
 from uuid import uuid4
 from agents import multi_agent_handle
 from health.tools import check_medical_safety
+from health.validation import validate_health_input
 from persistence import personalization_service as profiles
 from memory import store
 
@@ -23,6 +24,7 @@ def run_chat(question: str, subject: str, conversation_id=None, *, bot_id="healt
         response = multi_agent_handle(question, user_id=subject)
         response.update(request_id=request_id, conversation_id=None, memory_status="skipped_urgent")
         return response
+    validate_health_input(question)
     context = profiles.safe_build_confirmed_context(subject)
     history, memory_status = [], "disabled"
     if conversation_id:

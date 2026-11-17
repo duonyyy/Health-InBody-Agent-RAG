@@ -11,6 +11,7 @@ except Exception:  # pragma: no cover - fallback keeps local dev usable without 
     StateGraph = None
 
 from health.tools import check_medical_safety
+from health.validation import validate_health_input
 from integrations.tavily import tavily_search_health as _default_tavily_search_health
 from llm.client import (
     openai_chat_complete as _default_openai_chat_complete,
@@ -242,6 +243,8 @@ def multi_agent_handle(
     initial_state["safety_result"] = safety
     if safety.get("risk_level") == "urgent":
         return _response_from_state(_apply_urgent_fast_path(initial_state, safety))
+
+    validate_health_input(question)
 
     general_fast_path_state = _try_general_fast_path(initial_state)
     if general_fast_path_state is not None:
