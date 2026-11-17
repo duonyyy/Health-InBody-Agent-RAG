@@ -48,18 +48,11 @@ backend/
 
 Luồng được điều phối chính qua LangGraph (`src/agents/graph.py`):
 
-1. **Khởi tạo (PersonalizationContextAgent)**: Tự động tải hồ sơ cá nhân và lần đo InBody gần nhất của người dùng.
-2. **QuestionNormalizerAgent**: Chuẩn hóa câu hỏi nếu có lịch sử trò chuyện.
-3. **SupervisorAgent**: Phân loại và chọn các agent chuyên trách dựa trên nội dung câu hỏi:
-   - `InBodyAgent`: Xử lý tính toán BMI, PBF, mỡ nội tạng.
-   - `NutritionAgent`: Tính toán chiến lược dinh dưỡng.
-   - `TrainingAgent`: Lên lịch tập luyện cơ bản.
-   - `RAGAgent`: Truy xuất tài liệu nội bộ về sức khỏe.
-   - `WebSearchAgent`: Tìm kiếm thông tin mới trên mạng (Tavily).
-   - `GeneralChatAgent`: Trả lời các câu hỏi giao tiếp thông thường.
-4. Các agent được gọi sẽ ghi kết quả xử lý (tool results, tài liệu, phân tích) vào *shared state*.
-5. **SafetyAgent**: Luôn luôn chạy cuối cùng trong cụm chuyên trách để rà soát rủi ro y tế và thêm cảnh báo (dựa vào câu hỏi và tiền sử bệnh lý của người dùng).
-6. **ResponseComposerAgent**: Đọc toàn bộ trạng thái (câu hỏi, agent output, tài liệu RAG, personalization, safety) và tổng hợp thành câu trả lời tiếng Việt cuối cùng.
+1. Auth/ownership đứng trước xử lý; deterministic urgent precheck đứng trước DB/history/queue/LLM/retrieval. Urgent trả hướng dẫn ngay; số đo tường minh sai trả 422 sau urgent.
+2. ContextLoader lấy hồ sơ/lần đo đã xác nhận và lịch sử đúng owner. Graph chạy precheck với bệnh nền đã lưu; lời chào thuần/BMI đủ dữ liệu chỉ đi fast-path khi risk=low.
+3. QuestionNormalizer chuẩn hóa follow-up; IntentRouter chọn ba specialist công khai: InBodyAgent (chỉ số), LifestyleAgent (nutrition/training), KnowledgeAgent (RAG/web/general chat). Các tên NutritionAgent/TrainingAgent/RAGAgent/WebSearchAgent/GeneralChatAgent là capability nội bộ.
+4. Specialist ghi tool results/tài liệu vào shared state. Medical caution chỉ đi medical-safety retrieval, không tự lập kế hoạch hoặc gọi web.
+5. SafetyGuard giữ risk thực và AnswerComposer tổng hợp câu trả lời/citation; fallback vẫn giữ recommended_action. Các workflow stage không phải specialist mới.
 
 ## 4. Các Biến Môi Trường (Environment Variables)
 
@@ -74,9 +67,13 @@ Hệ thống đọc từ file `.env` hoặc cấu hình trong `docker-compose.ym
 | `VECTOR_SIZE` | `1024` | Số chiều của vector (Tương thích model BGE-M3) |
 | `CUSTOM_EMBEDDING_API_URL` | `http://host.docker.internal:5001` | Endpoint của service `embed_serving` |
 | `DATABASE_URL` | `postgresql+psycopg2://...` | Chuỗi kết nối PostgreSQL lưu trữ Users, Measurements |
-| `LLM_PROVIDER` | `ollama` | Engine sinh ngôn ngữ (`ollama`, `openai`, `none`) |
+| `AUTH_MODE` | `production` | First-party JWT; development header chỉ bật tường minh ở local |
+| `JWT_SIGNING_KEY` | trống | Secret ngẫu nhiên tối thiểu 32 byte; không in/log/đưa vào frontend |
+| `JWT_ISSUER`, `JWT_AUDIENCE` | `bodywise-local`, `bodywise-web` trong template | Định danh first-party; phải cấu hình cả hai |
+| `CORS_ALLOWED_ORIGINS` | localhost:3000 và 127.0.0.1:3000 trong template | Danh sách origin đầy đủ, phân tách bằng dấu phẩy; production không tự thêm origin |
+| `LLM_PROVIDER` | `none` | Engine sinh ngôn ngữ (`ollama`, `openai`, `custom`, `none`) |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Endpoint của Ollama |
-| `OLLAMA_MODEL` | `qwen2.5:3b` | Model LLM sử dụng khi chạy nội bộ |
+| `OLLAMA_MODEL` | trống | Chọn model đã cài khi dùng provider Ollama |
 | `OPENAI_API_KEY` | *(trống)* | API Key nếu dùng model OpenAI |
 | `TAVILY_API_KEY` | *(trống)* | API Key dùng cho WebSearchAgent |
 | `LLM_RESPONSE_CACHE_ENABLED` | `true` | Bật cache exact-match cho câu định nghĩa chung BMI/PBF/SMM/BFM/InBody |
@@ -86,13 +83,17 @@ Hệ thống đọc từ file `.env` hoặc cấu hình trong `docker-compose.ym
 
 ## 5. Hướng Dẫn Chạy Dịch Vụ
 
-Đảm bảo cụm hạ tầng đã được khởi động trước (`docker compose -f infra/docker-compose.infra.yml up -d`).
+Làm theo [SETUP.md](../SETUP.md) để tạo secret không in ra console, cấu hình DATABASE_URL/POSTGRES_* khớp nhau, JWT và CORS. Template không có mật khẩu DB dùng chung. Không sinh password mới cho PostgreSQL volume đang có dữ liệu; rotation là đợt riêng.
 
-Sau đó, đứng tại thư mục `backend/`, chạy các container ứng dụng:
+Tại **repo root**, dùng cùng backend/.env cho nội suy Compose và container env_file:
 
-```bash
-docker compose up --build -d
+```powershell
+docker compose --env-file backend/.env -f infra/docker-compose.infra.yml config --quiet
+docker compose --env-file backend/.env -f backend/docker-compose.yml config --quiet
+docker compose --env-file backend/.env -f backend/docker-compose.yml up --build -d
 ```
+
+Khởi động infra trước theo SETUP. Không in toàn bộ compose config vì chứa secret. Biến shell trùng tên có thể ghi đè --env-file; kiểm tra AUTH_MODE/LLM_PROVIDER/DATABASE_URL và xóa override không chủ ý trong shell. API/worker/scheduler đều nhận cùng credential; endpoint nội bộ dùng DNS Docker, client chạy trên host mới dùng localhost.
 Dịch vụ API sẽ hoạt động tại: `http://localhost:8000` (Truy cập `http://localhost:8000/docs` để xem Swagger UI).
 
 ## 6. Các API Endpoints Chính
@@ -100,7 +101,8 @@ Dịch vụ API sẽ hoạt động tại: `http://localhost:8000` (Truy cập `
 ### System & Tools
 | Method | Endpoint | Chức Năng |
 | :--- | :--- | :--- |
-| `GET` | `/health` | Kiểm tra trạng thái của API, Qdrant, Cache, Agent |
+| `GET` | `/health` | Liveness và thống kê cấu hình/cache/search; chưa chứng minh dependency sẵn sàng |
+| `GET` | `/health/ready` | Probe dependency; 200 ready hoặc 503 degraded |
 | `GET` | `/agent/tools` | Trả về thông tin hệ thống Multi-Agent (capabilities & schema) |
 | `POST` | `/tools/...` | Các tools độc lập (`/bmi`, `/pbf`, `/visceral-fat`, `/nutrition`, `/training`, `/safety`) |
 | `POST` | `/summarize` | Tóm tắt văn bản thông thường hoặc tóm tắt báo cáo sức khỏe |
@@ -117,8 +119,8 @@ Dịch vụ API sẽ hoạt động tại: `http://localhost:8000` (Truy cập `
 | `POST/GET` | `/me/plans`, `/me/plans/current` | Versioned plan + input snapshot/evidence/safety |
 | `POST/GET` | `/me/check-ins` | Check-in và symptom safety route |
 
-Các endpoint `/me` và chat không tin `user_id` trong body/path. Production cần
-trusted auth middleware inject `request.state.current_user`. Local-only:
+Các endpoint `/me` và chat không tin `user_id` trong body/path. Production dùng
+Bearer JWT từ POST /auth/register hoặc /auth/login, xác minh HS256/signature/issuer/audience/time claims; trusted middleware cũng có thể inject `request.state.current_user`. Login cần PostgreSQL schema auth và Valkey rate limiter thật; dependency thiếu trả 503. Không cần IdP/JWKS ngoài cho cấu hình first-party này. Local-only:
 `AUTH_MODE=development` cho phép header `X-Dev-User-Id`. Legacy
 `/users/{user_id}/*` mặc định trả 404 và không dùng cho client mới.
 

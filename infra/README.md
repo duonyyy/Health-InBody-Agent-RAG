@@ -5,7 +5,7 @@ Thư mục `infra/` đóng gói toàn bộ hạ tầng kỹ thuật (Data Stores
 Theo chuẩn kiến trúc Enterprise AI Monorepo, tầng hạ tầng được tách biệt hoàn toàn khỏi tầng ứng dụng (`backend/`, `frontend/`, `ocr-services/`) để đảm bảo:
 1. **Cô lập vòng đời (Lifecycle Isolation):** Rebuild hoặc restart backend/frontend không làm ảnh hưởng đến dữ liệu đang chạy trong Database, Vector Store và Cache.
 2. **Khởi tạo một chạm (Single Command Bootstrap):** Chỉ cần một lệnh compose duy nhất để dựng toàn bộ hạ tầng nền tảng.
-3. **Mạng nội bộ đồng nhất (`internal-network`):** Tất cả dịch vụ giao tiếp bảo mật trong mạng bridge nội bộ của Docker.
+3. **Mạng nội bộ đồng nhất (`internal-network`):** Các container dùng service DNS trong bridge network; mạng này không thay thế xác thực hoặc firewall của shared deployment.
 
 ---
 
@@ -14,8 +14,7 @@ Theo chuẩn kiến trúc Enterprise AI Monorepo, tầng hạ tầng được t�
 ```text
 infra/
 ├── docker-compose.infra.yml          # Cụm hạ tầng lõi (Postgres, Qdrant, Valkey, BGE-M3)
-├── .env.infra.example                # Mẫu biến môi trường cho hạ tầng
-├── .env.infra                        # Biến môi trường đang áp dụng
+├── (env dùng chung: ../backend/.env)  # POSTGRES_* và volume names, xem SETUP.md
 │
 ├── database/                         # [RDBMS] PostgreSQL 16 (Users, Personalization, Memory)
 │   ├── init.sql                      # DDL cài mới (12 bảng nghiệp vụ + ledger)
@@ -54,10 +53,10 @@ infra/
 
 | Dịch vụ | Tên container | Image | Port nội bộ | Port host | Ghi chú |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **PostgreSQL** | `postgres-db` | `postgres:16-alpine` | `5432` | `5432` | Dữ liệu người dùng, chỉ số đo, lịch sử chat |
-| **Qdrant** | `qdrant-db` | `qdrant/qdrant:latest` | `6333`, `6334` | `6333`, `6334` | Vector collection RAG |
-| **Valkey** | `valkey-db` | `valkey/valkey:bookworm` | `6379` | `6379` | Response cache & Celery broker |
-| **Embedding API** | `health-embedding-api` | `nmk-health-embedding:cpu` | `5000` | `5001` | Sinh vector ngữ nghĩa BGE-M3 (1024 chiều) |
+| **PostgreSQL** | `postgres-db` | `postgres:16-alpine` | `5432` | `127.0.0.1:5432` | Dữ liệu người dùng, chỉ số đo, lịch sử chat |
+| **Qdrant** | `qdrant-db` | `qdrant/qdrant:latest` | `6333`, `6334` | `127.0.0.1:6333`, `127.0.0.1:6334` | Vector collection RAG |
+| **Valkey** | `valkey-db` | `valkey/valkey:bookworm` | `6379` | `127.0.0.1:6379` | Response cache & Celery broker |
+| **Embedding API** | `health-embedding-api` | `nmk-health-embedding:cpu` | `5000` | `127.0.0.1:5001` | Sinh vector ngữ nghĩa BGE-M3 (1024 chiều) |
 | **Ollama** *(tùy chọn)* | `ollama-service` | `ollama/ollama:latest` | `11434` | `11434` | Chạy LLM local khi bật compose riêng |
 | **Langfuse** *(tùy chọn)*| `langfuse-server` | `langfuse/langfuse:2` | `3000` | `3000` | Giao diện giám sát LLM trace & token |
 
@@ -65,9 +64,16 @@ infra/
 
 ## 3. Hướng dẫn vận hành
 
+Theo [SETUP.md](../SETUP.md), tạo hoặc bổ sung backend/.env, giữ credential của volume cũ. Dùng duy nhất file đó cho infra/backend để POSTGRES_* và DATABASE_URL không lệch nhau. POSTGRES_PASSWORD bắt buộc, không còn fallback password cố định. CLI --env-file dùng cho nội suy; environment của shell có thể ghi đè nó. Không xuất compose config đầy đủ ra report/log.
+
+Postgres/Qdrant/Valkey/embedding host port trong stack chính và standalone embedding bind 127.0.0.1. Container vẫn gọi postgres-db:5432, qdrant-db:6333, valkey-db:6379, embedding-api:5000. Kiểm tra runtime binding bằng compose port/inspect sau triển khai; config hợp lệ chưa chứng minh port thực. Không tự thêm auth Qdrant/Valkey hoặc đổi role password trên volume cũ trong hotfix này. Stack monitoring/Ollama tùy chọn không thuộc thay đổi bind của stack chính và cần review riêng trước khi public.
+
 ### Khởi động cụm hạ tầng chính
 ```powershell
-docker compose -f infra/docker-compose.infra.yml up -d
+docker compose --env-file backend/.env -f infra/docker-compose.infra.yml config --quiet
+docker compose --env-file backend/.env -f infra/docker-compose.infra.yml up -d postgres-db qdrant-db valkey-db
+# Chỉ khi model BGE-M3 đã chuẩn bị:
+docker compose --env-file backend/.env -f infra/docker-compose.infra.yml up --build -d embedding-api
 ```
 
 ### Kiểm tra sức khỏe các dịch vụ
@@ -79,6 +85,7 @@ Invoke-WebRequest http://localhost:6333/healthz  # Qdrant: ok
 ### Tùy chọn: Chạy thêm mô hình nhúng trên GPU (NVIDIA CUDA)
 ```powershell
 docker compose `
+  --env-file backend/.env `
   -f infra/docker-compose.infra.yml `
   -f infra/embed_serving/docker-compose.gpu.yml `
   up -d
@@ -92,6 +99,6 @@ Truy cập `http://localhost:3000` để xem Dashboard.
 
 ### Tắt cụm hạ tầng
 ```powershell
-docker compose -f infra/docker-compose.infra.yml down
+docker compose --env-file backend/.env -f infra/docker-compose.infra.yml down
 ```
 > Lệnh `down` giải phóng các container và mạng `internal-network`, các Docker named volume (`postgres_data`, `qdrant_volume`, `valkey_data`) được giữ nguyên, bảo toàn toàn bộ dữ liệu.

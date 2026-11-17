@@ -59,19 +59,20 @@ Giao diện người dùng hiện đại xây dựng bằng **Next.js 16 (App Ro
 - **Giám sát Trạng thái Backend**: Ping `/health`, kiểm tra độ trễ mạng và trạng thái nền tảng.
 - **Hộp cát Kiểm thử Công cụ (Tool Sandbox)**: Chạy thử nghiệm trực tiếp các tool `calculate_bmi_asian`, `calculate_tdee_and_macros`, và `deterministic_safety_guardrail` với kết quả JSON tức thì.
 - **Cấu hình API linh hoạt**: Modal trong Header cho phép đổi URL backend (mặc định `http://localhost:8000`).
-- **Chế độ Ngoại tuyến Tự phục hồi (Offline Fallback Engine)**: Nếu backend offline, giao diện vẫn hoạt động trơn tru với dữ liệu mẫu chân thực và thuật toán mô phỏng deterministic an toàn.
+- **Lỗi dependency và demo tường minh**: Backend offline trả lỗi/degraded. Dữ liệu mẫu chỉ xuất hiện khi người dùng chủ động bật demo trong development; production không tự thay lỗi bằng mock.
 
 ---
 
 ## 2. Hướng dẫn Khởi chạy
 
 ### Yêu cầu môi trường
-- **Node.js**: phiên bản `>= 20` (đã kiểm thử tương thích hoàn hảo trên Node v22)
+- **Node.js**: phiên bản `>= 20.9` (các kiểm tra host gần nhất dùng Node 22; chưa suy ra tương thích mọi môi trường)
 - **npm**: `>= 10`
 
 ### Chạy chế độ Phát triển (Development)
 ```bash
 cd frontend
+npm ci
 npm run dev
 ```
 Ứng dụng sẽ mở tại `http://localhost:3000`.
@@ -84,11 +85,17 @@ npm start
 ```
 
 ### Chạy bằng Docker
-```bash
-cd frontend
-docker compose up -d --build
+Chạy từ repo root sau khi tạo frontend/.env theo [SETUP.md](../SETUP.md):
+
+```powershell
+docker compose --env-file frontend/.env -f frontend/docker-compose.yml config --quiet
+docker compose --env-file frontend/.env -f frontend/docker-compose.yml up -d --build
 ```
 Ứng dụng sẽ phục vụ tại cổng `3000`.
+
+`NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_AUTH_MODE`, `NEXT_PUBLIC_DEV_USER_ID` được truyền bằng build args rồi đóng vào JavaScript lúc build; đổi mode/URL phải rebuild. Browser local dùng http://localhost:8000; browser máy khác dùng IP/domain API truy cập được, không dùng DNS Docker chatbot-api. Backend CORS phải cho phép origin frontend thực tế. NEXT_PUBLIC_* là công khai; không đưa credential backend vào build context/args. `.dockerignore` loại .env riêng tư, node_modules và .next của host.
+
+Mặc định production dùng màn hình đăng ký/đăng nhập JWT. Chỉ chọn development khi backend cũng AUTH_MODE=development; Dev Tools/demo/dev identity không bật trong production. File .env cho Node local được Next đọc tự động, còn Compose cần --env-file để nội suy build args.
 
 ---
 

@@ -33,8 +33,8 @@ Hệ thống hiện là MVP đang được nâng lên Agent RAG beta. Không đ�
 | Agent graph | `backend/src/agents/graph.py` | Routing và orchestration |
 | LLM adapter | `backend/src/llm/client.py` | Ollama/OpenAI/custom provider |
 | Retrieval | `backend/src/rag/search.py` | Dense/BM25/hybrid search |
-| Qdrant | `backend/src/rag/vectorize.py` | Vector collection và search |
-| Import | `backend/src/rag/import_data.py` | Validate, chunk, embed, upsert |
+| Qdrant | `backend/src/rag/qdrant/` | Vector collection và search |
+| Import | `backend/src/pipelines/import_data.py` | Validate, chunk, embed, upsert |
 | Embedding | `infra/embed_serving/` | BGE-M3 serving |
 | Frontend | `frontend/` | Next.js 16 Web UI (Chat, Dashboard, InBody OCR) |
 | Database | `infra/database/`, `backend/src/persistence/database.py` | PostgreSQL/personalization |
@@ -200,16 +200,16 @@ Các fast-path phải mock LLM/retrieval thành hàm gây lỗi để chứng mi
 ### Syntax
 
 ```powershell
-python -m py_compile backend/src/brain.py backend/src/agents/graph.py backend/src/app.py
+python -m py_compile backend/src/api/app.py backend/src/agents/graph.py backend/src/llm/client.py backend/src/jobs/tasks.py
 ```
 
 ### Compose validation
 
 ```powershell
-docker compose -f infra/docker-compose.infra.yml config
-docker compose -f backend/docker-compose.yml config
-docker compose -f infra/embed_serving/docker-compose.serving.yml config
-docker compose -f frontend/docker-compose.yml config
+docker compose --env-file backend/.env -f infra/docker-compose.infra.yml config --quiet
+docker compose --env-file backend/.env -f backend/docker-compose.yml config --quiet
+docker compose --env-file infra/embed_serving/.env.serving -f infra/embed_serving/docker-compose.serving.yml config --quiet
+docker compose --env-file frontend/.env -f frontend/docker-compose.yml config --quiet
 ```
 
 ### Runtime smoke test

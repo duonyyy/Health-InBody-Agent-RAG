@@ -101,3 +101,17 @@ def test_production_jwt_requires_signature_issuer_audience_and_expiry(monkeypatc
     with pytest.raises(HTTPException) as exc_info:
         get_current_user(_request({"Authorization": f"Bearer {token}"}))
     assert exc_info.value.status_code == 401
+
+
+@pytest.mark.parametrize("missing", ["JWT_SIGNING_KEY", "JWT_ISSUER", "JWT_AUDIENCE"])
+def test_production_rejects_identity_when_any_jwt_setting_is_missing(monkeypatch, missing):
+    from auth.context import issue_access_token
+    monkeypatch.setenv("AUTH_MODE", "production")
+    monkeypatch.setenv("JWT_SIGNING_KEY", "synthetic-only-" + "k" * 64)
+    monkeypatch.setenv("JWT_ISSUER", "synthetic-issuer")
+    monkeypatch.setenv("JWT_AUDIENCE", "synthetic-web")
+    token = issue_access_token("synthetic-user")
+    monkeypatch.delenv(missing)
+    with pytest.raises(HTTPException) as exc:
+        get_current_user(_request({"Authorization": f"Bearer {token}", "X-Dev-User-Id": "other-user"}))
+    assert exc.value.status_code == 401

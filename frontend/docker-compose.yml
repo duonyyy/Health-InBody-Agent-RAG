@@ -7,12 +7,16 @@ networks:
 
 services:
   chatbot-next-ui:
-    build: .
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_AUTH_MODE: ${NEXT_PUBLIC_AUTH_MODE:-production}
+        NEXT_PUBLIC_DEV_USER_ID: ${NEXT_PUBLIC_DEV_USER_ID:-demo-user}
     hostname: chatbot-next-ui
     container_name: chatbot-next-ui
     restart: always
     environment:
-      - NEXT_PUBLIC_API_URL=http://chatbot-api:8000
       - NODE_ENV=production
     ports:
       - "3000:3000"

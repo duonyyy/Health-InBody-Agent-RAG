@@ -1,6 +1,6 @@
 # Kế hoạch sửa code sau rà soát ngày 2026-11-17
 
-**Trạng thái: FIX-01–03 SOURCE_READY; FIX-04–05 PLANNED.** FIX-03 đã vá dependency frontend, npm ci/lint/TypeScript/build/audit đạt, 5 HTTP checks từ production build biệt lập đạt; chưa deploy container sản phẩm. Backend sau FIX-02 có 253 test và 9 HTTP checks biệt lập đạt. Xem [báo cáo FIX-01](reports/upgrade-2026/fix01-health-input-2026-11-17.md), [FIX-02](reports/upgrade-2026/fix02-greeting-safety-2026-11-17.md) và [FIX-03](reports/upgrade-2026/fix03-frontend-dependencies-2026-11-17.md).
+**Trạng thái: FIX-01–04 SOURCE_READY; FIX-05 chờ runtime.** Sau FIX-04, 267 backend tests, frontend lint/TypeScript và hai build sentinel + build khôi phục đạt; 8 HTTP checks CORS/JWT/build env biệt lập đạt. Chưa deploy container hoặc nghiệm thu dependency/browser thật. Xem [báo cáo FIX-01](reports/upgrade-2026/fix01-health-input-2026-11-17.md), [FIX-02](reports/upgrade-2026/fix02-greeting-safety-2026-11-17.md), [FIX-03](reports/upgrade-2026/fix03-frontend-dependencies-2026-11-17.md) và [FIX-04](reports/upgrade-2026/fix04-deployment-config-2026-11-17.md).
 
 Nguồn: [báo cáo rà soát](reports/upgrade-2026/project-review-2026-11-17.md), revision `a024500` và source hiện tại. Tài liệu này bổ sung kế hoạch nâng cấp 2026, xử lý F1–F6 trước các WP tối ưu tiếp theo.
 
@@ -173,9 +173,9 @@ Mỗi đợt ghi vào `docs/reports/upgrade-2026/` tên finding, reproduction tr
 | FIX-01 | SOURCE_READY | 217 unit + 3 API integration đạt | 8/8 HTTP biệt lập đạt; chưa deploy container/PostgreSQL |
 | FIX-02 | SOURCE_READY | 250 unit + 3 integration đạt; 33 regression mới | 9/9 HTTP fast-path biệt lập đạt; health timeout, caution/Qdrant/provider thật NOT_RUN |
 | FIX-03 | SOURCE_READY | npm ci/lint/tsc/build exit 0; audit 0 vulnerabilities | 5/5 HTTP production-build host checks đạt; chưa image/browser E2E |
-| FIX-04 | PLANNED | NOT_RUN sau sửa | NOT_RUN |
+| FIX-04 | SOURCE_READY | 264 unit + 3 integration đạt; Compose env/binding/password, 2 build sentinel + khôi phục, lint/tsc đạt | 8/8 HTTP CORS/JWT/bundle checks host đạt; Docker image/binding/dependency thật NOT_RUN |
 | FIX-05 | Chờ FIX-01–04 | Chờ môi trường | Docker chưa sẵn sàng |
 
 ## 9. Chỉ dẫn bắt đầu cho coding agent
 
-Đọc AGENTS.md, báo cáo rà soát, báo cáo FIX-01/FIX-02/FIX-03 và tài liệu này; kiểm tra git status/diff. FIX-01–03 đã sửa và kiểm chứng theo phạm vi từng báo cáo, không làm lại nếu chưa có regression mới. Đợt tiếp theo là FIX-04 khi được giao triển khai. Tiếp tục lần lượt theo gate; không đổi graph architecture, không mở Zep, không làm migration corpus hay commit/push ngoài yêu cầu. Mọi tuyên bố hoàn thành phải phân biệt source, test trong process, HTTP runtime và browser.
+Đọc AGENTS.md, báo cáo rà soát, báo cáo FIX-01–04 và tài liệu này; kiểm tra git status/diff. FIX-01–04 đã sửa và kiểm chứng theo phạm vi từng báo cáo, không làm lại nếu chưa có regression mới. Đợt tiếp theo là FIX-05 khi được giao triển khai và Engine/preflight sẵn sàng. Tiếp tục lần lượt theo gate; không đổi graph architecture, không mở Zep, không làm migration corpus hay commit/push ngoài yêu cầu. Mọi tuyên bố hoàn thành phải phân biệt source, test trong process, HTTP runtime và browser.

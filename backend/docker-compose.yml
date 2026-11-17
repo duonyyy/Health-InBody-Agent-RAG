@@ -1,5 +1,7 @@
 version: '3.8'
 
+# Run from repo root with --env-file backend/.env. The CLI env file controls
+# ${...} interpolation; service env_file supplies the complete container env.
 networks:
   internal-network:
     name: internal-network

@@ -13,6 +13,14 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# These public values are frozen into browser chunks by next build.
+# Never pass backend credentials or signing keys as public build arguments.
+ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ARG NEXT_PUBLIC_AUTH_MODE=production
+ARG NEXT_PUBLIC_DEV_USER_ID=demo-user
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_AUTH_MODE=$NEXT_PUBLIC_AUTH_MODE
+ENV NEXT_PUBLIC_DEV_USER_ID=$NEXT_PUBLIC_DEV_USER_ID
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
