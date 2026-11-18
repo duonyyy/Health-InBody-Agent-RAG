@@ -13,7 +13,9 @@ import json
 import re
 import unicodedata
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
+
+from .provenance_bridge import resolve_document_provenance
 
 ALLOWED_CONTENT_TYPES = {
     "nutrition",
@@ -385,16 +387,24 @@ def load_jsonl(path: Path):
                 raise ValueError(f"Invalid JSONL at line {line_number}: {exc}") from exc
 
 
-def normalize_document(record: dict[str, Any]) -> dict[str, Any] | None:
+def normalize_document(
+    record: dict[str, Any],
+    *,
+    review_registry: Mapping[str, Any] | None = None,
+    allow_synthetic_registry: bool = False,
+) -> dict[str, Any] | None:
     """Lọc và chuẩn hóa tài liệu theo tiêu chí của RAG Corpus.
 
     Vai trò:
         Áp dụng các cổng kiểm soát chất lượng (Quality Gate): loại bỏ công thức nấu ăn
-        nhiễu (recipes), tương tác ratings, bản ghi chờ PDF; chuẩn hóa Unicode NFC và
-        chỉ giữ lại các tài liệu có độ dài văn bản đạt chuẩn (>= 40 ký tự).
+        nhiễu (recipes), tương tác ratings, bản ghi chờ PDF; chuẩn hóa Unicode NFC,
+        đối chiếu provenance/review từ registry được quản lý và chỉ giữ lại các tài liệu
+        có độ dài văn bản đạt chuẩn (>= 40 ký tự).
 
     Args:
         record: Bản ghi thô từ file all_raw_sources.jsonl.
+        review_registry: Registry hồ sơ review y khoa (mặc định đọc từ project registry).
+        allow_synthetic_registry: Chỉ bật trong test khi dùng fixture tổng hợp.
 
     Returns:
         Dict tài liệu đã chuẩn hóa hoặc None nếu tài liệu bị loại bỏ.
@@ -423,41 +433,89 @@ def normalize_document(record: dict[str, Any]) -> dict[str, Any] | None:
     title = unicodedata.normalize("NFC", title)
     title = re.sub(r"[\u200B-\u200D\uFEFF\u200E\u200F]", "", title)
 
+    doc_id = str(record.get("doc_id") or record.get("id"))
+    provenance = resolve_document_provenance(
+        {**record, "doc_id": doc_id, "document_id": doc_id, "metadata": metadata},
+        content=content,
+        registry=review_registry,
+        is_seed=str(record.get("source") or "") == "internal_seed",
+        allow_synthetic_registry=allow_synthetic_registry,
+    )
+    cleaned_metadata = {
+        **metadata,
+        **provenance,
+        "embedding_dataset": EMBEDDING_DATASET_NAME,
+    }
+    # Never carry forward an unverified legacy review_status='approved' shortcut.
+    cleaned_metadata.pop("review_status", None)
+
     return {
-        "doc_id": str(record.get("doc_id") or record.get("id")),
+        "doc_id": doc_id,
+        "document_id": doc_id,
         "title": title,
         "content": content,
         "source": str(record.get("source") or "processed_dataset"),
         "content_type": content_type,
         "domain": str(record.get("domain") or "health_inbody"),
         "language": str(record.get("language") or "vi"),
-        "metadata": {
-            **metadata,
-            "embedding_dataset": EMBEDDING_DATASET_NAME,
-        },
+        "metadata": cleaned_metadata,
     }
 
 
-def seed_document(record: dict[str, Any]) -> dict[str, Any]:
-    """Chuẩn hóa tài liệu hạt giống (seed document) tri thức cốt lõi.
+def seed_document(
+    record: dict[str, Any],
+    *,
+    review_registry: Mapping[str, Any] | None = None,
+    allow_synthetic_registry: bool = False,
+) -> dict[str, Any]:
+    """Chuẩn hóa tài liệu hạt giống (seed document) với provenance trung thực.
 
-    Vai trò:
-        Đóng gói các tài liệu tri thức chuẩn mực về InBody và an toàn y tế (medical safety)
-        với độ tin cậy cao nhất (tier guideline, review_status approved).
-
-    Args:
-        record: Bản ghi hạt giống định nghĩa trước trong SEED_DOCUMENTS.
-
-    Returns:
-        Dict tài liệu hạt giống đã chuẩn hóa metadata.
+    Không tự gán `source_tier='guideline'`, `medical_review_status='approved'`,
+    reviewer mặc định hay ngày publish/review không có căn cứ. Trạng thái review
+    chỉ được cấp khi khớp hồ sơ review hợp lệ trong project review registry;
+    ngược lại tài liệu giữ trạng thái `provisional` / `unreviewed`.
     """
     content = unicodedata.normalize("NFC", record["content"])
-    content = re.sub(r"[\u200B-\u200D\uFEFF\u200E\u200F]", "", content)
+    content = re.sub(r"[\u200B-\u200D\uFEFF\u200E\u200F]", "", content).strip()
     title = unicodedata.normalize("NFC", record["title"])
-    title = re.sub(r"[\u200B-\u200D\uFEFF\u200E\u200F]", "", title)
+    title = re.sub(r"[\u200B-\u200D\uFEFF\u200E\u200F]", "", title).strip()
+
+    doc_id = str(record["doc_id"])
+    raw_metadata = dict(record.get("metadata") or {})
+    if record.get("source_name") and "source_name" not in raw_metadata:
+        raw_metadata["source_name"] = record["source_name"]
+    if record.get("source_url") and "source_url" not in raw_metadata:
+        raw_metadata["source_url"] = record["source_url"]
+    if record.get("publisher") and "publisher" not in raw_metadata:
+        raw_metadata["publisher"] = record["publisher"]
+    if record.get("published_at") and "published_at" not in raw_metadata:
+        raw_metadata["published_at"] = record["published_at"]
+    if record.get("source_tier") and "source_tier" not in raw_metadata:
+        raw_metadata["source_tier"] = record["source_tier"]
+    if record.get("medical_review_status") and "medical_review_status" not in raw_metadata:
+        raw_metadata["medical_review_status"] = record["medical_review_status"]
+    if record.get("reviewed_at") and "reviewed_at" not in raw_metadata:
+        raw_metadata["reviewed_at"] = record["reviewed_at"]
+    if record.get("privacy_review_status") and "privacy_review_status" not in raw_metadata:
+        raw_metadata["privacy_review_status"] = record["privacy_review_status"]
+
+    provenance = resolve_document_provenance(
+        {
+            "doc_id": doc_id,
+            "document_id": doc_id,
+            "source": "internal_seed",
+            "content": content,
+            "metadata": raw_metadata,
+        },
+        content=content,
+        registry=review_registry,
+        is_seed=True,
+        allow_synthetic_registry=allow_synthetic_registry,
+    )
 
     return {
-        "doc_id": record["doc_id"],
+        "doc_id": doc_id,
+        "document_id": doc_id,
         "title": title,
         "content": content,
         "source": "internal_seed",
@@ -466,15 +524,8 @@ def seed_document(record: dict[str, Any]) -> dict[str, Any]:
         "language": "vi",
         "metadata": {
             "embedding_dataset": EMBEDDING_DATASET_NAME,
-            "review_status": "approved",
             "medical_disclaimer_required": record["content_type"] == "medical_safety",
-            "source_name": record.get("source_name", "Health/InBody Clinical Team"),
-            "source_url": record.get("source_url", "https://inbodyusa.com/general/result-sheet/"),
-            "publisher": record.get("source_name", "Health/InBody Clinical Team"),
-            "source_tier": "guideline",
-            "published_at": "2024-01-01T00:00:00Z",
-            "reviewed_at": "2026-01-15T00:00:00Z",
-            "medical_review_status": "approved",
+            **provenance,
         },
     }
 

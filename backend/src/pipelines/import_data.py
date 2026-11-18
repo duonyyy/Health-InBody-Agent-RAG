@@ -17,7 +17,7 @@ import logging
 import uuid
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 from urllib.parse import urlparse
 
 from core.config import (
@@ -27,6 +27,12 @@ from core.config import (
 )
 from core.utils import setup_logging
 from rag.corpus_policy import validate_shared_document
+from rag.provenance import (
+    ALLOWED_SOURCE_TIERS,
+    is_verified_medical_review,
+    load_review_registry,
+    resolve_document_provenance,
+)
 
 try:
     from rag.splitter import split_document as project_split_document
@@ -74,14 +80,7 @@ TRUSTED_SOURCE_FIELDS = {
     "reviewed_at",
     "medical_review_status",
 }
-ALLOWED_SOURCE_TIERS = {
-    "guideline",
-    "government",
-    "peer_reviewed",
-    "professional_org",
-    "clinic_education",
-}
-APPROVED_MEDICAL_REVIEW_STATUSES = {"approved", "reviewed"}
+APPROVED_MEDICAL_REVIEW_STATUSES = {"approved"}
 
 
 class SimpleDocument:
@@ -242,6 +241,9 @@ def validate_document(
     record: dict[str, Any],
     line_number: int,
     require_trusted_source_metadata: bool = False,
+    *,
+    review_registry: Mapping[str, Any] | None = None,
+    allow_synthetic_registry: bool = False,
 ) -> list[str]:
     """Kiểm tra document có đúng schema embedding của dự án không."""
     errors: list[str] = []
@@ -265,9 +267,27 @@ def validate_document(
         errors.append(f"line {line_number}: content too short")
 
     if require_trusted_source_metadata:
-        source_metadata = _source_metadata(record)
+        provenance = resolve_document_provenance(
+            record,
+            content=content,
+            registry=review_registry,
+            is_seed=str(record.get("source") or "") == "internal_seed",
+            allow_synthetic_registry=allow_synthetic_registry,
+        )
+        effective_fields = {
+            "source_url": provenance.get("source_url"),
+            "publisher": provenance.get("publisher"),
+            "source_tier": provenance.get("source_tier"),
+            "published_at": provenance.get("published_at"),
+            "reviewed_at": provenance.get("reviewed_at"),
+            "medical_review_status": (
+                provenance.get("medical_review_status")
+                if provenance.get("review_verification_status") == "verified"
+                else None
+            ),
+        }
         missing_source_fields = sorted(
-            field for field, value in source_metadata.items() if not str(value or "").strip()
+            field for field, value in effective_fields.items() if not str(value or "").strip()
         )
         if missing_source_fields:
             errors.append(
@@ -275,24 +295,32 @@ def validate_document(
                 + ", ".join(missing_source_fields)
             )
 
-        source_url = str(source_metadata.get("source_url") or "").strip()
-        if source_url:
-            parsed = urlparse(source_url)
-            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-                errors.append(f"line {line_number}: source_url must be an absolute HTTP(S) URL")
+        raw_url = str(_source_metadata(record).get("source_url") or "").strip()
+        if raw_url and not provenance.get("source_url"):
+            errors.append(f"line {line_number}: source_url must be an absolute HTTP(S) URL")
 
-        source_tier = str(source_metadata.get("source_tier") or "").strip()
-        if source_tier and source_tier not in ALLOWED_SOURCE_TIERS:
+        source_tier = str(provenance.get("source_tier") or "").strip()
+        if source_tier and (
+            source_tier not in ALLOWED_SOURCE_TIERS or not provenance.get("source_tier_verified")
+        ):
             errors.append(f"line {line_number}: untrusted source_tier={source_tier}")
 
-        review_status = str(source_metadata.get("medical_review_status") or "").strip()
-        if review_status and review_status not in APPROVED_MEDICAL_REVIEW_STATUSES:
+        verification_status = provenance.get("review_verification_status")
+        if verification_status == "stale_content_mismatch":
             errors.append(
-                f"line {line_number}: medical_review_status is not approved/reviewed"
+                f"line {line_number}: medical review is stale (content_hash mismatch)"
+            )
+        elif verification_status == "unverified_legacy":
+            errors.append(
+                f"line {line_number}: claimed medical_review_status is not backed by a managed review registry record"
+            )
+        elif not is_verified_medical_review(provenance):
+            errors.append(
+                f"line {line_number}: medical_review_status is not verified/approved in review registry"
             )
 
         for field in ("published_at", "reviewed_at"):
-            value = str(source_metadata.get(field) or "").strip()
+            value = str(effective_fields.get(field) or "").strip()
             if value:
                 try:
                     date.fromisoformat(value[:10])
@@ -308,30 +336,31 @@ def build_chunk_payloads(
     chunk_size: int,
     chunk_overlap: int,
     corpus_version: str,
+    *,
+    review_registry: Mapping[str, Any] | None = None,
+    allow_synthetic_registry: bool = False,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
     """Split one document and build stable point IDs plus canonical payloads."""
     doc_id = str(record["doc_id"])
     title = str(record.get("title") or "")
     content = str(record.get("content") or "")
+    provenance = resolve_document_provenance(
+        record,
+        content=content,
+        registry=review_registry,
+        is_seed=str(record.get("source") or "") == "internal_seed",
+        allow_synthetic_registry=allow_synthetic_registry,
+    )
+    raw_metadata = dict(record.get("metadata") or {})
+    raw_metadata.pop("review_status", None)
     metadata = {
-        **(record.get("metadata") or {}),
+        **raw_metadata,
+        **provenance,
         "doc_id": doc_id,
         "document_id": doc_id,
         "corpus_version": corpus_version,
         "title": title,
         "source": record.get("source"),
-        "source_url": record.get("source_url")
-        or (record.get("metadata") or {}).get("source_url"),
-        "publisher": record.get("publisher")
-        or (record.get("metadata") or {}).get("publisher"),
-        "source_tier": record.get("source_tier")
-        or (record.get("metadata") or {}).get("source_tier"),
-        "published_at": record.get("published_at")
-        or (record.get("metadata") or {}).get("published_at"),
-        "reviewed_at": record.get("reviewed_at")
-        or (record.get("metadata") or {}).get("reviewed_at"),
-        "medical_review_status": record.get("medical_review_status")
-        or (record.get("metadata") or {}).get("medical_review_status"),
         "content_type": record.get("content_type"),
         "domain": "health_inbody",
         "language": record.get("language", "vi"),
@@ -363,6 +392,7 @@ def build_chunk_payloads(
         }
 
     search_document = {
+        **provenance,
         "doc_id": doc_id,
         "document_id": doc_id,
         "corpus_version": corpus_version,
@@ -384,6 +414,9 @@ def build_chunk_vectors(
     chunk_overlap: int,
     embedding_batch_size: int,
     corpus_version: str,
+    *,
+    review_registry: Mapping[str, Any] | None = None,
+    allow_synthetic_registry: bool = False,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
     """Split a document, generate embeddings, and build Qdrant vectors."""
     payloads, search_document = build_chunk_payloads(
@@ -392,6 +425,8 @@ def build_chunk_vectors(
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
         corpus_version=corpus_version,
+        review_registry=review_registry,
+        allow_synthetic_registry=allow_synthetic_registry,
     )
     vectors = embed_chunk_payloads(
         payloads,
@@ -456,6 +491,9 @@ def import_embedding_dataset(
     manifest_file: str | Path | None = None,
     skip_existing_points: bool = False,
     require_trusted_source_metadata: bool = False,
+    review_registry_path: str | Path | None = None,
+    review_registry: Mapping[str, Any] | None = None,
+    allow_synthetic_registry: bool = False,
 ) -> dict[str, Any]:
     """
     Import corpus Health/InBody đã chuẩn hóa vào Qdrant.
@@ -522,6 +560,14 @@ def import_embedding_dataset(
     initial_existing_points = len(existing_point_ids)
     data_file_sha256 = sha256_file(data_path)
     started_at = datetime.now(timezone.utc).isoformat()
+    active_review_registry = (
+        review_registry
+        if review_registry is not None
+        else load_review_registry(
+            review_registry_path,
+            allow_synthetic=allow_synthetic_registry,
+        )
+    )
 
     for line_number, record in load_jsonl(data_path):
         if line_number < start_line:
@@ -535,6 +581,8 @@ def import_embedding_dataset(
             record,
             line_number,
             require_trusted_source_metadata=require_trusted_source_metadata,
+            review_registry=active_review_registry,
+            allow_synthetic_registry=allow_synthetic_registry,
         )
         if errors:
             skipped_docs += 1
@@ -570,6 +618,8 @@ def import_embedding_dataset(
                     chunk_size=chunk_size,
                     chunk_overlap=chunk_overlap,
                     corpus_version=corpus_version,
+                    review_registry=active_review_registry,
+                    allow_synthetic_registry=allow_synthetic_registry,
                 )
                 if not payloads:
                     skipped_docs += 1
@@ -600,6 +650,8 @@ def import_embedding_dataset(
                     chunk_overlap=chunk_overlap,
                     embedding_batch_size=embedding_batch_size,
                     corpus_version=corpus_version,
+                    review_registry=active_review_registry,
+                    allow_synthetic_registry=allow_synthetic_registry,
                 )
                 total_chunks += len(vectors)
 

@@ -21,6 +21,10 @@ import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 
 from .breadcrumbs import format_breadcrumb, inject_breadcrumb
+from ..processors.provenance_bridge import (
+    PROVENANCE_METADATA_FIELDS,
+    compute_document_content_hash,
+)
 
 
 def normalize_chunk_text(text: str) -> str:
@@ -425,6 +429,7 @@ def chunk_document(
         Danh sách các dictionary chunk đã được làm giàu siêu dữ liệu hoàn chỉnh.
     """
     doc_id = str(doc.get("doc_id") or doc.get("id") or "doc")
+    document_id = str(doc.get("document_id") or doc_id)
     title = str(doc.get("title") or doc.get("question") or "Untitled Document")
     content = normalize_chunk_text(str(doc.get("content") or ""))
     source = str(doc.get("source") or "internal")
@@ -432,6 +437,18 @@ def chunk_document(
     domain = str(doc.get("domain") or "health_inbody")
     language = str(doc.get("language") or "vi")
     parent_metadata = dict(doc.get("metadata") or {})
+    document_content_hash = str(
+        doc.get("document_content_hash")
+        or parent_metadata.get("document_content_hash")
+        or compute_document_content_hash(content)
+    )
+    provenance_fields = {
+        field: doc.get(field) if field in doc else parent_metadata.get(field)
+        for field in PROVENANCE_METADATA_FIELDS
+        if field in doc or field in parent_metadata
+    }
+    provenance_fields["document_id"] = document_id
+    provenance_fields["document_content_hash"] = document_content_hash
 
     if not content or len(content) < min_chunk_length:
         return []
@@ -505,8 +522,10 @@ def chunk_document(
 
         final_chunks.append(
             {
+                **provenance_fields,
                 "chunk_id": chunk_id,
                 "doc_id": doc_id,
+                "document_id": document_id,
                 "parent_id": parent_id,
                 "parent_title": parent_title,
                 "parent_content": parent_content,
@@ -523,9 +542,12 @@ def chunk_document(
                 "chunk_count": total_chunks,
                 "chunk_length": len(injected_content),
                 "content_hash": content_hash,
+                "document_content_hash": document_content_hash,
                 "metadata": {
                     **parent_metadata,
+                    **provenance_fields,
                     "doc_id": doc_id,
+                    "document_id": document_id,
                     "chunk_id": chunk_id,
                     "parent_id": parent_id,
                     "parent_title": parent_title,
@@ -537,6 +559,7 @@ def chunk_document(
                     "chunk_count": total_chunks,
                     "chunk_length": len(injected_content),
                     "content_hash": content_hash,
+                    "document_content_hash": document_content_hash,
                     "content_type": content_type,
                     "domain": domain,
                 },

@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "registry_version": "2026-11-18",
+  "policy": "Only documents with an explicit, content-hash-matched clinical review entry in this project-managed registry may carry medical_review_status='approved' and review_verification_status='verified'. Legacy or unreviewed corpus documents remain unverified until reviewed by qualified domain reviewers.",
+  "is_synthetic_fixture": false,
+  "reviewers": {},
+  "reviews": []
+}

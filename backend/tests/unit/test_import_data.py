@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from pipelines import import_data
+from rag.provenance import compute_document_content_hash
 
 
 def _record(doc_id: str) -> dict:
@@ -30,19 +31,62 @@ def _trusted_record(doc_id: str) -> dict:
     return record
 
 
-def test_strict_source_validation_rejects_legacy_and_accepts_curated_record():
+def _synthetic_registry_for(record: dict) -> dict:
+    return {
+        "schema_version": 1,
+        "registry_version": "synthetic-test-only",
+        "is_synthetic_fixture": True,
+        "reviewers": {
+            "clinician-syn-1": {
+                "name": "Synthetic Test Reviewer",
+                "role": "clinical_reviewer",
+                "active": True,
+            }
+        },
+        "reviews": [
+            {
+                "review_id": "rev-syn-import-001",
+                "document_id": record["doc_id"],
+                "reviewer_id": "clinician-syn-1",
+                "review_role": "clinical_reviewer",
+                "review_scope": "general_health",
+                "reviewed_at": "2026-08-14T00:00:00Z",
+                "content_hash": compute_document_content_hash(record["content"]),
+                "document_version": "1.0",
+                "decision": "approved",
+                "notes": "Synthetic test review for strict importer validation.",
+                "verified_source_tier": "guideline",
+                "verified_publisher": "Cơ quan y tế kiểm thử",
+                "verified_source_url": "https://example.test/source",
+                "verified_published_at": "2025-01-15",
+                "is_synthetic_fixture": True,
+            }
+        ],
+    }
+
+
+def test_strict_source_validation_rejects_legacy_and_self_claimed_and_accepts_registry_verified():
     legacy_errors = import_data.validate_document(
         _record("legacy"),
         line_number=1,
         require_trusted_source_metadata=True,
     )
-    trusted_errors = import_data.validate_document(
-        _trusted_record("trusted"),
+    self_claimed_errors = import_data.validate_document(
+        _trusted_record("self-claimed"),
         line_number=2,
         require_trusted_source_metadata=True,
     )
+    curated = _trusted_record("trusted")
+    trusted_errors = import_data.validate_document(
+        curated,
+        line_number=3,
+        require_trusted_source_metadata=True,
+        review_registry=_synthetic_registry_for(curated),
+        allow_synthetic_registry=True,
+    )
 
     assert any("missing trusted source metadata" in error for error in legacy_errors)
+    assert any("not backed by a managed review registry record" in error for error in self_claimed_errors)
     assert trusted_errors == []
 
 

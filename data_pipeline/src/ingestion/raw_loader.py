@@ -433,20 +433,20 @@ def merge_inbody_medical_knowledge(
             publisher = clean_text(doc.get("publisher")) or default_publisher
             source_tier = clean_text(doc.get("source_tier")) or default_tier
             source_url = clean_text(doc.get("source_url")) or default_url
-            published_at = clean_text(doc.get("published_at"))
-            reviewed_at = clean_text(doc.get("reviewed_at"))
-            review_status = clean_text(doc.get("medical_review_status")) or "approved"
+            published_at = clean_text(doc.get("published_at")) or None
+            reviewed_at = clean_text(doc.get("reviewed_at")) or None
+            review_status = clean_text(doc.get("medical_review_status")) or None
 
             metadata = {
                 "raw_path": str((raw_dir / source["path"] / json_file.name).relative_to(raw_dir.parent)).replace("\\", "/"),
                 "raw_file": json_file.name,
-                "publisher": publisher,
-                "source_tier": source_tier,
-                "source_url": source_url,
+                "publisher": publisher or None,
+                "source_tier": source_tier or None,
+                "source_url": source_url or None,
                 "published_at": published_at,
                 "reviewed_at": reviewed_at,
                 "medical_review_status": review_status,
-                "source_name": publisher,
+                "source_name": publisher or None,
             }
             yield make_record(
                 doc_id=doc_id,

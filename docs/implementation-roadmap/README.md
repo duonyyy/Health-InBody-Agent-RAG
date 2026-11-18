@@ -13,6 +13,9 @@ Tiến độ mới 2026-10-01: [Cache câu trả lời RAG an toàn](11-safe-llm
 đã nối vào Composer và có regression tests; **source-ready, chưa deploy**, chưa đo hit rate/latency
 trên Redis và API runtime.
 
+Tiến độ mới 2026-11-18: [Đợt 2 — Kiểm chứng câu trả lời & Provenance (R01, R07)](../reports/upgrade-2026/phase02-evidence-provenance-2026-11-18.md)
+đã triển khai kiểm chứng claim/citation câu-với-câu (phủ định hai chiều, số/khoảng/đơn vị, đối tượng, điều kiện, modality, parent expansion, nâng version cache key `v2`) và registry review y khoa (`backend/data/medical_review_registry.json`, bỏ tự gán `guideline`/`approved`/ngày review mặc định, hạ nhãn legacy chưa xác minh và chặn vượt gate ở nhánh `medical_caution`); **Đợt 2 source-ready, chưa deploy; chưa review lại hoặc phát hành corpus.**
+
 Kế hoạch thiết kế dữ liệu: [Database và data schema tổng thể](10-database-schema-master-plan.md)
 — **đề xuất chờ duyệt**, gồm hiện trạng, mô hình đích, privacy lifecycle, migration/rollback,
 kiểm thử và các hướng mở rộng tương lai; chưa thực hiện thay đổi database.

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from core.config import DEFAULT_COLLECTION_NAME
+from rag.provenance import PROVENANCE_METADATA_FIELDS
 from rag.query_rewriter import expand_health_query
 from rag.rerank import rerank_documents
 
@@ -109,18 +110,36 @@ def _normalize_document(doc: Dict[str, Any], index: int) -> Optional[Dict[str, A
     if not text:
         return None
 
+    doc_metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+    doc_id = str(doc.get("doc_id", doc.get("id", index)))
+    document_id = str(
+        doc.get("document_id")
+        or doc_metadata.get("document_id")
+        or doc_metadata.get("doc_id")
+        or doc_id
+    )
+    chunk_id = str(doc.get("chunk_id") or doc_metadata.get("chunk_id") or doc_id)
+
     normalized = {
         "title": doc.get("title", "") or doc.get("question", ""),
         "question": doc.get("question", ""),
         "content": doc.get("content", "") or doc.get("page_content", ""),
         "source": doc.get("source", "") or doc.get("source_file", "unknown"),
-        "doc_id": str(doc.get("doc_id", doc.get("id", index))),
+        "doc_id": doc_id,
+        "document_id": document_id,
+        "chunk_id": chunk_id,
         "content_type": doc.get("content_type") or _detect_content_type(text),
         "domain": doc.get("domain", "health_inbody"),
     }
 
     for key, value in doc.items():
         normalized.setdefault(key, value)
+
+    # Promote provenance fields from nested metadata so snapshot/BM25 retrieval
+    # preserves full source and review metadata into citation/evidence builders.
+    for field in PROVENANCE_METADATA_FIELDS:
+        if field not in normalized and field in doc_metadata:
+            normalized[field] = doc_metadata[field]
 
     return normalized
 
@@ -546,9 +565,22 @@ def expand_parent_documents(
 
         seen_parent_keys.add(parent_key)
         parent_doc = doc.copy()
-        # Keep original child info for traceability
+        nested_meta = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+        # Keep original child info for traceability, while updating chunk_id and
+        # evidence_scope to the expanded parent section so claims supported only
+        # by sibling parent text are never misattributed to a single child chunk.
         parent_doc["child_content"] = doc.get("content", "")
-        parent_doc["child_chunk_id"] = doc.get("chunk_id", "")
+        parent_doc["child_chunk_id"] = str(doc.get("chunk_id") or doc.get("doc_id") or "")
+        parent_doc["parent_id"] = parent_key
+        parent_doc["document_id"] = str(
+            doc.get("document_id")
+            or nested_meta.get("document_id")
+            or nested_meta.get("doc_id")
+            or doc.get("doc_id")
+            or parent_key
+        )
+        parent_doc["chunk_id"] = parent_key
+        parent_doc["evidence_scope"] = "parent_section"
         # Expand content to full parent content
         parent_doc["content"] = parent_content
         if doc.get("parent_title"):
@@ -704,13 +736,20 @@ def initialize_from_vector_store(
 
     documents = []
     for index, point in enumerate(points or []):
-        payload = point.payload or {}
+        payload = dict(point.payload or {})
+        doc_id = payload.get("doc_id", point.id if point else index)
+        document_id = payload.get("document_id") or doc_id
+        chunk_id = payload.get("chunk_id") or doc_id
         documents.append(
             {
+                **payload,
                 "question": payload.get("question", ""),
+                "title": payload.get("title") or payload.get("question", ""),
                 "content": payload.get("content", ""),
                 "source": payload.get("source", "vector_store"),
-                "doc_id": payload.get("doc_id", point.id if point else index),
+                "doc_id": doc_id,
+                "document_id": document_id,
+                "chunk_id": chunk_id,
                 "content_type": payload.get("content_type"),
                 "domain": payload.get("domain", "health_inbody"),
             }

@@ -336,7 +336,7 @@ def test_corpus_processor_filtering_and_seeding():
     assert doc["doc_id"] == "doc_valid_01"
     assert doc["metadata"]["embedding_dataset"] == "health_inbody_embedding_v1"
 
-    # Seed document should have guideline tier and medical review status
+    # Seed document without a managed review record must NOT self-certify as approved/guideline
     seed = seed_document({
         "doc_id": "seed_01",
         "title": "Seed Title",
@@ -347,7 +347,176 @@ def test_corpus_processor_filtering_and_seeding():
     })
     assert seed["source"] == "internal_seed"
     assert seed["metadata"]["medical_disclaimer_required"] is True
-    assert seed["metadata"]["medical_review_status"] == "approved"
+    assert seed["metadata"]["medical_review_status"] == "provisional"
+    assert seed["metadata"]["review_verification_status"] == "unreviewed"
+    assert seed["metadata"]["source_tier"] is None
+    assert seed["metadata"]["source_tier_verified"] is False
+    assert seed["metadata"]["published_at"] is None
+    assert seed["metadata"]["reviewed_at"] is None
+    assert seed["metadata"]["publisher"] is None
+    assert seed["metadata"]["review_id"] is None
+
+
+def test_seed_internal_curated_url_and_missing_dates_are_not_fabricated():
+    seed = seed_document({
+        "doc_id": "seed_curated_01",
+        "title": "Nguyên tắc tập luyện",
+        "content": "Tăng cơ cần tập kháng lực đều đặn, ăn đủ năng lượng và ngủ phục hồi.",
+        "content_type": "exercise",
+        "source_name": "Sports nutrition principles",
+        "source_url": "internal_curated",
+    })
+    assert seed["metadata"]["source_url"] is None
+    assert seed["metadata"]["publisher"] is None
+    assert seed["metadata"]["source_tier"] is None
+    assert seed["metadata"]["published_at"] is None
+    assert seed["metadata"]["reviewed_at"] is None
+    assert seed["metadata"]["medical_review_status"] == "provisional"
+    assert seed["metadata"]["review_verification_status"] == "unreviewed"
+
+
+def test_provenance_preserved_across_seed_chunk_bm25_and_qdrant_payload(tmp_path: Path):
+    from data_pipeline.src.processors.provenance_bridge import compute_document_content_hash
+
+    content = "Mỡ nội tạng nằm quanh các cơ quan trong ổ bụng và cần theo dõi định kỳ."
+    content_hash = compute_document_content_hash(content)
+    synthetic_registry = {
+        "schema_version": 1,
+        "registry_version": "test-synthetic",
+        "is_synthetic_fixture": True,
+        "reviewers": {
+            "clinician-syn-1": {"name": "Synthetic Reviewer", "role": "clinical_reviewer", "active": True}
+        },
+        "reviews": [
+            {
+                "review_id": "rev-syn-001",
+                "document_id": "seed_verified_01",
+                "reviewer_id": "clinician-syn-1",
+                "review_role": "clinical_reviewer",
+                "review_scope": "inbody_metric",
+                "reviewed_at": "2026-11-18T00:00:00Z",
+                "content_hash": content_hash,
+                "document_version": "1.0",
+                "decision": "approved",
+                "notes": "Synthetic test review matching exact content hash.",
+                "verified_source_tier": "clinic_education",
+                "verified_publisher": "Synthetic Clinical Board",
+                "verified_source_url": "https://example.org/visceral-fat",
+                "verified_published_at": "2025-06-01",
+                "is_synthetic_fixture": True,
+            }
+        ],
+    }
+
+    doc = seed_document(
+        {
+            "doc_id": "seed_verified_01",
+            "title": "Mỡ nội tạng",
+            "content": content,
+            "content_type": "inbody_metric",
+        },
+        review_registry=synthetic_registry,
+        allow_synthetic_registry=True,
+    )
+    assert doc["metadata"]["medical_review_status"] == "approved"
+    assert doc["metadata"]["review_verification_status"] == "verified"
+    assert doc["metadata"]["review_id"] == "rev-syn-001"
+    assert doc["metadata"]["source_tier"] == "clinic_education"
+
+    chunks = chunk_document(doc, chunk_size=500, chunk_overlap=50)
+    assert len(chunks) == 1
+    chunk = chunks[0]
+    assert chunk["document_id"] == "seed_verified_01"
+    assert chunk["review_id"] == "rev-syn-001"
+    assert chunk["review_verification_status"] == "verified"
+    assert chunk["medical_review_status"] == "approved"
+    assert chunk["document_content_hash"] == content_hash
+
+    snapshot_file = tmp_path / "bm25_prov.json.gz"
+    export_bm25_snapshot(
+        chunks=chunks,
+        output_path=snapshot_file,
+        collection_name="test_collection",
+        corpus_version="test.2",
+    )
+    with gzip.open(snapshot_file, "rt", encoding="utf-8") as f:
+        snap = json.load(f)
+    snap_doc = snap["documents"][0]
+    assert snap_doc["document_id"] == "seed_verified_01"
+    assert snap_doc["chunk_id"] == chunk["chunk_id"]
+    assert snap_doc["review_id"] == "rev-syn-001"
+    assert snap_doc["medical_review_status"] == "approved"
+    assert snap_doc["review_verification_status"] == "verified"
+    assert snap_doc["source_tier"] == "clinic_education"
+    assert snap_doc["corpus_version"] == "test.2"
+
+    # Qdrant payload check via mock upsert
+    captured_points = []
+
+    class FakeQdrantClient:
+        def upsert(self, collection_name, points, wait=True):
+            captured_points.extend(points)
+
+    class FakeEmbedder:
+        def embed_texts(self, texts, dry_run=False):
+            return [[0.1] * 8 for _ in texts]
+
+    indexer = QdrantIndexer(vector_size=8)
+    indexer._client = FakeQdrantClient()
+    embedder = FakeEmbedder()
+    res = indexer.index_chunks(
+        chunks=chunks,
+        embedder=embedder,
+        collection_name="test_collection",
+        batch_size=10,
+        skip_existing=False,
+        dry_run=False,
+    )
+    assert res["status"] == "ok"
+    assert len(captured_points) == 1
+    q_payload = captured_points[0].payload
+    assert q_payload["document_id"] == "seed_verified_01"
+    assert q_payload["review_id"] == "rev-syn-001"
+    assert q_payload["review_verification_status"] == "verified"
+    assert q_payload["medical_review_status"] == "approved"
+    assert q_payload["source_tier"] == "clinic_education"
+
+
+def test_raw_loader_does_not_default_medical_review_status_to_approved(tmp_path: Path):
+    from data_pipeline.src.ingestion.raw_loader import merge_inbody_medical_knowledge
+
+    raw_dir = tmp_path / "raw"
+    kb_dir = raw_dir / "kb"
+    kb_dir.mkdir(parents=True)
+    (kb_dir / "sample.json").write_text(
+        json.dumps(
+            {
+                "source_id": "sample_kb",
+                "documents": [
+                    {
+                        "doc_id": "raw-unreviewed-01",
+                        "title": "Sample",
+                        "content": "Nội dung đủ dài để kiểm tra raw loader không tự gán approved.",
+                        "content_type": "inbody_metric",
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    records = list(
+        merge_inbody_medical_knowledge(
+            {"source_id": "sample_kb", "path": "kb", "pipeline_role": "rag_corpus"},
+            raw_dir,
+        )
+    )
+    assert len(records) == 1
+    assert records[0]["metadata"]["medical_review_status"] is None
+    normalized = normalize_document(records[0])
+    assert normalized is not None
+    assert normalized["metadata"]["medical_review_status"] == "unreviewed"
+    assert normalized["metadata"]["review_verification_status"] == "unreviewed"
 
 
 

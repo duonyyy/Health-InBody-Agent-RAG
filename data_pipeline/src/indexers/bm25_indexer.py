@@ -16,21 +16,29 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from ..processors.provenance_bridge import PROVENANCE_METADATA_FIELDS
+
 logger = logging.getLogger(__name__)
 
 BM25_SNAPSHOT_SCHEMA_VERSION = 1
 
 
-def build_bm25_documents_from_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def build_bm25_documents_from_chunks(
+    chunks: List[Dict[str, Any]],
+    *,
+    corpus_version: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     """Chuyển đổi danh sách chunks sang định dạng tài liệu chuẩn của backend BM25 engine.
 
     Vai trò:
-        Ánh xạ các trường dữ liệu từ chunk (chunk_id, content, metadata, parent_id, parent_content)
-        sang schema document mà hàm `initialize_search_index()` tại backend/src/rag/search.py yêu cầu.
-        Bảo toàn toàn bộ thông tin khối cha (Parent) để phục vụ giải thuật Small-to-Big Retrieval.
+        Ánh xạ các trường dữ liệu từ chunk (chunk_id, document_id, content, metadata,
+        provenance, parent_id, parent_content) sang schema document mà hàm
+        `initialize_search_index()` tại backend/src/rag/search.py yêu cầu.
+        Bảo toàn toàn bộ thông tin khối cha (Parent) và provenance xuyên suốt tới evidence.
 
     Args:
         chunks: Danh sách các dictionary chunk được sinh ra từ module chunking.
+        corpus_version: Phiên bản corpus (nếu có) để gắn vào từng document.
 
     Returns:
         Danh sách tài liệu đã được chuẩn hóa theo schema BM25.
@@ -38,9 +46,35 @@ def build_bm25_documents_from_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[
     bm25_docs: List[Dict[str, Any]] = []
 
     for chunk in chunks:
+        chunk_meta = dict(chunk.get("metadata") or {})
+        document_id = str(
+            chunk.get("document_id")
+            or chunk_meta.get("document_id")
+            or chunk.get("doc_id")
+            or chunk_meta.get("doc_id")
+            or chunk.get("chunk_id")
+            or ""
+        )
+        chunk_id = str(chunk.get("chunk_id") or chunk_meta.get("chunk_id") or document_id)
+        provenance = {
+            field: chunk.get(field) if field in chunk else chunk_meta.get(field)
+            for field in PROVENANCE_METADATA_FIELDS
+            if field in chunk or field in chunk_meta
+        }
+        if corpus_version and not provenance.get("corpus_version"):
+            provenance["corpus_version"] = corpus_version
+        provenance["document_id"] = document_id
+        provenance["chunk_id"] = chunk_id
+        if chunk.get("content_hash"):
+            provenance["content_hash"] = chunk["content_hash"]
+
+        merged_meta = {**chunk_meta, **provenance}
         bm25_docs.append(
             {
-                "doc_id": chunk.get("chunk_id") or chunk.get("doc_id"),
+                **provenance,
+                "doc_id": chunk_id or document_id,
+                "document_id": document_id,
+                "chunk_id": chunk_id,
                 "question": chunk.get("title") or "",
                 "title": chunk.get("title") or "",
                 "content": chunk.get("content") or "",
@@ -51,7 +85,7 @@ def build_bm25_documents_from_chunks(chunks: List[Dict[str, Any]]) -> List[Dict[
                 "parent_title": chunk.get("parent_title"),
                 "parent_content": chunk.get("parent_content"),
                 "has_parent": chunk.get("has_parent", False),
-                "metadata": chunk.get("metadata") or {},
+                "metadata": merged_meta,
             }
         )
 
@@ -83,7 +117,7 @@ def export_bm25_snapshot(
         Dictionary báo cáo trạng thái xuất file (status, document_count, file_size_kb...).
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    bm25_docs = build_bm25_documents_from_chunks(chunks)
+    bm25_docs = build_bm25_documents_from_chunks(chunks, corpus_version=corpus_version)
     created_at = datetime.now(timezone.utc).isoformat()
 
     metadata = {

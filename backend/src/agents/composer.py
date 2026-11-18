@@ -14,6 +14,7 @@ from harness.layers.citation_checker import build_evidence, prepare_composer_con
 from harness.layers.critic import (
     caution_answer_is_unsafe,
     check_claims,
+    check_claims_detailed,
     context_conflicts,
 )
 from core.cache import (
@@ -146,17 +147,27 @@ def _set_evidence_state(state: AgentState, docs: List[Dict[str, Any]]) -> None:
 
     max_docs = getattr(graph_mod, "RAG_COMPOSER_MAX_DOCS", RAG_COMPOSER_MAX_DOCS)
     max_chars = getattr(graph_mod, "RAG_COMPOSER_MAX_CHARS_PER_DOC", RAG_COMPOSER_MAX_CHARS_PER_DOC)
+    safety_risk = (state.get("safety_result") or {}).get("risk_level")
+    require_verified_review = safety_risk == "medical_caution"
 
     composer_docs, evidence, rejected = prepare_composer_context(
-        docs, max_docs=max_docs, max_chars=max_chars,
+        docs,
+        max_docs=max_docs,
+        max_chars=max_chars,
+        require_verified_medical_review=require_verified_review,
     )
     state["composer_docs"] = composer_docs
-    # Do not expose a rejected prompt-injection payload through the API either.
+    # Do not expose a rejected prompt-injection or unverified sensitive payload through the API either.
     state["retrieved_docs"] = composer_docs
     state["evidence"] = evidence
     limitations = list(state.get("limitations") or [])
     if evidence:
         state["evidence_status"] = "supported"
+    elif docs and require_verified_review:
+        state["evidence_status"] = "insufficient"
+        limitations.append(
+            "Các tài liệu truy xuất chưa có hồ sơ duyệt y khoa được xác minh cho câu hỏi cần thận trọng y tế."
+        )
     elif docs:
         state["evidence_status"] = "insufficient"
         limitations.append(
@@ -170,7 +181,7 @@ def _set_evidence_state(state: AgentState, docs: List[Dict[str, Any]]) -> None:
     state["limitations"] = limitations
     if rejected:
         append_trace(state, RAG_AGENT, "reject_untrusted_context", "warning",
-                     f"Rejected {rejected} invalid or instruction-bearing chunks.")
+                     f"Rejected {rejected} invalid, instruction-bearing, or unverified chunks.")
 
 
 def _format_docs(docs: List[Dict[str, Any]]) -> str:
@@ -419,21 +430,33 @@ def response_composer_agent(state: AgentState) -> AgentState:
         final_answer = _insufficient_evidence_answer(state)
         state["evidence_status"] = "insufficient"
         state["evidence"] = []
+        state["claim_evidence_links"] = []
         append_error(state, "Generated answer failed the output instruction guard")
         composer_status = "warning"
     elif RAG_AGENT in selected and composer_status == "success":
-        supported, links = check_claims(final_answer, state.get("evidence") or [])
-        if not supported:
+        verification = check_claims_detailed(
+            final_answer,
+            state.get("evidence") or [],
+            tool_results=_safe_tool_results(state),
+            safety_result=state.get("safety_result") or {},
+        )
+        if verification["supported"]:
+            state["claim_evidence_links"] = verification["links"]
+        elif verification.get("safe_without_citations"):
+            state["evidence_status"] = "insufficient"
+            state["evidence"] = []
+            state["claim_evidence_links"] = []
+            composer_summary = "Returned clarification or safe refusal without fabricating citations."
+        else:
             final_answer = _insufficient_evidence_answer(state)
             state["evidence_status"] = "insufficient"
             state["evidence"] = []
+            state["claim_evidence_links"] = []
             state["limitations"] = list(state.get("limitations") or []) + [
                 "Một hoặc nhiều nhận định không được chunk đã đưa vào context hỗ trợ đủ rõ."
             ]
             composer_status = "warning"
             composer_summary = "Unsupported claim or citation; returned a deterministic limitation."
-        else:
-            state["claim_evidence_links"] = links
     safety = state.get("safety_result") or {}
     if safety.get("risk_level") == "medical_caution":
         action = safety.get("recommended_action") or "Hãy tham khảo chuyên gia y tế trước khi thay đổi kế hoạch."
@@ -452,6 +475,7 @@ def response_composer_agent(state: AgentState) -> AgentState:
     cache_answer_is_valid = (
         composer_status == "success"
         and state.get("evidence_status") == "supported"
+        and bool(state.get("claim_evidence_links"))
     )
     if cache_key:
         if cache_hit and not cache_answer_is_valid:

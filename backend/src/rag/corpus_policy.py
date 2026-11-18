@@ -1,4 +1,8 @@
-"""Public-corpus admission policy. Private memory never enters shared RAG."""
+"""Public-corpus privacy admission policy. Private memory never enters shared RAG.
+
+Note: `privacy_review_status='approved'` verifies public-scope and PII removal
+only; it does NOT grant or imply clinical/medical content review approval.
+"""
 import os
 import re
 from urllib.parse import urlparse

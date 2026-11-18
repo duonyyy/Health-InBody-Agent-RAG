@@ -21,9 +21,19 @@ from qdrant_client.models import (
     VectorParams,
 )
 
+from ..processors.provenance_bridge import PROVENANCE_METADATA_FIELDS
+
 logger = logging.getLogger(__name__)
 
-INDEX_KEYWORD_FIELDS = ["content_type", "domain", "source", "parent_id"]
+INDEX_KEYWORD_FIELDS = [
+    "content_type",
+    "domain",
+    "source",
+    "parent_id",
+    "medical_review_status",
+    "review_verification_status",
+    "corpus_version",
+]
 
 
 class QdrantIndexer:
@@ -266,9 +276,22 @@ class QdrantIndexer:
             qdrant_points: List[PointStruct] = []
             for item, vector in zip(batch_items, embeddings):
                 chunk = item["chunk"]
+                chunk_meta = dict(chunk.get("metadata") or {})
+                provenance = {
+                    field: chunk.get(field) if field in chunk else chunk_meta.get(field)
+                    for field in PROVENANCE_METADATA_FIELDS
+                    if field in chunk or field in chunk_meta
+                }
+                document_id = str(
+                    chunk.get("document_id")
+                    or chunk_meta.get("document_id")
+                    or chunk["doc_id"]
+                )
                 payload = {
-                    **chunk["metadata"],
+                    **chunk_meta,
+                    **provenance,
                     "doc_id": chunk["doc_id"],
+                    "document_id": document_id,
                     "chunk_id": chunk["chunk_id"],
                     "parent_id": chunk.get("parent_id"),
                     "parent_title": chunk.get("parent_title"),

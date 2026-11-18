@@ -31,8 +31,11 @@ _GENERIC_DEFINITION_QUERY = re.compile(
     r"la chi so gi|mean|means|meaning|stands for))?[?.!\s]*$",
     re.IGNORECASE,
 )
+from harness.guards import CLAIM_VALIDATION_POLICY_VERSION
+from rag.provenance import PROVENANCE_POLICY_VERSION
+
 _ALLOWED_EMPTY_CONTEXT_KEYS = {"available", "reason"}
-RESPONSE_CACHE_SCHEMA_VERSION = "health-inbody-rag-response-v1"
+RESPONSE_CACHE_SCHEMA_VERSION = "health-inbody-rag-response-v2"
 
 
 def _has_personal_data(context: Any) -> bool:
@@ -110,6 +113,8 @@ def build_llm_response_cache_key(
 
     material = {
         "schema": RESPONSE_CACHE_SCHEMA_VERSION,
+        "claim_validation_policy": CLAIM_VALIDATION_POLICY_VERSION,
+        "provenance_policy": PROVENANCE_POLICY_VERSION,
         "messages": messages,
         "model_config": model_config,
         "corpus_fingerprint": corpus_fingerprint,

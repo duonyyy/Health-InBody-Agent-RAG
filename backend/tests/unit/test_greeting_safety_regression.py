@@ -167,8 +167,27 @@ def test_caution_composer_keeps_action_on_every_exit(isolated, monkeypatch, fail
              "safety_result": safety, "agent_trace": [], "errors": [], "tool_results": [],
              "retrieved_docs": [], "deadline_monotonic": time.monotonic() + 30}
     if failure in {"provider", "unsafe_output"}:
-        state["retrieved_docs"] = [{"document_id": "synthetic-safety", "source": "fixture",
-                                    "title": "Thận trọng", "content": "Hỏi bác sĩ khi dùng thuốc."}]
+        from rag.provenance import compute_document_content_hash
+
+        safety_text = "Hỏi bác sĩ khi dùng thuốc."
+        safety_hash = compute_document_content_hash(safety_text)
+        state["retrieved_docs"] = [
+            {
+                "document_id": "synthetic-safety",
+                "source": "fixture",
+                "title": "Thận trọng",
+                "content": safety_text,
+                "content_type": "medical_safety",
+                "document_content_hash": safety_hash,
+                "medical_review_status": "approved",
+                "review_verification_status": "verified",
+                "review_id": "rev-test-caution-001",
+                "reviewer_id": "reviewer-test-001",
+                "review_scope": "medical_safety",
+                "reviewed_at": "2026-11-18T00:00:00Z",
+                "reviewed_content_hash": safety_hash,
+            }
+        ]
         monkeypatch.setattr(graph, "rerank_documents", lambda docs, *a, **k: docs)
         def compose(*a, **kw):
             provider_calls.append(True)
