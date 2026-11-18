@@ -1,0 +1,58 @@
+F......................                                                  [100%]
+================================== FAILURES ===================================
+____ test_resume_missing_embedding_fingerprint_never_embeds_or_overwrites _____
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002148E7A90F0>
+tmp_path = WindowsPath('C:/Users/Admin/Desktop/KLTN/LLL RAG/.phase3-regression-tmp/test_resume_missing_embedding_0')
+
+    def test_resume_missing_embedding_fingerprint_never_embeds_or_overwrites(monkeypatch, tmp_path):
+        qdrant = QdrantClient(":memory:")
+        doc = {"doc_id": "synthetic-1", "document_id": "synthetic-1", "title": "BMI",
+               "content": "Nội dung tổng hợp để kiểm tra resume và không chứa thông tin cá nhân.",
+               "source": "synthetic", "content_type": "inbody_metric", "domain": "health_inbody"}
+        data = tmp_path / "data.jsonl"
+        data.write_text(json.dumps(doc, ensure_ascii=False) + "\n", encoding="utf-8")
+        monkeypatch.setattr(import_data, "get_embedding_safe", lambda texts: [_vec(0.8) for _ in texts])
+        args = dict(data_file_path=data, collection_name="staging_test", corpus_version="v1",
+                    vector_size=4, qdrant_client=qdrant, lock_dir=tmp_path / "locks",
+                    embedding_model_id="synthetic-model")
+>       assert import_data.import_embedding_dataset(**args)["status"] is True
+E       assert False is True
+
+backend\tests\integration\test_phase04_qdrant_local_lifecycle.py:47: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[2m02:25:38[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-regression-tmp\test_resume_missing_embedding_0\data.jsonl
+[2m02:25:38[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Target staging collection: staging_test
+[2m02:25:38[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Batch size: 50, limit: none
+[2m02:25:38[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Embedding request batch size: 32
+[2m02:25:38[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Corpus version: v1
+[2m02:25:38[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Starting from JSONL line: 1
+[2m02:25:38[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Skip existing Qdrant points: False
+[2m02:25:38[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Require trusted source metadata: False
+[2m02:25:38[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Created Qdrant staging collection: staging_test
+[2m02:25:38[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Verified required payload indexes: staging_test
+[2m02:25:38[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: missing fields: language
+[2m02:25:38[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import result: status=False upserted=0 errors=1
+------------------------------ Captured log call ------------------------------
+INFO     pipelines.import_data:import_data.py:665 Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-regression-tmp\test_resume_missing_embedding_0\data.jsonl
+INFO     pipelines.import_data:import_data.py:666 Target staging collection: staging_test
+INFO     pipelines.import_data:import_data.py:667 Batch size: 50, limit: none
+INFO     pipelines.import_data:import_data.py:668 Embedding request batch size: 32
+INFO     pipelines.import_data:import_data.py:669 Corpus version: v1
+INFO     pipelines.import_data:import_data.py:670 Starting from JSONL line: 1
+INFO     pipelines.import_data:import_data.py:671 Skip existing Qdrant points: False
+INFO     pipelines.import_data:import_data.py:672 Require trusted source metadata: False
+INFO     pipelines.import_data:import_data.py:727 Created Qdrant staging collection: staging_test
+INFO     pipelines.import_data:import_data.py:742 Verified required payload indexes: staging_test
+WARNING  pipelines.import_data:import_data.py:882 line 1: missing fields: language
+INFO     pipelines.import_data:import_data.py:1118 Import result: status=False upserted=0 errors=1
+============================== warnings summary ===============================
+backend/tests/integration/test_phase04_qdrant_local_lifecycle.py::test_resume_missing_embedding_fingerprint_never_embeds_or_overwrites
+  C:\Users\Admin\Desktop\KLTN\LLL RAG\backend\src\rag\qdrant\client.py:138: UserWarning: Payload indexes have no effect in the local Qdrant. Please use server Qdrant if you need payload indexes.
+    results[field_name] = active.create_payload_index(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED backend/tests/integration/test_phase04_qdrant_local_lifecycle.py::test_resume_missing_embedding_fingerprint_never_embeds_or_overwrites
+1 failed, 22 passed, 1 warning in 6.18s
+exit=1

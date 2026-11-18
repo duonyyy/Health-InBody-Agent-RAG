@@ -15,6 +15,7 @@ class AgentState(TypedDict, total=False):
     selected_capabilities: List[str]
     tool_results: List[Dict[str, Any]]
     retrieved_docs: List[Dict[str, Any]]
+    retrieval_status: str
     composer_docs: List[Dict[str, Any]]
     evidence: List[Dict[str, Any]]
     claim_evidence_links: List[Dict[str, Any]]

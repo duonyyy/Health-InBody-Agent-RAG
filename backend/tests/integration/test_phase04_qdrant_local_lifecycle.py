@@ -33,6 +33,30 @@ def _vec(seed: float) -> list[float]:
     return [seed, 1.0 - seed, 0.5, 0.25]
 
 
+def test_resume_missing_embedding_fingerprint_never_embeds_or_overwrites(monkeypatch, tmp_path):
+    qdrant = QdrantClient(":memory:")
+    doc = {"doc_id": "synthetic-1", "document_id": "synthetic-1", "title": "BMI",
+           "content": "Nội dung tổng hợp để kiểm tra resume và không chứa thông tin cá nhân.",
+           "source": "synthetic", "content_type": "inbody_metric", "domain": "health_inbody", "language": "vi"}
+    data = tmp_path / "data.jsonl"
+    data.write_text(json.dumps(doc, ensure_ascii=False) + "\n", encoding="utf-8")
+    monkeypatch.setattr(import_data, "get_embedding_safe", lambda texts: [_vec(0.8) for _ in texts])
+    args = dict(data_file_path=data, collection_name="staging_test", corpus_version="v1",
+                vector_size=4, qdrant_client=qdrant, lock_dir=tmp_path / "locks",
+                embedding_model_id="synthetic-model")
+    assert import_data.import_embedding_dataset(**args)["status"] is True
+    point = qdrant.scroll("staging_test", with_payload=True)[0][0]
+    qdrant.delete_payload("staging_test", keys=["embedding_fingerprint"], points=[point.id])
+    counts = {"embed": 0, "upsert": 0}
+    monkeypatch.setattr(import_data, "get_embedding_safe", lambda texts: counts.__setitem__("embed", counts["embed"] + 1))
+    monkeypatch.setattr(qdrant, "upsert", lambda **kwargs: counts.__setitem__("upsert", counts["upsert"] + 1))
+    result = import_data.import_embedding_dataset(**args, skip_collection_create=True, skip_existing_points=True)
+    assert result["status"] is False
+    assert result["conflict_count"] == 1
+    assert counts == {"embed": 0, "upsert": 0}
+    assert result["write_receipt"]["committed_points"] == 0
+
+
 def test_full_blue_green_corpus_lifecycle_on_isolated_local_qdrant(monkeypatch, tmp_path):
     qdrant = QdrantClient(":memory:")
     lock_dir = tmp_path / "locks"

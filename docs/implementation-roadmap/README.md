@@ -1,5 +1,7 @@
 # Lộ trình triển khai Health/InBody Agent RAG
 
+Tiến độ 2026-11-19: [Retrieval/resume đợt 3](../reports/upgrade-2026/retrieval-resume-phase3.md) **source-ready, chưa deploy**; raw-first, error/API, dedup/parent, pin xuyên query và resume có regression cô lập, toàn suite 478/478 đạt. Runtime thật và gate chất lượng corpus chưa chạy.
+
 Tiến độ 2026-11-19: [Độ tin cậy evidence và claim](../reports/upgrade-2026/reliability-phase2.md) — sửa trust boundary review và các ca hoán đổi giá trị ở source, có regression composer/cache và urgent trong process; registry thật rỗng, binding chunk và đánh giá độc lập còn thiếu. Chưa deploy.
 
 Tiến độ 2026-11-19: [Ổn định test đợt 1](../reports/upgrade-2026/test-stabilization-phase1.md) — người dùng xác nhận ngừng observability, import-missing, vector-reuse và evaluator cũ; các khẳng định lịch sử bên dưới về chúng không còn mô tả source hiện tại. Collection host, 351 unit và 1 integration Qdrant local đạt; Python 3.10/image và các khoảng trống privacy/eval còn mở. Chưa deploy.

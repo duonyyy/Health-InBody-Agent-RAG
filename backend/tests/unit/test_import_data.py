@@ -274,6 +274,7 @@ def test_skip_existing_points_does_not_call_embedding_or_upsert(monkeypatch, tmp
                 "chunk_id": existing_payload["chunk_id"],
                 "content_hash": existing_payload["content_hash"],
                 "corpus_version": "2026-07-30-v2",
+                "embedding_fingerprint": import_data.current_embedding_config(vector_size=import_data.DEFAULT_VECTOR_SIZE)["fingerprint"],
             }
         },
     )

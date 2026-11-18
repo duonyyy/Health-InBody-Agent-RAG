@@ -1,0 +1,9 @@
+..                                                                       [100%]
+============================== warnings summary ===============================
+backend/tests/integration/test_phase04_qdrant_local_lifecycle.py::test_resume_missing_embedding_fingerprint_never_embeds_or_overwrites
+  C:\Users\Admin\Desktop\KLTN\LLL RAG\backend\src\rag\qdrant\client.py:138: UserWarning: Payload indexes have no effect in the local Qdrant. Please use server Qdrant if you need payload indexes.
+    results[field_name] = active.create_payload_index(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+2 passed, 1 warning in 4.75s
+exit=0

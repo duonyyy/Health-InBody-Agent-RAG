@@ -196,7 +196,9 @@ def _set_evidence_state(state: AgentState, docs: List[Dict[str, Any]]) -> None:
     else:
         state["evidence_status"] = "insufficient"
         limitations.append(
-            "Không tìm thấy tài liệu phù hợp trong kho tri thức hiện có."
+            "Dịch vụ truy xuất đang gặp lỗi; chưa thể xác định có tài liệu phù hợp hay không."
+            if state.get("retrieval_status") not in {None, "ok", "empty"}
+            else "Không tìm thấy tài liệu phù hợp trong kho tri thức hiện có."
         )
     state["limitations"] = limitations
     if rejected:
@@ -294,6 +296,9 @@ def _insufficient_evidence_answer(state: AgentState) -> str:
         "Không đủ bằng chứng trong kho tri thức hiện có để trả lời câu hỏi này một cách đáng tin cậy.",
         "Bạn có thể hỏi cụ thể hơn hoặc cung cấp thêm chỉ số/bối cảnh liên quan.",
     ]
+    if state.get("retrieval_status") not in {None, "ok", "empty"}:
+        chunks = ["Dịch vụ truy xuất đang gặp lỗi nên mình chưa thể tra cứu tài liệu để trả lời đáng tin cậy.",
+                  "Bạn có thể thử lại sau."]
     safety = state.get("safety_result") or {}
     if safety.get("disclaimer"):
         chunks.append(f"Lưu ý an toàn: {safety['disclaimer']}")

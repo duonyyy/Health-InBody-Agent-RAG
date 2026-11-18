@@ -609,6 +609,14 @@ def import_embedding_dataset(
     if embedding_batch_size < 1 or embedding_batch_size > 32:
         raise ValueError("embedding_batch_size must be between 1 and 32")
 
+    # A line checkpoint cannot prove every earlier input was committed: validation
+    # errors and multiple chunks can leave gaps. Rescan and verify each point.
+    if not dry_run and start_line > 1:
+        raise CorpusConflictError(
+            "Resume theo start_line chưa chứng minh được các dòng trước đã commit; "
+            "hãy quét lại từ dòng 1 với skip_existing_points hoặc tạo staging release mới"
+        )
+
     active_qdrant = None
     if not dry_run:
         active_qdrant = _get_default_qdrant_client() if qdrant_client is None else qdrant_client

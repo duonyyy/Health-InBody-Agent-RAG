@@ -368,6 +368,7 @@ def search_vector(
     raise_on_timeout: bool = False,
     *,
     qdrant_client: Any = None,
+    raise_on_error: bool = False,
 ):
     """
     Tìm kiếm các tài liệu gần nhất với query vector trong Qdrant.
@@ -381,7 +382,7 @@ def search_vector(
     )
     if effective_timeout is None:
         logger.warning("Qdrant search skipped because remaining budget < 1.0s")
-        if raise_on_timeout:
+        if raise_on_timeout or raise_on_error:
             raise BudgetExhaustedError("Qdrant search budget exhausted")
         return []
     # Qdrant SDK accepts integer timeout seconds; floor so timeout never exceeds remaining budget.
@@ -465,9 +466,14 @@ def search_vector(
 
     except Exception as e:
         is_timeout = isinstance(e, (BudgetExhaustedError, TimeoutError)) or "timeout" in type(e).__name__.lower()
-        logger.error(f"Vector search failed: {e}")
+        logger.error("Vector search failed (%s)", type(e).__name__)
         if raise_on_timeout and is_timeout:
             raise BudgetExhaustedError("Qdrant vector search timed out") from e
+        if raise_on_error:
+            from rag.retrieval_errors import RetrievalDependencyError
+            if is_timeout:
+                raise BudgetExhaustedError("Qdrant vector search timed out") from e
+            raise RetrievalDependencyError("qdrant_unavailable") from e
         return []
 
 
@@ -579,8 +585,8 @@ def get_collection_point_fingerprints(
             fingerprints[pid] = {
                 "qdrant_point_id": pid,
                 "doc_id": payload.get("doc_id"),
-                "document_id": payload.get("document_id") or payload.get("doc_id"),
-                "chunk_id": payload.get("chunk_id") or payload.get("doc_id") or pid,
+                "document_id": payload.get("document_id"),
+                "chunk_id": payload.get("chunk_id"),
                 "content_hash": payload.get("content_hash"),
                 "corpus_version": payload.get("corpus_version"),
                 "release_id": payload.get("release_id"),

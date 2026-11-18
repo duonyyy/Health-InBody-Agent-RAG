@@ -170,6 +170,7 @@ def _response_from_state(state: AgentState) -> Dict[str, Any]:
         "role": "assistant",
         "content": state.get("final_answer") or _fallback_answer(state),
         "status": "degraded" if errors else "ok",
+        "retrieval_status": state.get("retrieval_status"),
         "fast_path": state.get("fast_path"),
         "agent_trace": _public_activity(state.get("agent_trace") or []),
         "selected_agents": state.get("selected_agents") or [],

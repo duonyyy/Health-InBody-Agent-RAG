@@ -869,6 +869,7 @@ async def agent_answer(data: AgentRequest, current_user: CurrentUser = Depends(g
         "memory_proposals": response.get("memory_proposals", []),
         "user_message_id": response.get("user_message_id"),
         "status": response.get("status", "ok"),
+        "retrieval_status": response.get("retrieval_status"),
         "fast_path": response.get("fast_path"),
         "latency_ms": round((time.perf_counter() - request_started) * 1000, 2),
         "agent_trace": response.get("agent_trace", []),
@@ -927,6 +928,13 @@ async def search_endpoint(data: SearchRequest, request: Request):
         _raise_lane_http_error(exc)
     except Exception as exc:
         from rag.corpus_lifecycle import CorpusReleaseMismatchError
+        from rag.retrieval_errors import RetrievalDependencyError
+
+        if isinstance(exc, RetrievalDependencyError):
+            raise HTTPException(status_code=503, detail={
+                "reason_code": exc.reason,
+                "message": "Dịch vụ tìm kiếm tạm thời không khả dụng. Vui lòng thử lại sau.",
+            }) from exc
 
         if isinstance(exc, CorpusReleaseMismatchError):
             logger.error("Search refused due to corpus release mismatch: %s", exc)

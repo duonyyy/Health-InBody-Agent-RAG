@@ -1,0 +1,27 @@
+...............                                                          [100%]
+============================== warnings summary ===============================
+backend\src\api\app.py:257
+  C:\Users\Admin\Desktop\KLTN\LLL RAG\backend\src\api\app.py:257: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    @app.on_event("startup")
+
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4675
+  C:\Users\Admin\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4675: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+backend/tests/integration/test_phase3_resume_matrix.py::test_resume_only_missing_point
+  C:\Users\Admin\Desktop\KLTN\LLL RAG\backend\src\rag\qdrant\client.py:138: UserWarning: Payload indexes have no effect in the local Qdrant. Please use server Qdrant if you need payload indexes.
+    results[field_name] = active.create_payload_index(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+15 passed, 3 warnings in 9.06s
+exit=0

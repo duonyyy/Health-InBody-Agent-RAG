@@ -1,0 +1,468 @@
+FFFFFFFFFF                                                               [100%]
+================================== FAILURES ===================================
+_______________________ test_resume_only_missing_point ________________________
+
+staging = (<qdrant_client.qdrant_client.QdrantClient object at 0x0000020E556C7CB0>, {'data_file_path': WindowsPath('C:/Users/Adm...sonl'), 'collection_name': 'staging_matrix', 'corpus_version': 'v1', 'vector_size': 4, ...}, {'embed': 0, 'upsert': 0})
+
+    def test_resume_only_missing_point(staging):
+        client, args, counts = staging
+>       assert import_data.import_embedding_dataset(**args)["status"] is True
+E       assert False is True
+
+backend\tests\integration\test_phase3_resume_matrix.py:38: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[2m02:33:50[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_resume_only_missing_point0\input.jsonl
+[2m02:33:50[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Target staging collection: staging_matrix
+[2m02:33:50[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Batch size: 1, limit: none
+[2m02:33:50[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Embedding request batch size: 32
+[2m02:33:50[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Corpus version: v1
+[2m02:33:50[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Starting from JSONL line: 1
+[2m02:33:50[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Skip existing Qdrant points: False
+[2m02:33:50[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Require trusted source metadata: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Created Qdrant staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Verified required payload indexes: staging_matrix
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: domain must be health_inbody
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: domain must be health_inbody
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import result: status=False upserted=0 errors=4
+------------------------------ Captured log call ------------------------------
+INFO     pipelines.import_data:import_data.py:665 Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_resume_only_missing_point0\input.jsonl
+INFO     pipelines.import_data:import_data.py:666 Target staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:667 Batch size: 1, limit: none
+INFO     pipelines.import_data:import_data.py:668 Embedding request batch size: 32
+INFO     pipelines.import_data:import_data.py:669 Corpus version: v1
+INFO     pipelines.import_data:import_data.py:670 Starting from JSONL line: 1
+INFO     pipelines.import_data:import_data.py:671 Skip existing Qdrant points: False
+INFO     pipelines.import_data:import_data.py:672 Require trusted source metadata: False
+INFO     pipelines.import_data:import_data.py:727 Created Qdrant staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:742 Verified required payload indexes: staging_matrix
+WARNING  pipelines.import_data:import_data.py:882 line 1: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 1: domain must be health_inbody
+WARNING  pipelines.import_data:import_data.py:882 line 2: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 2: domain must be health_inbody
+INFO     pipelines.import_data:import_data.py:1118 Import result: status=False upserted=0 errors=4
+_____ test_missing_signature_field_fails_before_mutation[collection_name] _____
+
+staging = (<qdrant_client.qdrant_client.QdrantClient object at 0x0000020E56A855B0>, {'data_file_path': WindowsPath('C:/Users/Adm...sonl'), 'collection_name': 'staging_matrix', 'corpus_version': 'v1', 'vector_size': 4, ...}, {'embed': 0, 'upsert': 0})
+field = 'collection_name'
+
+    @pytest.mark.parametrize("field", ["collection_name", "corpus_version", "data_file_sha256", "chunk_size", "chunk_overlap", "vector_size", "embedding_fingerprint", "splitter_version"])
+    def test_missing_signature_field_fails_before_mutation(staging, field):
+        client, args, counts = staging
+>       assert import_data.import_embedding_dataset(**args)["status"] is True
+E       assert False is True
+
+backend\tests\integration\test_phase3_resume_matrix.py:51: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_missing_signature_field_f0\input.jsonl
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Target staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Batch size: 1, limit: none
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Embedding request batch size: 32
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Corpus version: v1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Starting from JSONL line: 1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Skip existing Qdrant points: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Require trusted source metadata: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Created Qdrant staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Verified required payload indexes: staging_matrix
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: domain must be health_inbody
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: domain must be health_inbody
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import result: status=False upserted=0 errors=4
+------------------------------ Captured log call ------------------------------
+INFO     pipelines.import_data:import_data.py:665 Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_missing_signature_field_f0\input.jsonl
+INFO     pipelines.import_data:import_data.py:666 Target staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:667 Batch size: 1, limit: none
+INFO     pipelines.import_data:import_data.py:668 Embedding request batch size: 32
+INFO     pipelines.import_data:import_data.py:669 Corpus version: v1
+INFO     pipelines.import_data:import_data.py:670 Starting from JSONL line: 1
+INFO     pipelines.import_data:import_data.py:671 Skip existing Qdrant points: False
+INFO     pipelines.import_data:import_data.py:672 Require trusted source metadata: False
+INFO     pipelines.import_data:import_data.py:727 Created Qdrant staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:742 Verified required payload indexes: staging_matrix
+WARNING  pipelines.import_data:import_data.py:882 line 1: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 1: domain must be health_inbody
+WARNING  pipelines.import_data:import_data.py:882 line 2: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 2: domain must be health_inbody
+INFO     pipelines.import_data:import_data.py:1118 Import result: status=False upserted=0 errors=4
+_____ test_missing_signature_field_fails_before_mutation[corpus_version] ______
+
+staging = (<qdrant_client.qdrant_client.QdrantClient object at 0x0000020E56A86060>, {'data_file_path': WindowsPath('C:/Users/Adm...sonl'), 'collection_name': 'staging_matrix', 'corpus_version': 'v1', 'vector_size': 4, ...}, {'embed': 0, 'upsert': 0})
+field = 'corpus_version'
+
+    @pytest.mark.parametrize("field", ["collection_name", "corpus_version", "data_file_sha256", "chunk_size", "chunk_overlap", "vector_size", "embedding_fingerprint", "splitter_version"])
+    def test_missing_signature_field_fails_before_mutation(staging, field):
+        client, args, counts = staging
+>       assert import_data.import_embedding_dataset(**args)["status"] is True
+E       assert False is True
+
+backend\tests\integration\test_phase3_resume_matrix.py:51: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_missing_signature_field_f1\input.jsonl
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Target staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Batch size: 1, limit: none
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Embedding request batch size: 32
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Corpus version: v1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Starting from JSONL line: 1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Skip existing Qdrant points: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Require trusted source metadata: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Created Qdrant staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Verified required payload indexes: staging_matrix
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: domain must be health_inbody
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: domain must be health_inbody
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import result: status=False upserted=0 errors=4
+------------------------------ Captured log call ------------------------------
+INFO     pipelines.import_data:import_data.py:665 Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_missing_signature_field_f1\input.jsonl
+INFO     pipelines.import_data:import_data.py:666 Target staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:667 Batch size: 1, limit: none
+INFO     pipelines.import_data:import_data.py:668 Embedding request batch size: 32
+INFO     pipelines.import_data:import_data.py:669 Corpus version: v1
+INFO     pipelines.import_data:import_data.py:670 Starting from JSONL line: 1
+INFO     pipelines.import_data:import_data.py:671 Skip existing Qdrant points: False
+INFO     pipelines.import_data:import_data.py:672 Require trusted source metadata: False
+INFO     pipelines.import_data:import_data.py:727 Created Qdrant staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:742 Verified required payload indexes: staging_matrix
+WARNING  pipelines.import_data:import_data.py:882 line 1: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 1: domain must be health_inbody
+WARNING  pipelines.import_data:import_data.py:882 line 2: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 2: domain must be health_inbody
+INFO     pipelines.import_data:import_data.py:1118 Import result: status=False upserted=0 errors=4
+____ test_missing_signature_field_fails_before_mutation[data_file_sha256] _____
+
+staging = (<qdrant_client.qdrant_client.QdrantClient object at 0x0000020E56A9EF90>, {'data_file_path': WindowsPath('C:/Users/Adm...sonl'), 'collection_name': 'staging_matrix', 'corpus_version': 'v1', 'vector_size': 4, ...}, {'embed': 0, 'upsert': 0})
+field = 'data_file_sha256'
+
+    @pytest.mark.parametrize("field", ["collection_name", "corpus_version", "data_file_sha256", "chunk_size", "chunk_overlap", "vector_size", "embedding_fingerprint", "splitter_version"])
+    def test_missing_signature_field_fails_before_mutation(staging, field):
+        client, args, counts = staging
+>       assert import_data.import_embedding_dataset(**args)["status"] is True
+E       assert False is True
+
+backend\tests\integration\test_phase3_resume_matrix.py:51: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_missing_signature_field_f2\input.jsonl
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Target staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Batch size: 1, limit: none
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Embedding request batch size: 32
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Corpus version: v1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Starting from JSONL line: 1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Skip existing Qdrant points: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Require trusted source metadata: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Created Qdrant staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Verified required payload indexes: staging_matrix
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: domain must be health_inbody
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: domain must be health_inbody
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import result: status=False upserted=0 errors=4
+------------------------------ Captured log call ------------------------------
+INFO     pipelines.import_data:import_data.py:665 Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_missing_signature_field_f2\input.jsonl
+INFO     pipelines.import_data:import_data.py:666 Target staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:667 Batch size: 1, limit: none
+INFO     pipelines.import_data:import_data.py:668 Embedding request batch size: 32
+INFO     pipelines.import_data:import_data.py:669 Corpus version: v1
+INFO     pipelines.import_data:import_data.py:670 Starting from JSONL line: 1
+INFO     pipelines.import_data:import_data.py:671 Skip existing Qdrant points: False
+INFO     pipelines.import_data:import_data.py:672 Require trusted source metadata: False
+INFO     pipelines.import_data:import_data.py:727 Created Qdrant staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:742 Verified required payload indexes: staging_matrix
+WARNING  pipelines.import_data:import_data.py:882 line 1: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 1: domain must be health_inbody
+WARNING  pipelines.import_data:import_data.py:882 line 2: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 2: domain must be health_inbody
+INFO     pipelines.import_data:import_data.py:1118 Import result: status=False upserted=0 errors=4
+_______ test_missing_signature_field_fails_before_mutation[chunk_size] ________
+
+staging = (<qdrant_client.qdrant_client.QdrantClient object at 0x0000020E56A83460>, {'data_file_path': WindowsPath('C:/Users/Adm...sonl'), 'collection_name': 'staging_matrix', 'corpus_version': 'v1', 'vector_size': 4, ...}, {'embed': 0, 'upsert': 0})
+field = 'chunk_size'
+
+    @pytest.mark.parametrize("field", ["collection_name", "corpus_version", "data_file_sha256", "chunk_size", "chunk_overlap", "vector_size", "embedding_fingerprint", "splitter_version"])
+    def test_missing_signature_field_fails_before_mutation(staging, field):
+        client, args, counts = staging
+>       assert import_data.import_embedding_dataset(**args)["status"] is True
+E       assert False is True
+
+backend\tests\integration\test_phase3_resume_matrix.py:51: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_missing_signature_field_f3\input.jsonl
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Target staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Batch size: 1, limit: none
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Embedding request batch size: 32
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Corpus version: v1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Starting from JSONL line: 1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Skip existing Qdrant points: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Require trusted source metadata: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Created Qdrant staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Verified required payload indexes: staging_matrix
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: domain must be health_inbody
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: domain must be health_inbody
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import result: status=False upserted=0 errors=4
+------------------------------ Captured log call ------------------------------
+INFO     pipelines.import_data:import_data.py:665 Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_missing_signature_field_f3\input.jsonl
+INFO     pipelines.import_data:import_data.py:666 Target staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:667 Batch size: 1, limit: none
+INFO     pipelines.import_data:import_data.py:668 Embedding request batch size: 32
+INFO     pipelines.import_data:import_data.py:669 Corpus version: v1
+INFO     pipelines.import_data:import_data.py:670 Starting from JSONL line: 1
+INFO     pipelines.import_data:import_data.py:671 Skip existing Qdrant points: False
+INFO     pipelines.import_data:import_data.py:672 Require trusted source metadata: False
+INFO     pipelines.import_data:import_data.py:727 Created Qdrant staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:742 Verified required payload indexes: staging_matrix
+WARNING  pipelines.import_data:import_data.py:882 line 1: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 1: domain must be health_inbody
+WARNING  pipelines.import_data:import_data.py:882 line 2: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 2: domain must be health_inbody
+INFO     pipelines.import_data:import_data.py:1118 Import result: status=False upserted=0 errors=4
+______ test_missing_signature_field_fails_before_mutation[chunk_overlap] ______
+
+staging = (<qdrant_client.qdrant_client.QdrantClient object at 0x0000020E56A83F00>, {'data_file_path': WindowsPath('C:/Users/Adm...sonl'), 'collection_name': 'staging_matrix', 'corpus_version': 'v1', 'vector_size': 4, ...}, {'embed': 0, 'upsert': 0})
+field = 'chunk_overlap'
+
+    @pytest.mark.parametrize("field", ["collection_name", "corpus_version", "data_file_sha256", "chunk_size", "chunk_overlap", "vector_size", "embedding_fingerprint", "splitter_version"])
+    def test_missing_signature_field_fails_before_mutation(staging, field):
+        client, args, counts = staging
+>       assert import_data.import_embedding_dataset(**args)["status"] is True
+E       assert False is True
+
+backend\tests\integration\test_phase3_resume_matrix.py:51: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_missing_signature_field_f4\input.jsonl
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Target staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Batch size: 1, limit: none
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Embedding request batch size: 32
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Corpus version: v1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Starting from JSONL line: 1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Skip existing Qdrant points: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Require trusted source metadata: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Created Qdrant staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Verified required payload indexes: staging_matrix
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: domain must be health_inbody
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: domain must be health_inbody
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import result: status=False upserted=0 errors=4
+------------------------------ Captured log call ------------------------------
+INFO     pipelines.import_data:import_data.py:665 Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_missing_signature_field_f4\input.jsonl
+INFO     pipelines.import_data:import_data.py:666 Target staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:667 Batch size: 1, limit: none
+INFO     pipelines.import_data:import_data.py:668 Embedding request batch size: 32
+INFO     pipelines.import_data:import_data.py:669 Corpus version: v1
+INFO     pipelines.import_data:import_data.py:670 Starting from JSONL line: 1
+INFO     pipelines.import_data:import_data.py:671 Skip existing Qdrant points: False
+INFO     pipelines.import_data:import_data.py:672 Require trusted source metadata: False
+INFO     pipelines.import_data:import_data.py:727 Created Qdrant staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:742 Verified required payload indexes: staging_matrix
+WARNING  pipelines.import_data:import_data.py:882 line 1: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 1: domain must be health_inbody
+WARNING  pipelines.import_data:import_data.py:882 line 2: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 2: domain must be health_inbody
+INFO     pipelines.import_data:import_data.py:1118 Import result: status=False upserted=0 errors=4
+_______ test_missing_signature_field_fails_before_mutation[vector_size] _______
+
+staging = (<qdrant_client.qdrant_client.QdrantClient object at 0x0000020E56E66850>, {'data_file_path': WindowsPath('C:/Users/Adm...sonl'), 'collection_name': 'staging_matrix', 'corpus_version': 'v1', 'vector_size': 4, ...}, {'embed': 0, 'upsert': 0})
+field = 'vector_size'
+
+    @pytest.mark.parametrize("field", ["collection_name", "corpus_version", "data_file_sha256", "chunk_size", "chunk_overlap", "vector_size", "embedding_fingerprint", "splitter_version"])
+    def test_missing_signature_field_fails_before_mutation(staging, field):
+        client, args, counts = staging
+>       assert import_data.import_embedding_dataset(**args)["status"] is True
+E       assert False is True
+
+backend\tests\integration\test_phase3_resume_matrix.py:51: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_missing_signature_field_f5\input.jsonl
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Target staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Batch size: 1, limit: none
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Embedding request batch size: 32
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Corpus version: v1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Starting from JSONL line: 1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Skip existing Qdrant points: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Require trusted source metadata: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Created Qdrant staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Verified required payload indexes: staging_matrix
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: domain must be health_inbody
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: domain must be health_inbody
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import result: status=False upserted=0 errors=4
+------------------------------ Captured log call ------------------------------
+INFO     pipelines.import_data:import_data.py:665 Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_missing_signature_field_f5\input.jsonl
+INFO     pipelines.import_data:import_data.py:666 Target staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:667 Batch size: 1, limit: none
+INFO     pipelines.import_data:import_data.py:668 Embedding request batch size: 32
+INFO     pipelines.import_data:import_data.py:669 Corpus version: v1
+INFO     pipelines.import_data:import_data.py:670 Starting from JSONL line: 1
+INFO     pipelines.import_data:import_data.py:671 Skip existing Qdrant points: False
+INFO     pipelines.import_data:import_data.py:672 Require trusted source metadata: False
+INFO     pipelines.import_data:import_data.py:727 Created Qdrant staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:742 Verified required payload indexes: staging_matrix
+WARNING  pipelines.import_data:import_data.py:882 line 1: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 1: domain must be health_inbody
+WARNING  pipelines.import_data:import_data.py:882 line 2: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 2: domain must be health_inbody
+INFO     pipelines.import_data:import_data.py:1118 Import result: status=False upserted=0 errors=4
+__ test_missing_signature_field_fails_before_mutation[embedding_fingerprint] __
+
+staging = (<qdrant_client.qdrant_client.QdrantClient object at 0x0000020E57030050>, {'data_file_path': WindowsPath('C:/Users/Adm...sonl'), 'collection_name': 'staging_matrix', 'corpus_version': 'v1', 'vector_size': 4, ...}, {'embed': 0, 'upsert': 0})
+field = 'embedding_fingerprint'
+
+    @pytest.mark.parametrize("field", ["collection_name", "corpus_version", "data_file_sha256", "chunk_size", "chunk_overlap", "vector_size", "embedding_fingerprint", "splitter_version"])
+    def test_missing_signature_field_fails_before_mutation(staging, field):
+        client, args, counts = staging
+>       assert import_data.import_embedding_dataset(**args)["status"] is True
+E       assert False is True
+
+backend\tests\integration\test_phase3_resume_matrix.py:51: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_missing_signature_field_f6\input.jsonl
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Target staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Batch size: 1, limit: none
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Embedding request batch size: 32
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Corpus version: v1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Starting from JSONL line: 1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Skip existing Qdrant points: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Require trusted source metadata: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Created Qdrant staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Verified required payload indexes: staging_matrix
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: domain must be health_inbody
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: domain must be health_inbody
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import result: status=False upserted=0 errors=4
+------------------------------ Captured log call ------------------------------
+INFO     pipelines.import_data:import_data.py:665 Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_missing_signature_field_f6\input.jsonl
+INFO     pipelines.import_data:import_data.py:666 Target staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:667 Batch size: 1, limit: none
+INFO     pipelines.import_data:import_data.py:668 Embedding request batch size: 32
+INFO     pipelines.import_data:import_data.py:669 Corpus version: v1
+INFO     pipelines.import_data:import_data.py:670 Starting from JSONL line: 1
+INFO     pipelines.import_data:import_data.py:671 Skip existing Qdrant points: False
+INFO     pipelines.import_data:import_data.py:672 Require trusted source metadata: False
+INFO     pipelines.import_data:import_data.py:727 Created Qdrant staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:742 Verified required payload indexes: staging_matrix
+WARNING  pipelines.import_data:import_data.py:882 line 1: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 1: domain must be health_inbody
+WARNING  pipelines.import_data:import_data.py:882 line 2: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 2: domain must be health_inbody
+INFO     pipelines.import_data:import_data.py:1118 Import result: status=False upserted=0 errors=4
+____ test_missing_signature_field_fails_before_mutation[splitter_version] _____
+
+staging = (<qdrant_client.qdrant_client.QdrantClient object at 0x0000020E56A4F980>, {'data_file_path': WindowsPath('C:/Users/Adm...sonl'), 'collection_name': 'staging_matrix', 'corpus_version': 'v1', 'vector_size': 4, ...}, {'embed': 0, 'upsert': 0})
+field = 'splitter_version'
+
+    @pytest.mark.parametrize("field", ["collection_name", "corpus_version", "data_file_sha256", "chunk_size", "chunk_overlap", "vector_size", "embedding_fingerprint", "splitter_version"])
+    def test_missing_signature_field_fails_before_mutation(staging, field):
+        client, args, counts = staging
+>       assert import_data.import_embedding_dataset(**args)["status"] is True
+E       assert False is True
+
+backend\tests\integration\test_phase3_resume_matrix.py:51: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_missing_signature_field_f7\input.jsonl
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Target staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Batch size: 1, limit: none
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Embedding request batch size: 32
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Corpus version: v1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Starting from JSONL line: 1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Skip existing Qdrant points: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Require trusted source metadata: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Created Qdrant staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Verified required payload indexes: staging_matrix
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: domain must be health_inbody
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: domain must be health_inbody
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import result: status=False upserted=0 errors=4
+------------------------------ Captured log call ------------------------------
+INFO     pipelines.import_data:import_data.py:665 Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_missing_signature_field_f7\input.jsonl
+INFO     pipelines.import_data:import_data.py:666 Target staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:667 Batch size: 1, limit: none
+INFO     pipelines.import_data:import_data.py:668 Embedding request batch size: 32
+INFO     pipelines.import_data:import_data.py:669 Corpus version: v1
+INFO     pipelines.import_data:import_data.py:670 Starting from JSONL line: 1
+INFO     pipelines.import_data:import_data.py:671 Skip existing Qdrant points: False
+INFO     pipelines.import_data:import_data.py:672 Require trusted source metadata: False
+INFO     pipelines.import_data:import_data.py:727 Created Qdrant staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:742 Verified required payload indexes: staging_matrix
+WARNING  pipelines.import_data:import_data.py:882 line 1: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 1: domain must be health_inbody
+WARNING  pipelines.import_data:import_data.py:882 line 2: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 2: domain must be health_inbody
+INFO     pipelines.import_data:import_data.py:1118 Import result: status=False upserted=0 errors=4
+_________________ test_second_batch_failure_receipt_and_lease _________________
+
+staging = (<qdrant_client.qdrant_client.QdrantClient object at 0x0000020E56DC0AA0>, {'data_file_path': WindowsPath('C:/Users/Adm...sonl'), 'collection_name': 'staging_matrix', 'corpus_version': 'v1', 'vector_size': 4, ...}, {'embed': 0, 'upsert': 0})
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000020E570D2CF0>
+
+    def test_second_batch_failure_receipt_and_lease(staging, monkeypatch):
+        client, args, counts = staging
+        original = client.upsert
+        calls = []
+        def fail_second(*a, **kw):
+            calls.append(True)
+            if len(calls) == 2:
+                raise OSError("synthetic write failure")
+            return original(*a, **kw)
+        monkeypatch.setattr(client, "upsert", fail_second)
+        result = import_data.import_embedding_dataset(**args)
+        assert result["status"] is False
+>       assert result["last_successful_upsert_line"] == 1
+E       assert 0 == 1
+
+backend\tests\integration\test_phase3_resume_matrix.py:74: AssertionError
+---------------------------- Captured stderr call -----------------------------
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_second_batch_failure_rece0\input.jsonl
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Target staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Batch size: 1, limit: none
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Embedding request batch size: 32
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Corpus version: v1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Starting from JSONL line: 1
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Skip existing Qdrant points: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Require trusted source metadata: False
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Created Qdrant staging collection: staging_matrix
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Verified required payload indexes: staging_matrix
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 1: domain must be health_inbody
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: missing fields: domain
+[2m02:33:51[0m ⚠️ [33m[1mWARNING [0m [2m[import_data][0m line 2: domain must be health_inbody
+[2m02:33:51[0m ✅ [32m[1mINFO    [0m [2m[import_data][0m Import result: status=False upserted=0 errors=4
+------------------------------ Captured log call ------------------------------
+INFO     pipelines.import_data:import_data.py:665 Import dataset: C:\Users\Admin\Desktop\KLTN\LLL RAG\.phase3-matrix-tmp\test_second_batch_failure_rece0\input.jsonl
+INFO     pipelines.import_data:import_data.py:666 Target staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:667 Batch size: 1, limit: none
+INFO     pipelines.import_data:import_data.py:668 Embedding request batch size: 32
+INFO     pipelines.import_data:import_data.py:669 Corpus version: v1
+INFO     pipelines.import_data:import_data.py:670 Starting from JSONL line: 1
+INFO     pipelines.import_data:import_data.py:671 Skip existing Qdrant points: False
+INFO     pipelines.import_data:import_data.py:672 Require trusted source metadata: False
+INFO     pipelines.import_data:import_data.py:727 Created Qdrant staging collection: staging_matrix
+INFO     pipelines.import_data:import_data.py:742 Verified required payload indexes: staging_matrix
+WARNING  pipelines.import_data:import_data.py:882 line 1: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 1: domain must be health_inbody
+WARNING  pipelines.import_data:import_data.py:882 line 2: missing fields: domain
+WARNING  pipelines.import_data:import_data.py:882 line 2: domain must be health_inbody
+INFO     pipelines.import_data:import_data.py:1118 Import result: status=False upserted=0 errors=4
+============================== warnings summary ===============================
+backend/tests/integration/test_phase3_resume_matrix.py::test_resume_only_missing_point
+  C:\Users\Admin\Desktop\KLTN\LLL RAG\backend\src\rag\qdrant\client.py:138: UserWarning: Payload indexes have no effect in the local Qdrant. Please use server Qdrant if you need payload indexes.
+    results[field_name] = active.create_payload_index(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED backend/tests/integration/test_phase3_resume_matrix.py::test_resume_only_missing_point
+FAILED backend/tests/integration/test_phase3_resume_matrix.py::test_missing_signature_field_fails_before_mutation[collection_name]
+FAILED backend/tests/integration/test_phase3_resume_matrix.py::test_missing_signature_field_fails_before_mutation[corpus_version]
+FAILED backend/tests/integration/test_phase3_resume_matrix.py::test_missing_signature_field_fails_before_mutation[data_file_sha256]
+FAILED backend/tests/integration/test_phase3_resume_matrix.py::test_missing_signature_field_fails_before_mutation[chunk_size]
+FAILED backend/tests/integration/test_phase3_resume_matrix.py::test_missing_signature_field_fails_before_mutation[chunk_overlap]
+FAILED backend/tests/integration/test_phase3_resume_matrix.py::test_missing_signature_field_fails_before_mutation[vector_size]
+FAILED backend/tests/integration/test_phase3_resume_matrix.py::test_missing_signature_field_fails_before_mutation[embedding_fingerprint]
+FAILED backend/tests/integration/test_phase3_resume_matrix.py::test_missing_signature_field_fails_before_mutation[splitter_version]
+FAILED backend/tests/integration/test_phase3_resume_matrix.py::test_second_batch_failure_receipt_and_lease
+10 failed, 1 warning in 1.79s
+exit=1

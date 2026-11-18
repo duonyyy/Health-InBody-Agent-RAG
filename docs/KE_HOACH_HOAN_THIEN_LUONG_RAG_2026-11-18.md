@@ -1,5 +1,7 @@
 # Kế hoạch hoàn thiện luồng RAG từ dữ liệu tới web
 
+**Tiến độ 19/11 — retrieval/resume đợt 3: source-ready, chưa deploy.** Đã sửa raw-first retrieval, lỗi typed xuyên search/agent/API, dedup và provenance parent, release context xuyên subquery và resume fail-closed. Toàn suite cô lập 478/478 đạt; Python 3.10/image, runtime thật và quality gate corpus chưa chạy. Chi tiết: [báo cáo đợt 3](reports/upgrade-2026/retrieval-resume-phase3.md).
+
 Ngày lập: 18–19/11/2026. Trạng thái: **kế hoạch khảo sát, chưa triển khai**. Mục tiêu là một lượt hỏi tiếng Việt trên web có xác thực, safety, truy xuất đúng release, diễn giải bởi provider thật và citation truy ngược được; sau đó mới đo chất lượng và phát hành. Giữ backend tại `backend/`, ba specialist hiện tại, PostgreSQL memory local, không Zep. Không mở rộng OCR, redesign UI hoặc microservice. Không tự đổi model.
 
 ## 1. Baseline, bằng chứng và giới hạn

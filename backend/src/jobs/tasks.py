@@ -342,8 +342,9 @@ def index_health_documents(
 # CHAT HELPERS
 # ==========================================
 
-def _content_key(doc: Dict[str, Any]) -> str:
-    return str(doc.get("doc_id") or doc.get("content") or doc.get("title") or "")
+def _content_key(doc: Dict[str, Any]) -> tuple:
+    from rag.search import _content_key as chunk_key
+    return chunk_key(doc)
 
 
 def follow_up_question(history, question):
@@ -369,16 +370,21 @@ def retrieve_with_hybrid_search(queries: List[str], top_k: int = 5) -> List[Dict
     Truy xuat tai lieu Health/InBody bang multi-query hybrid search.
     """
     all_docs = []
-    seen_keys = set()
+    seen_keys = {}
+    request_context = {}
 
     for query in queries:
-        docs = hybrid_search(query, limit=top_k, use_rerank=False)
+        docs = hybrid_search(query, limit=top_k, use_rerank=False, request_context=request_context)
         for doc in docs:
             key = _content_key(doc)
+            if key in seen_keys:
+                from rag.search import _check_same_chunk
+                _check_same_chunk(seen_keys[key], doc)
             if key and key not in seen_keys:
-                seen_keys.add(key)
-                doc["retrieval_query"] = query
-                all_docs.append(doc)
+                seen_keys[key] = doc
+                item = doc.copy()
+                item["retrieval_query"] = query
+                all_docs.append(item)
 
     logger.info(
         "Retrieved %s unique Health/InBody docs from %s queries",
@@ -444,27 +450,9 @@ def get_summarized_response(response):
 
 @shared_task()
 def bot_rag_answer_message(history, question):
-    """
-    Pipeline RAG cho Health/InBody:
-    1. Viet lai follow-up question.
-    2. Tao multi-query.
-    3. Hybrid search.
-    4. Rerank.
-    5. Sinh cau tra loi co guardrail y te.
-    """
-    standalone_question = follow_up_question(history, question)
-    query_variations = rewrite_query_to_multi_queries(standalone_question, num_queries=3)
-
-    retrieved_docs = retrieve_with_hybrid_search(query_variations, top_k=5)
-    ranked_docs = rerank_documents(retrieved_docs, standalone_question, top_n=5)
-
-    answer = generate_health_answer(
-        user_message=question,
-        docs=ranked_docs,
-        user_profile={},
-    )
-    logger.info("Generated Health/InBody RAG answer")
-    return answer
+    """Keep the legacy string task contract using the bounded, safety-first graph."""
+    result = multi_agent_handle(question, history=history)
+    return result["content"]
 
 
 @shared_task()

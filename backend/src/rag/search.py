@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.config import DEFAULT_COLLECTION_NAME, DEFAULT_QDRANT_SEARCH_TIMEOUT
+from core.config import DEFAULT_COLLECTION_NAME, DEFAULT_QDRANT_SEARCH_TIMEOUT, DEFAULT_VECTOR_SIZE
 from harness.budget import (
     BudgetExhaustedError,
     call_with_supported_kwargs,
@@ -24,10 +24,12 @@ from rag.corpus_lifecycle import (
     BM25_TOKENIZER_VERSION,
     CANONICAL_ID_SCHEMA_VERSION,
     CorpusReleaseMismatchError,
+    canonical_chunk_identity,
     compute_chunk_set_fingerprint,
     load_release_manifest,
 )
 from rag.provenance import PROVENANCE_METADATA_FIELDS
+from rag.retrieval_errors import RetrievalDependencyError
 from rag.query_rewriter import expand_health_query
 from rag.rerank import rerank_documents
 
@@ -660,8 +662,7 @@ def bm25_search(
     if not _search_engine_initialized or not _documents:
         return []
 
-    expanded_query = expand_health_query(query)
-    query_tokens = _tokenize(expanded_query)
+    query_tokens = _tokenize(query)
     scored_docs = []
 
     for index in _bm25_candidate_indices(filters):
@@ -700,10 +701,10 @@ def _get_embedding(
         )
     except Exception as e:
         is_timeout = isinstance(e, (BudgetExhaustedError, TimeoutError)) or "timeout" in type(e).__name__.lower()
-        logger.warning("Embedding is not available, vector search skipped: %s", e)
-        if raise_on_timeout and is_timeout:
+        logger.warning("Embedding is not available (%s)", type(e).__name__)
+        if is_timeout:
             raise BudgetExhaustedError("Embedding timed out") from e
-        return None
+        raise RetrievalDependencyError("embedding_unavailable") from e
 
 
 def vector_search_fallback(
@@ -734,9 +735,7 @@ def vector_search_fallback(
         default_timeout=15.0,
     )
     if effective_deadline is not None and effective_embed_timeout is None:
-        if raise_on_timeout:
-            raise BudgetExhaustedError("Vector search budget exhausted before embedding")
-        return []
+        raise BudgetExhaustedError("Vector search budget exhausted before embedding")
 
     vector = _get_embedding(
         query,
@@ -745,7 +744,19 @@ def vector_search_fallback(
         raise_on_timeout=raise_on_timeout,
     )
     if vector is None:
-        return []
+        raise RetrievalDependencyError("embedding_unavailable")
+    if (not isinstance(vector, (list, tuple)) or not vector
+            or any(not isinstance(v, (int, float)) or not math.isfinite(v) for v in vector)):
+        raise RetrievalDependencyError("invalid_embedding")
+
+    expected_dimension = DEFAULT_VECTOR_SIZE
+    if qdrant_client is not None:
+        try:
+            expected_dimension = qdrant_client.get_collection(target_collection).config.params.vectors.size
+        except Exception as exc:
+            raise RetrievalDependencyError("qdrant_unavailable") from exc
+    if len(vector) != expected_dimension:
+        raise RetrievalDependencyError("invalid_embedding")
 
     qdrant_timeout = remaining_for_call(
         effective_deadline,
@@ -754,9 +765,7 @@ def vector_search_fallback(
         min_timeout=1.0,
     )
     if effective_deadline is not None and qdrant_timeout is None:
-        if raise_on_timeout:
-            raise BudgetExhaustedError("Vector search budget exhausted before Qdrant query")
-        return []
+        raise BudgetExhaustedError("Vector search budget exhausted before Qdrant query")
 
     try:
         from rag.qdrant.client import search_vector
@@ -770,15 +779,16 @@ def vector_search_fallback(
             timeout=qdrant_timeout,
             deadline_monotonic=effective_deadline,
             raise_on_timeout=raise_on_timeout,
+            raise_on_error=True,
             qdrant_client=qdrant_client,
         )
     except BudgetExhaustedError:
-        if raise_on_timeout:
-            raise
-        return []
+        raise
+    except RetrievalDependencyError:
+        raise
     except Exception as e:
-        logger.error("Vector search failed: %s", e)
-        return []
+        logger.error("Vector search failed (%s)", type(e).__name__)
+        raise RetrievalDependencyError("qdrant_unavailable") from e
 
     for result in results:
         result["search_method"] = "vector"
@@ -795,13 +805,25 @@ def vector_search_fallback(
     return results[:limit]
 
 
-def _content_key(doc: Dict[str, Any]) -> str:
-    return (
-        doc.get("chunk_id")
-        or doc.get("doc_id")
-        or doc.get("content")
-        or _document_text(doc)
-    ).__str__()
+def _content_key(doc: Dict[str, Any]) -> tuple:
+    identity = canonical_chunk_identity(doc)
+    metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+    explicit_chunk = doc.get("chunk_id") or metadata.get("chunk_id")
+    if identity["document_id"] and explicit_chunk:
+        return ("chunk", identity["document_id"], identity["chunk_id"])
+    if identity["content_hash"]:
+        return ("content", identity["document_id"], identity["content_hash"])
+    return ("point", identity["qdrant_point_id"])
+
+
+def _check_same_chunk(first: Dict[str, Any], second: Dict[str, Any]) -> None:
+    a, b = canonical_chunk_identity(first), canonical_chunk_identity(second)
+    for field in ("content_hash",):
+        if a[field] and b[field] and a[field] != b[field]:
+            raise CorpusReleaseMismatchError("Conflicting chunk content")
+    for field in ("release_id", "corpus_version", "active_physical_collection"):
+        if first.get(field) and second.get(field) and first[field] != second[field]:
+            raise CorpusReleaseMismatchError("Conflicting chunk release")
 
 
 def is_recipe_document(doc: Dict[str, Any]) -> bool:
@@ -884,6 +906,9 @@ def combine_search_results(
 
     for idx, doc in enumerate(bm25_results):
         key = _content_key(doc)
+        if key in combined:
+            _check_same_chunk(combined[key], doc)
+            continue
         item = doc.copy()
         item["bm25_score"] = normalized_bm25.get(idx, 0.0)
         item["vector_score"] = 0.0
@@ -895,6 +920,7 @@ def combine_search_results(
         key = _content_key(doc)
         vector_score = normalized_vector.get(idx, 0.0)
         if key in combined:
+            _check_same_chunk(combined[key], doc)
             combined[key].update({k: v for k, v in doc.items() if v not in (None, "")})
             combined[key]["vector_score"] = vector_score
             combined[key]["search_method"] = "hybrid"
@@ -938,23 +964,31 @@ def expand_parent_documents(
         return []
 
     expanded_parents: List[Dict[str, Any]] = []
-    seen_parent_keys: set[str] = set()
+    seen_parent_keys = set()
+    parents = {}
 
     for doc in docs:
         parent_id = doc.get("parent_id") or (doc.get("metadata") or {}).get("parent_id")
         parent_content = doc.get("parent_content") or (doc.get("metadata") or {}).get("parent_content")
 
         if not parent_id or not parent_content:
-            key = str(doc.get("chunk_id") or doc.get("doc_id") or doc.get("content") or "")
-            if key not in seen_parent_keys:
+            key = _content_key(doc)
+            if key not in seen_parent_keys and (not max_parents or len(expanded_parents) < max_parents):
                 seen_parent_keys.add(key)
                 expanded_parents.append(doc)
-            if max_parents and len(expanded_parents) >= max_parents:
-                break
             continue
 
-        parent_key = str(parent_id)
-        if parent_key in seen_parent_keys:
+        parent_key = (doc.get("document_id") or (doc.get("metadata") or {}).get("document_id") or "", str(parent_id))
+        child_identity = canonical_chunk_identity(doc)
+        if parent_key in parents:
+            parent = parents[parent_key]
+            if parent["content"] != parent_content:
+                raise CorpusReleaseMismatchError("Conflicting parent content")
+            if child_identity not in parent["matched_children"]:
+                parent["matched_children"].append(child_identity)
+            continue
+
+        if max_parents and len(expanded_parents) >= max_parents:
             continue
 
         seen_parent_keys.add(parent_key)
@@ -962,24 +996,25 @@ def expand_parent_documents(
         nested_meta = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
         parent_doc["child_content"] = doc.get("content", "")
         parent_doc["child_chunk_id"] = str(doc.get("chunk_id") or doc.get("doc_id") or "")
-        parent_doc["parent_id"] = parent_key
+        parent_doc["parent_id"] = str(parent_id)
         parent_doc["document_id"] = str(
             doc.get("document_id")
             or nested_meta.get("document_id")
             or nested_meta.get("doc_id")
             or doc.get("doc_id")
-            or parent_key
+            or str(parent_id)
         )
-        parent_doc["chunk_id"] = parent_key
+        parent_doc["chunk_id"] = str(parent_id)
+        parent_doc["matched_children"] = [child_identity]
         parent_doc["evidence_scope"] = "parent_section"
         parent_doc["content"] = parent_content
+        parent_doc["content_hash"] = hashlib.sha256(parent_content.encode("utf-8")).hexdigest()
         if doc.get("parent_title"):
             parent_doc["title"] = doc["parent_title"]
         parent_doc["is_expanded_parent"] = True
 
         expanded_parents.append(parent_doc)
-        if max_parents and len(expanded_parents) >= max_parents:
-            break
+        parents[parent_key] = parent_doc
 
     return expanded_parents
 
@@ -998,6 +1033,7 @@ def hybrid_search(
     qdrant_client: Any = None,
     mismatch_policy: Optional[str] = None,
     release_manifest_path: Optional[str | Path] = None,
+    request_context: Optional[Dict[str, Any]] = None,
 ) -> List[Dict]:
     """
     Tim kiem hybrid cho Health/InBody RAG voi release consistency & request pinning.
@@ -1019,13 +1055,12 @@ def hybrid_search(
             default_timeout=15.0,
         )
         if remaining_for_call(effective_deadline, timeout, default_timeout=15.0) is None:
-            if raise_on_timeout:
-                raise BudgetExhaustedError("Hybrid search budget exhausted")
-            return []
+            raise BudgetExhaustedError("Hybrid search budget exhausted")
 
     # Pin physical collection & check release sync at request start.
     should_check_sync = bool(
-        qdrant_client is not None
+        request_context is not None
+        or qdrant_client is not None
         or _search_index_metadata.get("physical_collection")
         or release_manifest_path is not None
         or os.getenv("CORPUS_RELEASE_MANIFEST_PATH")
@@ -1068,13 +1103,21 @@ def hybrid_search(
                 release_mismatch_degraded = True
                 pinned_collection = sync_info["bm25_physical_collection"] or DEFAULT_COLLECTION_NAME
 
+    # Shared by every subquery, including successful zero-hit queries. Refuse
+    # before retrieval if the physical release or lexical snapshot has changed.
+    release_pin = (pinned_collection, active_release_id, active_corpus_version,
+                   _search_index_metadata.get("chunk_set_fingerprint"), allow_bm25, allow_dense)
+    if request_context is not None:
+        if "release_pin" in request_context and request_context["release_pin"] != release_pin:
+            raise CorpusReleaseMismatchError("Corpus changed between retrieval queries")
+        request_context["release_pin"] = release_pin
+
     should_expand = ENABLE_PARENT_RETRIEVAL if expand_parents is None else expand_parents
     candidate_limit = limit * 3 if should_expand else limit * 2
 
-    expanded_query = expand_health_query(query)
     bm25_results: List[Dict[str, Any]] = []
     if allow_bm25:
-        bm25_results = bm25_search(expanded_query, limit=candidate_limit, filters=filters)
+        bm25_results = bm25_search(query, limit=candidate_limit, filters=filters)
 
     candidate_count = len(_bm25_candidate_indices(filters)) if allow_bm25 else 0
     bm25_covers_filtered_corpus = bool(
@@ -1089,7 +1132,7 @@ def hybrid_search(
     if allow_dense and not bm25_covers_filtered_corpus:
         vector_results = call_with_supported_kwargs(
             vector_search_fallback,
-            expanded_query,
+            query,
             limit=candidate_limit,
             filters=filters,
             embedding_timeout=embedding_timeout,
@@ -1125,7 +1168,7 @@ def hybrid_search(
             if release_mismatch_degraded:
                 doc["release_mismatch_degraded"] = True
     else:
-        logger.warning("No BM25/vector results available for query: %s", query)
+        logger.info("No BM25/vector results available")
         combined = []
 
     if use_rerank and combined:

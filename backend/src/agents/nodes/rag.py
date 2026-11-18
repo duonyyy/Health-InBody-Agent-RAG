@@ -14,7 +14,8 @@ from harness.layers.retry import degraded_observation
 from llm.client import LLM_REWRITE_TIMEOUT
 from rag.query_rewriter import rewrite_query_to_multi_queries
 from rag.rerank import rerank_documents
-from rag.search import hybrid_search
+from rag.retrieval_errors import RetrievalDependencyError
+from rag.search import hybrid_search, _content_key, _check_same_chunk
 from ..composer import _set_evidence_state
 from ..constants import (
     AGENT_COMPOSER_RESERVE_SECONDS,
@@ -88,40 +89,12 @@ def rag_agent(state: AgentState) -> AgentState:
         _set_evidence_state(state, [])
         return state
 
-    if max_queries > 1:
-        rewrite_timeout = _bounded_timeout(
-            state,
-            LLM_REWRITE_TIMEOUT,
-            AGENT_COMPOSER_RESERVE_SECONDS
-            + QDRANT_SEARCH_RESERVE_SECONDS
-            + RAG_EMBEDDING_TIMEOUT_SECONDS,
-            min_timeout=AGENT_MIN_CALL_TIMEOUT_SECONDS,
-        )
-        if rewrite_timeout >= AGENT_MIN_CALL_TIMEOUT_SECONDS:
-            try:
-                if not _count_call(state, "rewrite", 1):
-                    raise RuntimeError("Query rewrite call budget exhausted")
-                started = time.monotonic()
-                rewritten = call_with_supported_kwargs(
-                    rewrite_fn,
-                    question,
-                    num_queries=max_queries,
-                    timeout=rewrite_timeout,
-                    deadline_monotonic=deadline_monotonic,
-                )
-                queries = list(dict.fromkeys([question] + list(rewritten or [])))[:max_queries]
-                _trace_call(state, RAG_AGENT, "rewrite_query", started, "success")
-            except Exception as exc:
-                if "started" in locals():
-                    _trace_call(state, RAG_AGENT, "rewrite_query", started, "warning",
-                                error_code=type(exc).__name__)
-                logger.warning("Query rewrite failed (%s)", type(exc).__name__)
-                append_error(state, "Query rewrite is temporarily unavailable")
-
     docs: List[Dict[str, Any]] = []
-    seen = set()
+    seen = {}
     filters = _retrieval_filters(state)
     retrieval_reserve = AGENT_COMPOSER_RESERVE_SECONDS + QDRANT_SEARCH_RESERVE_SECONDS
+    raw_search_succeeded = False
+    request_context = {}
     for query in queries:
         if _is_cancelled(state):
             append_error(state, "RAG retrieval cancelled before query execution")
@@ -163,15 +136,24 @@ def rag_agent(state: AgentState) -> AgentState:
                     embedding_timeout=embedding_timeout,
                     timeout=search_timeout if search_timeout > 0 else embedding_timeout,
                     deadline_monotonic=search_deadline,
+                    request_context=request_context,
                 )
                 if degraded_observation(found):
                     raise ValueError("truncated retrieval result")
+                if query == question:
+                    raw_search_succeeded = True
+                if any(doc.get("release_mismatch_degraded") for doc in found):
+                    state["retrieval_status"] = "release_mismatch"
+                    append_error(state, "Knowledge retrieval unavailable: release_mismatch")
                 for doc in found:
-                    key = str(doc.get("doc_id") or doc.get("content") or doc.get("title") or "")
-                    if key and key not in seen:
-                        seen.add(key)
-                        doc["retrieval_query"] = query
-                        docs.append(doc)
+                    key = _content_key(doc)
+                    if key in seen:
+                        _check_same_chunk(seen[key], doc)
+                    else:
+                        item = doc.copy()
+                        item["retrieval_query"] = query
+                        seen[key] = item
+                        docs.append(item)
                 _trace_call(state, RAG_AGENT, "hybrid_search", started, "success",
                             source_version=next((doc.get("corpus_version") for doc in found
                                                  if doc.get("corpus_version")), None))
@@ -183,7 +165,16 @@ def rag_agent(state: AgentState) -> AgentState:
                             error_code=type(exc).__name__)
                 logger.warning("Hybrid search failed (%s)", type(exc).__name__)
                 if isinstance(exc, CorpusReleaseMismatchError):
+                    state["retrieval_status"] = "release_mismatch"
                     append_error(state, "Corpus release mismatch between Qdrant and BM25")
+                    break
+                if isinstance(exc, RetrievalDependencyError):
+                    state["retrieval_status"] = exc.reason
+                    append_error(state, f"Knowledge retrieval unavailable: {exc.reason}")
+                    break
+                if isinstance(exc, BudgetExhaustedError):
+                    state["retrieval_status"] = "timeout"
+                    append_error(state, "Knowledge retrieval unavailable: timeout")
                     break
                 backoff = _backoff_seconds(
                     state,
@@ -207,8 +198,45 @@ def rag_agent(state: AgentState) -> AgentState:
                         continue
                 append_error(state, "Knowledge retrieval is temporarily unavailable")
                 break
-        if state.get("errors") and "Knowledge retrieval is temporarily unavailable" in state["errors"]:
+        if any(error.startswith("Knowledge retrieval unavailable:")
+               or error in {"Knowledge retrieval is temporarily unavailable",
+                            "Corpus release mismatch between Qdrant and BM25"}
+               for error in state.get("errors", [])):
             break
+
+        if (query == question and raw_search_succeeded and not _is_cancelled(state)
+                and max_queries > 1
+                and state.get("call_counts", {}).get("retrieval", 0) < AGENT_MAX_RETRIEVAL_CALLS):
+            rewrite_timeout = _bounded_timeout(
+                state,
+                LLM_REWRITE_TIMEOUT,
+                AGENT_COMPOSER_RESERVE_SECONDS
+                + QDRANT_SEARCH_RESERVE_SECONDS
+                + RAG_EMBEDDING_TIMEOUT_SECONDS,
+                min_timeout=AGENT_MIN_CALL_TIMEOUT_SECONDS,
+            )
+            if rewrite_timeout >= AGENT_MIN_CALL_TIMEOUT_SECONDS:
+                try:
+                    if not _count_call(state, "rewrite", 1):
+                        raise RuntimeError("Query rewrite call budget exhausted")
+                    started = time.monotonic()
+                    rewritten = call_with_supported_kwargs(
+                        rewrite_fn,
+                        question,
+                        num_queries=max_queries,
+                        timeout=rewrite_timeout,
+                        deadline_monotonic=deadline_monotonic,
+                    )
+                    queries.extend(q for q in dict.fromkeys(rewritten or []) if q and q != question and q not in queries)
+                    del queries[max_queries:]
+                    _trace_call(state, RAG_AGENT, "rewrite_query", started, "success")
+                except Exception as exc:
+                    if "started" in locals():
+                        _trace_call(state, RAG_AGENT, "rewrite_query", started, "warning",
+                                    error_code=type(exc).__name__)
+                    logger.warning("Query rewrite failed (%s)", type(exc).__name__)
+                    append_error(state, "Query rewrite is temporarily unavailable")
+
 
     try:
         started = time.monotonic()
@@ -245,6 +273,7 @@ def rag_agent(state: AgentState) -> AgentState:
         docs = docs[:5]
 
     state["retrieved_docs"] = docs
+    state.setdefault("retrieval_status", "ok" if docs else "empty")
     _set_evidence_state(state, docs)
     append_trace(
         state,

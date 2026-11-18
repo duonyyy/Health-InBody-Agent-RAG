@@ -1088,17 +1088,25 @@ def verify_resume_compatibility(
     """Reject resume if source file, chunking, version, collection, or embedding config changed."""
     prior = existing_checkpoint.get("resume_signature")
     if not isinstance(prior, Mapping):
-        # Fallback to top-level fields for legacy manifests
-        prior = {
-            "collection_name": existing_checkpoint.get("collection_name"),
-            "corpus_version": existing_checkpoint.get("corpus_version"),
-            "data_file_sha256": existing_checkpoint.get("data_file_sha256"),
-        }
+        raise CorpusConflictError("Checkpoint thiếu resume_signature; cần tạo staging release mới")
+    required = {"collection_name", "corpus_version", "data_file_sha256", "chunk_size",
+                "chunk_overlap", "vector_size", "embedding_fingerprint", "splitter_version"}
+    for signature in (prior, expected_signature):
+        valid = required.issubset(signature)
+        for field in required - {"chunk_size", "chunk_overlap", "vector_size"}:
+            value = signature.get(field)
+            valid = valid and isinstance(value, str) and bool(value.strip())
+        for field in ("data_file_sha256", "embedding_fingerprint"):
+            valid = valid and bool(re.fullmatch(r"[0-9a-f]{64}", str(signature.get(field) or "")))
+        for field in ("chunk_size", "chunk_overlap", "vector_size"):
+            value = signature.get(field)
+            valid = valid and type(value) is int and value >= (0 if field == "chunk_overlap" else 1)
+        if not valid or signature["chunk_overlap"] >= signature["chunk_size"]:
+            raise CorpusConflictError("Resume signature thiếu hoặc sai schema; cần tạo staging release mới")
     mismatches: List[str] = []
     for key, expected_val in expected_signature.items():
-        if key not in prior or prior.get(key) is None:
-            if key in {"collection_name", "corpus_version", "data_file_sha256"}:
-                mismatches.append(f"{key}: missing in checkpoint")
+        if key not in prior or prior.get(key) is None or (isinstance(prior.get(key), str) and not prior[key].strip()):
+            mismatches.append(f"{key}: missing in checkpoint")
             continue
         if prior.get(key) != expected_val:
             mismatches.append(f"{key}: checkpoint={prior.get(key)!r} != current={expected_val!r}")
@@ -1125,32 +1133,21 @@ def check_existing_point_conflict(
     if existing is None:
         return "missing", None
 
-    exp_hash = str(expected_payload.get("content_hash") or "").strip()
-    act_hash = str(existing.get("content_hash") or "").strip()
-    if not act_hash or (exp_hash and act_hash != exp_hash):
-        return (
-            "conflict",
-            f"point_id={point_id} đã tồn tại nhưng content_hash khác "
-            f"(existing={act_hash or 'missing'} != expected={exp_hash or 'missing'})",
-        )
+    for payload in (expected_payload, existing):
+        try:
+            validate_corpus_version(payload.get("corpus_version"))
+        except CorpusAdmissionError:
+            return "conflict", f"point_id={point_id}: corpus_version không hợp lệ"
 
-    exp_ver = str(expected_payload.get("corpus_version") or "").strip()
-    act_ver = str(existing.get("corpus_version") or "").strip()
-    if exp_ver and act_ver != exp_ver:
-        return (
-            "conflict",
-            f"point_id={point_id} đã tồn tại nhưng corpus_version khác "
-            f"(existing={act_ver or 'missing'} != expected={exp_ver})",
-        )
-
-    exp_fp = str(expected_payload.get("embedding_fingerprint") or "").strip()
-    act_fp = str(existing.get("embedding_fingerprint") or "").strip()
-    if exp_fp and act_fp and act_fp != exp_fp:
-        return (
-            "conflict",
-            f"point_id={point_id} đã tồn tại nhưng embedding_fingerprint khác "
-            f"(existing={act_fp[:12]} != expected={exp_fp[:12]})",
-        )
+    for field in ("qdrant_point_id", "document_id", "chunk_id", "content_hash", "corpus_version", "embedding_fingerprint"):
+        expected = expected_payload.get(field)
+        actual = existing.get(field)
+        if not isinstance(expected, str) or not expected.strip() or not isinstance(actual, str) or not actual.strip():
+            return "conflict", f"point_id={point_id}: thiếu {field}"
+        if expected != actual or (field == "qdrant_point_id" and expected != point_id):
+            return "conflict", f"point_id={point_id}: {field} không khớp"
+        if field in {"content_hash", "embedding_fingerprint"} and not re.fullmatch(r"[0-9a-f]{64}", expected):
+            return "conflict", f"point_id={point_id}: {field} không hợp lệ"
 
     return "match", None
 

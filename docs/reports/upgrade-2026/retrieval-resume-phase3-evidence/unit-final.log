@@ -1,0 +1,127 @@
+........................................................................ [ 17%]
+........................................................................ [ 34%]
+........................................................................ [ 51%]
+........................................................................ [ 68%]
+..........................................F............................. [ 86%]
+..........................................................               [100%]
+================================== FAILURES ===================================
+________________ test_hybrid_sends_raw_query_to_both_branches _________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000222478ABA80>
+
+    def test_hybrid_sends_raw_query_to_both_branches(monkeypatch):
+        events = []
+        monkeypatch.setattr(search, "bm25_search", lambda query, **kw: events.append(("bm25", query)) or [])
+        monkeypatch.setattr(search, "vector_search_fallback", lambda query, **kw: events.append(("dense", query)) or [])
+        monkeypatch.setattr(search, "expand_health_query", lambda query: query + " expanded")
+>       search.hybrid_search("Câu hỏi gốc", use_rerank=False, expand_parents=False)
+
+backend\tests\unit\test_phase3_retrieval_regression.py:27:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+query = 'Câu hỏi gốc', limit = 10, filters = None, use_rerank = False
+embedding_timeout = None, expand_parents = False, timeout = None
+deadline_monotonic = None, raise_on_timeout = False, qdrant_client = None
+mismatch_policy = None, release_manifest_path = None
+
+    def hybrid_search(
+        query: str,
+        limit: int = DEFAULT_TOP_K,
+        filters: Optional[Dict[str, Any]] = None,
+        use_rerank: bool = True,
+        embedding_timeout: Optional[float] = None,
+        expand_parents: Optional[bool] = None,
+        timeout: Optional[float] = None,
+        deadline_monotonic: Optional[float] = None,
+        raise_on_timeout: bool = False,
+        *,
+        qdrant_client: Any = None,
+        mismatch_policy: Optional[str] = None,
+        release_manifest_path: Optional[str | Path] = None,
+    ) -> List[Dict]:
+        """
+        Tim kiem hybrid cho Health/InBody RAG voi release consistency & request pinning.
+
+        1. Pin physical collection tai dau request (khong tron 2 release neu alias doi giua request).
+        2. Doi chieu BM25 snapshot voi live Qdrant physical release & manifest.
+        3. Neu mismatch: khong am tham chay hybrid; xu ly theo RETRIEVAL_MISMATCH_POLICY
+           (`refuse` mac dinh, hoac `dense_only` / `bm25_only` tuong minh co gan nhan trung thuc).
+        4. Khong goi ket qua la `hybrid` neu chi mot nhanh tham gia.
+        """
+        if not query or not query.strip():
+            return []
+
+        effective_deadline = None
+        if deadline_monotonic is not None or timeout is not None:
+            effective_deadline = resolve_deadline(
+                timeout=timeout,
+                deadline_monotonic=deadline_monotonic,
+                default_timeout=15.0,
+            )
+            if remaining_for_call(effective_deadline, timeout, default_timeout=15.0) is None:
+                raise BudgetExhaustedError("Hybrid search budget exhausted")
+
+        # Pin physical collection & check release sync at request start.
+        should_check_sync = bool(
+            qdrant_client is not None
+            or _search_index_metadata.get("physical_collection")
+            or release_manifest_path is not None
+            or os.getenv("CORPUS_RELEASE_MANIFEST_PATH")
+            or os.getenv("CORPUS_VERIFY_ALIAS_ON_SEARCH", "false").strip().lower() in {"1", "true", "yes", "on"}
+        )
+        pinned_collection = DEFAULT_COLLECTION_NAME
+        allow_bm25 = True
+        allow_dense = True
+        release_mismatch_degraded = False
+        active_release_id = _search_index_metadata.get("release_id")
+        active_corpus_version = _search_index_metadata.get("corpus_version")
+
+        if should_check_sync:
+            sync_info = verify_runtime_release_sync(
+                collection_name=DEFAULT_COLLECTION_NAME,
+                qdrant_client=qdrant_client,
+                release_manifest_path=release_manifest_path,
+            )
+            pinned_collection = sync_info["pinned_collection"]
+            if not sync_info["synced"]:
+                policy = _retrieval_mismatch_policy(mismatch_policy)
+                reason = "; ".join(sync_info["reasons"])
+                logger.error(
+                    "Corpus release mismatch detected (policy=%s): %s",
+                    policy,
+                    reason,
+                )
+                if policy == "refuse":
+>                   raise CorpusReleaseMismatchError(
+                        f"Không thể chạy hybrid search do lệch phiên bản corpus giữa Qdrant và BM25: {reason}"
+E                       rag.corpus_lifecycle.CorpusReleaseMismatchError: Không thể chạy hybrid search do lệch phiên bản corpus giữa Qdrant và BM25: Không thể xác minh BM25 và alias Qdrant cùng collection vật lý
+
+backend\src\rag\search.py:1071: CorpusReleaseMismatchError
+---------------------------- Captured stderr call -----------------------------
+[2m02:25:48[0m ❌ [31m[1mERROR   [0m [2m[search][0m Corpus release mismatch detected (policy=refuse): Không thể xác minh BM25 và alias Qdrant cùng collection vật lý
+------------------------------ Captured log call ------------------------------
+ERROR    rag.search:search.py:1065 Corpus release mismatch detected (policy=refuse): Không thể xác minh BM25 và alias Qdrant cùng collection vật lý
+============================== warnings summary ===============================
+backend\src\api\app.py:257
+  C:\Users\Admin\Desktop\KLTN\LLL RAG\backend\src\api\app.py:257: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    @app.on_event("startup")
+
+..\..\..\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4675
+  C:\Users\Admin\AppData\Local\Programs\Python\Python313\Lib\site-packages\fastapi\applications.py:4675: DeprecationWarning:
+          on_event is deprecated, use lifespan event handlers instead.
+
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED backend/tests/unit/test_phase3_retrieval_regression.py::test_hybrid_sends_raw_query_to_both_branches
+1 failed, 417 passed, 2 warnings in 48.32s
+exit=1
