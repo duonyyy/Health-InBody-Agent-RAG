@@ -1,5 +1,11 @@
 # Lộ trình triển khai Health/InBody Agent RAG
 
+Tiến độ 2026-11-19: [Độ tin cậy evidence và claim](../reports/upgrade-2026/reliability-phase2.md) — sửa trust boundary review và các ca hoán đổi giá trị ở source, có regression composer/cache và urgent trong process; registry thật rỗng, binding chunk và đánh giá độc lập còn thiếu. Chưa deploy.
+
+Tiến độ 2026-11-19: [Ổn định test đợt 1](../reports/upgrade-2026/test-stabilization-phase1.md) — người dùng xác nhận ngừng observability, import-missing, vector-reuse và evaluator cũ; các khẳng định lịch sử bên dưới về chúng không còn mô tả source hiện tại. Collection host, 351 unit và 1 integration Qdrant local đạt; Python 3.10/image và các khoảng trống privacy/eval còn mở. Chưa deploy.
+
+Tiến độ 2026-11-18: [Embedding E5 small](../reports/upgrade-2026/embedding-e5-small-2026-11-18.md) đã có Qdrant staging và BM25 đồng bộ, sửa kiểm tra release ở source; **chưa activate alias hoặc deploy ứng dụng**.
+
 **Trạng thái:** kế hoạch triển khai; chưa phải xác nhận tính năng đã hoàn tất.  
 **Cập nhật:** 2026-07-30  
 **Phạm vi:** đưa MVP Health/InBody RAG từ demo kỹ thuật thành sản phẩm có bằng chứng, an toàn, đo lường được và có giá trị theo dõi tiến bộ.
@@ -7,7 +13,10 @@
 ## Mục tiêu sản phẩm
 
 Tiến độ mới 2026-09-29: [Bộ nhớ Day17 bốn lớp](09-day17-memory-completion-2026-09-29.md)
-đã nối source/test; **chưa deploy**, chưa xác minh PostgreSQL/Zep Cloud runtime.
+đã nối source/test (lịch sử; phần Zep đã bị gỡ ngày 2026-11-18, giữ lại hoàn toàn PostgreSQL local memory).
+
+Tiến độ mới 2026-11-18: [Gỡ bỏ tích hợp Zep Cloud](../reports/upgrade-2026/remove-zep-2026-11-18.md)
+đã gỡ hoàn toàn adapter (`zep_memory.py`, `sync.py`), dependency `zep-cloud`, biến `ZEP_*`, các route external memory (`/me/memory-consent`, `/me/memory/sync`, `DELETE /me/memory`), `use_zep_memory`/`memory_context`, và job `maintain_external_memory`; giữ nguyên toàn bộ bộ nhớ hội thoại, facts, consent và retention local trên PostgreSQL cùng tương thích đọc các khóa JSON legacy (không suy diễn dữ liệu phía Zep đã xóa). Kiểm chứng đạt **326 backend tests** (gồm subprocess chặn `zep_cloud` và chặn outbound network) + **13 pipeline tests**, 16/16 file đạt Python 3.10. **Đã gỡ tích hợp Zep ở source và kiểm thử liên quan; memory local PostgreSQL được giữ lại; chưa deploy hệ thống hiện hữu.**
 
 Tiến độ mới 2026-10-01: [Cache câu trả lời RAG an toàn](11-safe-llm-response-cache.md)
 đã nối vào Composer và có regression tests; **source-ready, chưa deploy**, chưa đo hit rate/latency
@@ -18,6 +27,9 @@ Tiến độ mới 2026-11-18: [Đợt 2 — Kiểm chứng câu trả lời & P
 
 Tiến độ mới 2026-11-18: [Đợt 3 — Kiểm soát Thời gian Xử lý & Tải (R02, R03)](../reports/upgrade-2026/phase03-deadline-load-2026-11-18.md)
 đã thống nhất deadline monotonic end-to-end (`backend/src/harness/budget.py`, truyền xuống Ollama/OpenAI/custom/normalize/router/rewrite/embedding/Qdrant/rerank/Tavily/Zep/DB/Celery, tắt SDK auto-retry chồng lớp và loại bỏ network probe ngoài budget khi lazy init), tách làn thực thi có giới hạn concurrency/queue (`backend/src/core/execution.py`) khỏi AnyIO threadpool, bổ sung rate limiter tách biệt (`backend/src/core/rate_limit.py`, Valkey Lua atomic + fail-closed production) và giữ bất biến `urgent` fast-path; đã vượt qua 308 backend unit/fast-path tests và 6/6 ca kiểm chứng **HTTP backend thật, upstream giả để fault injection** (urgent N=25 dưới tải chậm đạt P95 = 2,01 ms, 0 upstream call). **Đợt 3 source-ready; HTTP fault-injection cô lập đã kiểm tra; chưa deploy hệ thống hiện hữu.**
+
+Tiến độ mới 2026-11-18: [Đợt 4 — Khép kín Vòng đời Corpus (R06, R12, R13)](../reports/upgrade-2026/phase04-corpus-lifecycle-2026-11-18.md)
+đã áp dụng chính sách staging admission fail-closed + khóa ghi/activation dùng chung (`backend/src/rag/corpus_lifecycle.py`, `lifecycle_bridge.py`) trên mọi writer (API, Celery tasks, CLI `import_data`/`import_missing_vectors`/`reuse_qdrant_vectors`, `collection_admin`, `data_pipeline`), chuẩn hóa `WriteReceipt` trung thực theo `UpdateStatus` Qdrant và pre-upsert vector validation (chặn thiếu embedding/sai dim/`NaN`/`Inf`, API trả HTTP `502` thay vì `200 status=true`), nâng cấp resume kiểm `content_hash`/`corpus_version`/`embedding_fingerprint` + checkpoint nguyên tử, gắn kết corpus release manifest schema v2 với `chunk_set_fingerprint` đồng bộ Qdrant/BM25/request-pinning/response-cache/chặn `API_WORKERS > 1`, nâng cấp eval preflight (`evaluate_phase1.py`) và runbook blue/green (`docs/QDRANT_BLUE_GREEN_IMPORT.md`). Kiểm chứng đạt **330 backend tests** (gồm integration trên `QdrantClient(":memory:")` cô lập) + **13 pipeline tests**, 24/24 file hợp lệ Python 3.10. **Đợt 4 source-ready; chưa import/phát hành corpus thật; alias phục vụ chưa thay đổi.**
 
 Kế hoạch thiết kế dữ liệu: [Database và data schema tổng thể](10-database-schema-master-plan.md)
 — **đề xuất chờ duyệt**, gồm hiện trạng, mô hình đích, privacy lifecycle, migration/rollback,
@@ -63,6 +75,8 @@ Sản phẩm không nên được định nghĩa là “một chatbot có nhiề
 - [OpenAI Knowledge Retrieval](https://github.com/openai/openai-knowledge-retrieval): cấu hình retrieval, ingestion, chunking và evaluation.
 
 ## Hiện trạng cần lưu ý
+
+- Ngày 2026-11-18 đã tạo staging Qdrant E5 384 chiều gồm 3.846 point; đã kiểm fingerprint và tìm kiếm trực tiếp. Chưa activate alias, chưa đồng bộ BM25 hoặc nghiệm thu ứng dụng; xem `docs/reports/upgrade-2026/embedding-e5-small-2026-11-18.md`.
 
 Repo đã có FastAPI, LangGraph, Qdrant, BM25, safety tool, agent trace, `InBodyMeasurement` và test fast-path. Đây là nền tảng tốt. Tuy vậy trước khi mở rộng cần xác thực lại runtime sau các thay đổi hiện có:
 

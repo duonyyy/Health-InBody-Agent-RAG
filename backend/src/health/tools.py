@@ -6,7 +6,10 @@ health, nutrition, exercise, and safety helpers for the InBody RAG chatbot.
 """
 
 import logging
+import re
 from typing import Dict, List, Optional
+
+from health.validation import normalize_match_text
 
 logger = logging.getLogger(__name__)
 
@@ -272,6 +275,49 @@ def suggest_training_plan(
         return {"error": str(e)}
 
 
+_URGENT_PATTERNS = [
+    # Chest / Heart
+    r"\b(dau|tuc|that|nhoi)\s+nguc\b",
+    r"\b(ep|nhoi|dau)\s+tim\b",
+    # Breathing
+    r"\b(kho|ngat|ngung|tac)\s+tho\b",
+    r"\bkhong\s+tho\s+duoc\b",
+    # Consciousness / Neuro
+    r"\b(hon\s+me|bat\s+tinh|mat\s+y\s+thuc)\b",
+    r"\b(co\s+giat|dong\s+kinh)\b",
+    r"\b(dot\s+quy|tai\s+bien)\b",
+    r"\b(lo\s+mo|choang\s+vang)\b",
+    r"\bchoang\b",
+    # Hemorrhage
+    r"\b(non|ho)\s+ra\s+mau\b",
+    r"\bchay\s+mau\s+(o\s+at|nhieu|du\s+doi)\b",
+    r"\bchay\s+mau\b",
+]
+
+# Refined NGAT pattern: exclude 'ngat quang', 'ngat mui', 'ngat ket noi'
+_NGAT_URGENT_PATTERN = r"\b(ngat\s+xiu|ngat\s+di|ngat\s+tai\s+cho)\b|\b(?:bi\s+)?ngat\b(?!\s+(?:quang|mui|ket\s+noi))\b"
+
+# Medical Caution patterns
+_CAUTION_PATTERNS = [
+    # Chronic conditions
+    r"\b(tieu\s+duong|duong\s+huyet|dai\s+thao\s+duong)\b",
+    r"\b(huyet\s+ap|cao\s+huyet\s+ap|ha\s+huyet\s+ap|tut\s+huyet\s+ap)\b",
+    r"\b(tim\s+mach|suy\s+tim|suy\s+than|suy\s+gan|benh\s+than|benh\s+gan|benh\s+phoi)\b",
+    r"\b(dau\s+khop|thoai\s+hoa\s+khop|thoat\s+vi|viem\s+khop|dau\s+lung|dau\s+cot\s+song)\b",
+    r"\b(chan\s+thuong|rach\s+co|dut\s+day\s+chang)\b",
+    # Medical consultation / prescription
+    r"\b(chan\s+doan|ke\s+don|phac\s+do|toa\s+thuoc|don\s+thuoc)\b",
+    r"\b(bac\s+si\s+kham|kham\s+benh)\b",
+    # Medicine (unaccented: exclude 'thuoc nhom', 'phu thuoc', 'thuoc ve')
+    r"(?<!phu\s)\bthuoc\b(?!\s+(?:nhom|ve|loai|dien))\b",
+    # Dosage (unaccented: require dosage terms, do not match alone 'lieu' or 'tai lieu')
+    r"\b(lieu\s+luong|lieu\s+dung|qua\s+lieu|tang\s+lieu|giam\s+lieu|dung\s+lieu)\b",
+    # Disease (unaccented: exclude 'benh vuc')
+    r"\b(benh\s+nen|benh\s+ly|mac\s+benh|bi\s+benh)\b",
+    r"\bbenh\b(?!\s+vuc)\b",
+]
+
+
 def check_medical_safety(question: str, conditions: Optional[List[str]] = None) -> Dict:
     """
     Kiem tra cau hoi co dau hieu can canh bao y te hay khong.
@@ -284,52 +330,47 @@ def check_medical_safety(question: str, conditions: Optional[List[str]] = None) 
         Dict gom muc do rui ro va huong phan hoi an toan.
     """
     try:
-        text = question.lower()
+        raw_lower = (question or "").lower()
+        norm = normalize_match_text(question)
         conditions = conditions or []
-        urgent_keywords = [
-            "dau nguc",
-            "đau ngực",
-            "kho tho",
-            "khó thở",
-            "ngat",
-            "ngất",
-            "lo mo",
-            "lơ mơ",
-            "choang",
-            "choáng",
-            "dot quy",
-            "đột quỵ",
-            "chay mau",
-            "chảy máu",
-        ]
-        medical_keywords = [
-            "thuoc",
-            "thuốc",
-            "lieu",
-            "liều",
-            "benh",
-            "bệnh",
-            "tieu duong",
-            "tiểu đường",
-            "huyet ap",
-            "huyết áp",
-            "chan doan",
-            "chẩn đoán",
-            "dau khop",
-            "đau khớp",
-            "chan thuong",
-            "chấn thương",
-        ]
 
-        if any(keyword in text for keyword in urgent_keywords):
+        # 1. Deterministic urgent life-threatening checks
+        is_urgent = False
+        for pat in _URGENT_PATTERNS:
+            if re.search(pat, norm):
+                is_urgent = True
+                break
+        if not is_urgent and re.search(_NGAT_URGENT_PATTERN, norm):
+            is_urgent = True
+
+        if is_urgent:
             risk_level = "urgent"
             action = "Khuyến nghị người dùng liên hệ cấp cứu hoặc cơ sở y tế ngay."
-        elif conditions or any(keyword in text for keyword in medical_keywords):
-            risk_level = "medical_caution"
-            action = "Trả lời ở mức tham khảo và khuyến nghị hỏi bác sĩ/chuyên gia khi cần."
         else:
-            risk_level = "low"
-            action = "Có thể trả lời về sức khỏe, dinh dưỡng, tập luyện ở mức tham khảo."
+            # 2. Medical caution checks (chronic diseases, medications, injuries)
+            is_caution = bool(conditions)
+            if not is_caution:
+                # Check accented raw text first for precise terms
+                if re.search(r"\bthuốc\b", raw_lower) and not re.search(r"\bthuộc\b", raw_lower):
+                    is_caution = True
+                elif re.search(r"\bbệnh\b", raw_lower) and not re.search(r"\bbênh\b", raw_lower):
+                    is_caution = True
+                elif re.search(r"\bliều\b", raw_lower) and not re.search(
+                    r"\b(tài\s+liệu|liệu\s+(?:rằng|có|chừng))\b", raw_lower
+                ):
+                    is_caution = True
+                else:
+                    for pat in _CAUTION_PATTERNS:
+                        if re.search(pat, norm):
+                            is_caution = True
+                            break
+
+            if is_caution:
+                risk_level = "medical_caution"
+                action = "Trả lời ở mức tham khảo và khuyến nghị hỏi bác sĩ/chuyên gia khi cần."
+            else:
+                risk_level = "low"
+                action = "Có thể trả lời về sức khỏe, dinh dưỡng, tập luyện ở mức tham khảo."
 
         result = {
             "risk_level": risk_level,

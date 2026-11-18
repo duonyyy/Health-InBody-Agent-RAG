@@ -77,12 +77,11 @@ def run_chat(
     conversation_id=None,
     *,
     bot_id="health-inbody-agent",
-    use_zep_memory=False,
     deadline_monotonic: Optional[float] = None,
     cancel_event: Any = None,
 ) -> dict:
     request_id = f"req-{uuid4().hex[:12]}"
-    # Emergency response must not wait for session storage, rate limits, or a remote memory call.
+    # Emergency response must not wait for session storage or rate limits.
     if check_medical_safety(question).get("risk_level") == "urgent":
         response = multi_agent_handle(question, user_id=subject)
         response.update(request_id=request_id, conversation_id=None, memory_status="skipped_urgent")
@@ -133,7 +132,6 @@ def run_chat(
         history=history,
         user_id=subject,
         user_profile=context,
-        use_zep_memory=use_zep_memory,
         conversation_id=str(conversation_id or "main"),
         deadline_monotonic=budget.deadline_monotonic,
         cancel_event=cancel_event,

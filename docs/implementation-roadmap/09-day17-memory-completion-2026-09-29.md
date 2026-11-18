@@ -1,5 +1,8 @@
 # Hoàn thiện bộ nhớ Day17 — 2026-09-29
 
+> [!NOTE]
+> **Cập nhật 2026-11-18:** Phần tích hợp **Zep Cloud** (adapter, sync, `/me/memory-consent`, `/me/memory/sync`, `DELETE /me/memory`) trong tài liệu lịch sử này **đã được gỡ bỏ**. Các thành phần bộ nhớ local trên PostgreSQL (phiên hội thoại, history, facts đề xuất/xác nhận/xóa/hết hạn, sự kiện plan/check-in, retention) vẫn được giữ nguyên. Xem [báo cáo gỡ bỏ Zep](../reports/upgrade-2026/remove-zep-2026-11-18.md) và [hợp đồng bộ nhớ hiện hành](../../backend/src/memory/README.md).
+
 Trạng thái: **source-ready, chưa deploy**. Đây không phải nghiệm thu production hoặc đánh giá chất lượng y khoa.
 Tài liệu này thay thế mô tả raw-chat continuity và lỗ hổng task owner trong báo cáo 08.
 

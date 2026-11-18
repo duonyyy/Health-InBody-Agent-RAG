@@ -177,7 +177,17 @@ def test_medical_caution_routing_skips_plan_and_web_agents():
     )
 
 
+def _bind_synthetic_release(monkeypatch):
+    # These tests exercise filtering/fusion, with a matching isolated release.
+    monkeypatch.delenv("CORPUS_RELEASE_MANIFEST_PATH", raising=False)
+    monkeypatch.setattr(search, "_search_engine_initialized", True)
+    monkeypatch.setattr(search, "_search_index_metadata", {"physical_collection": "test-physical"})
+    monkeypatch.setattr(search, "_resolve_alias_target", lambda *args, **kwargs: "test-physical")
+
+
 def test_hybrid_search_filters_process_local_bm25_and_vector_results(monkeypatch):
+    _bind_synthetic_release(monkeypatch)
+    monkeypatch.setattr(search, "_bm25_candidate_indices", lambda filters: [])
     monkeypatch.setattr(
         search,
         "bm25_search",
@@ -216,6 +226,7 @@ def test_hybrid_search_filters_process_local_bm25_and_vector_results(monkeypatch
 
 
 def test_hybrid_skips_vector_when_bm25_covers_small_filtered_corpus(monkeypatch):
+    _bind_synthetic_release(monkeypatch)
     monkeypatch.setattr(search, "_bm25_candidate_indices", lambda filters: [0, 1])
     monkeypatch.setattr(
         search,

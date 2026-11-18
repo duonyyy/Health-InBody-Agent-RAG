@@ -148,9 +148,12 @@ def test_qdrant_indexer_dry_run():
         dry_run=True,
     )
 
-    assert res["status"] == "ok"
+    assert res["ok"] is True
+    assert res["status"] == "dry_run"
     assert res["dry_run"] is True
-    assert res["indexed_points"] == 1
+    assert res["indexed_points"] == 0
+    assert res["validated_points"] == 1
+    assert res["topology_verified"] is False
 
 
 def test_table_aware_chunking_preserves_header():
@@ -454,14 +457,19 @@ def test_provenance_preserved_across_seed_chunk_bm25_and_qdrant_payload(tmp_path
     captured_points = []
 
     class FakeQdrantClient:
+        def get_aliases(self):
+            alias = type("Alias", (), {"alias_name": "nmk_chatbot_active", "collection_name": "prod_v0"})()
+            return type("Resp", (), {"aliases": [alias]})()
+
         def upsert(self, collection_name, points, wait=True):
             captured_points.extend(points)
+            return type("UpdateResult", (), {"status": "completed", "operation_id": 1})()
 
     class FakeEmbedder:
         def embed_texts(self, texts, dry_run=False):
             return [[0.1] * 8 for _ in texts]
 
-    indexer = QdrantIndexer(vector_size=8)
+    indexer = QdrantIndexer(vector_size=8, lock_dir=tmp_path / "locks")
     indexer._client = FakeQdrantClient()
     embedder = FakeEmbedder()
     res = indexer.index_chunks(
@@ -471,8 +479,10 @@ def test_provenance_preserved_across_seed_chunk_bm25_and_qdrant_payload(tmp_path
         batch_size=10,
         skip_existing=False,
         dry_run=False,
+        corpus_version="test.2",
     )
-    assert res["status"] == "ok"
+    assert res["ok"] is True
+    assert res["status"] == "committed"
     assert len(captured_points) == 1
     q_payload = captured_points[0].payload
     assert q_payload["document_id"] == "seed_verified_01"

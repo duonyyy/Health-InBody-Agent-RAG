@@ -18,7 +18,6 @@ from llm.client import (
     openai_chat_complete as _default_openai_chat_complete,
     vietnamese_llm_chat_complete as _default_vietnamese_llm_chat_complete,
 )
-from memory import zep_memory
 from memory.context import answer_memory_question
 from memory.history import bounded_history
 from rag.query_rewriter import (
@@ -196,7 +195,6 @@ def multi_agent_handle(
     history: Optional[List[Dict[str, str]]] = None,
     user_id: Optional[str] = None,
     user_profile: Optional[Dict[str, Any]] = None,
-    use_zep_memory: bool = False,
     conversation_id: str = "main",
     deadline_monotonic: Optional[float] = None,
     cancel_event: Any = None,
@@ -220,7 +218,6 @@ def multi_agent_handle(
         "history": bounded_history(history or []),
         "user_profile": personalization_context,
         "personalization_context": personalization_context,
-        "memory_context": "",
         "latest_measurement": personalization_context.get("latest_confirmed_measurement", {}),
         "tool_results": [],
         "retrieved_docs": [],
@@ -278,32 +275,6 @@ def multi_agent_handle(
         append_trace(initial_state, "PersonalMemoryAgent", "recall_confirmed_personal_data", "success",
                      "Read current owner-scoped records; no medical evidence was created.")
         return _response_from_state(initial_state)
-
-    memory_allowed = bool(
-        use_zep_memory and user_id and personalization_context.get("external_memory_consent")
-        and safety.get("risk_level") == "low" and zep_memory.available()
-    )
-    if memory_allowed and _remaining_seconds(initial_state) > AGENT_COMPOSER_RESERVE_SECONDS + 3:
-        started = time.monotonic()
-        zep_timeout = _bounded_timeout(
-            initial_state,
-            zep_memory.timeout_seconds(),
-            reserve_seconds=AGENT_COMPOSER_RESERVE_SECONDS + 2,
-        )
-        if zep_timeout > 0:
-            try:
-                from memory import sync as memory_sync
-                initial_state["memory_context"] = call_with_supported_kwargs(
-                    memory_sync.recall_confirmed,
-                    user_id,
-                    question,
-                    timeout=zep_timeout,
-                    deadline_monotonic=initial_state["deadline_monotonic"],
-                )
-                _trace_call(initial_state, "ZepMemory", "recall", started, "success")
-            except Exception as exc:
-                _trace_call(initial_state, "ZepMemory", "recall", started, "warning",
-                            error_code=type(exc).__name__)
 
     if _remaining_seconds(initial_state) <= 0:
         append_error(initial_state, "Request deadline exhausted before multi-agent graph execution")

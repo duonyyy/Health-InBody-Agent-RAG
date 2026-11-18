@@ -5,6 +5,7 @@ Script để download model cho serving:
 """
 
 import logging
+import os
 from pathlib import Path
 
 from huggingface_hub import snapshot_download
@@ -16,7 +17,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def download_baseline_model(model_name, local_dir="./models"):
+def download_baseline_model(model_name, local_dir="./models", revision=None):
     """
     Download baseline model từ Hugging Face
 
@@ -40,16 +41,16 @@ def download_baseline_model(model_name, local_dir="./models"):
         # Download model từ Hugging Face
         snapshot_download(
             repo_id=model_name,
+            revision=revision,
             local_dir=local_dir,
-            local_dir_use_symlinks=False,
-            resume_download=True,
+            allow_patterns=["*.json", "*.safetensors", "*.txt", "*.model"],
+            ignore_patterns=["onnx/*", "openvino/*"],
         )
 
         logger.info("✅ Baseline model downloaded successfully!")
         logger.info(f"📍 Model path: {local_dir}")
         logger.info("")
-        logger.info("💡 Model này chưa được fine-tune, phù hợp cho serving")
-        logger.info("   vì baseline model có performance tốt hơn fine-tuned model.")
+        logger.info("Kiểm tra model trên bộ đánh giá của dự án trước khi phát hành.")
 
         return True
 
@@ -63,14 +64,15 @@ def main():
     Main function để download model cho serving
     """
     # Configuration
-    MODEL_NAME = "BAAI/bge-m3"  # Baseline model được recommend
-    LOCAL_DIR = "./models/bge-m3"
+    MODEL_NAME = os.getenv("EMBEDDING_MODEL_ID", "intfloat/multilingual-e5-small")
+    MODEL_REVISION = os.getenv("EMBEDDING_MODEL_REVISION", "62ff60abe92eb88c1b297fabaad28f7ac77b5875")
+    LOCAL_DIR = os.getenv("EMBEDDING_DOWNLOAD_DIR", "./models/multilingual-e5-small")
 
     logger.info("🚀 Starting model download process...")
     logger.info("")
 
     # Download baseline model
-    success = download_baseline_model(MODEL_NAME, LOCAL_DIR)
+    success = download_baseline_model(MODEL_NAME, LOCAL_DIR, MODEL_REVISION)
 
     if success:
         logger.info("")

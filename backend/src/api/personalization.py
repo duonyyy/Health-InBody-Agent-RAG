@@ -1,15 +1,12 @@
 """Authenticated `/me` API for P1 personalization data."""
 
 import logging
-import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from pydantic import BaseModel
 
 from auth.context import CurrentUser, get_current_user, personalization_debug_enabled
 from health.validation import InvalidHealthInput
-from memory import sync as memory_sync
 from persistence import personalization_service as service
 from persistence.schemas import (
     CheckInCreateRequest,
@@ -24,40 +21,6 @@ from persistence.schemas import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/me", tags=["personalization"])
-
-
-class MemoryConsentRequest(BaseModel):
-    acknowledged_external_processing: bool
-
-
-def _require_trusted_memory_identity(current_user: CurrentUser) -> None:
-    if current_user.auth_source == "server_context":
-        return
-    if (current_user.auth_source == "development_header"
-            and os.getenv("ZEP_ALLOW_DEV_IDENTITY", "false").lower() in {"1", "true", "yes", "on"}):
-        return
-    raise HTTPException(status_code=403, detail="Trusted authentication is required for external memory")
-
-
-@router.put("/memory-consent")
-def enable_memory(data: MemoryConsentRequest, current_user: CurrentUser = Depends(get_current_user)):
-    _require_trusted_memory_identity(current_user)
-    if data.acknowledged_external_processing is not True:
-        raise HTTPException(status_code=422, detail="Explicit acknowledgement of external processing is required")
-    return _execute(service.grant_external_memory_consent, current_user.subject)
-
-
-@router.delete("/memory", status_code=status.HTTP_204_NO_CONTENT)
-def delete_memory(current_user: CurrentUser = Depends(get_current_user)):
-    _require_trusted_memory_identity(current_user)
-    result = _execute(service.revoke_external_memory_consent, current_user.subject)
-    if result["deletion_pending"]:
-        try:
-            memory_sync.finish_deletion(current_user.subject)
-        except Exception as exc:
-            logger.warning("External memory deletion failed (%s)", type(exc).__name__)
-            raise HTTPException(status_code=503, detail="External-memory deletion is pending; retry later") from exc
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 def _execute(operation, *args, **kwargs):

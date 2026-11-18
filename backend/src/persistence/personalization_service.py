@@ -54,9 +54,16 @@ METRIC_FIELDS = (
 DEFAULT_CONSENT = {
     "health_data_processing": False,
     "personalization": False,
-    "external_memory": False,
-    "external_memory_deletion_pending": False,
 }
+_LEGACY_EXTERNAL_MEMORY_KEYS = (
+    "external_memory",
+    "external_memory_sync_pending",
+    "external_memory_deletion_pending",
+    "external_memory_consented_at",
+    "external_memory_synced_at",
+    "external_memory_revoked_at",
+    "external_memory_deleted_at",
+)
 
 
 class PersonalizationError(Exception):
@@ -115,60 +122,31 @@ def _consent(user: User) -> Dict[str, bool]:
     return {
         "health_data_processing": bool(stored.get("health_data_processing", False)),
         "personalization": bool(stored.get("personalization", False)),
-        "external_memory": bool(stored.get("external_memory", False)),
-        "external_memory_deletion_pending": bool(stored.get("external_memory_deletion_pending", False)),
     }
 
 
+def legacy_external_memory_status(consent_flags: Any) -> str:
+    """Read-only audit helper for legacy external-memory JSON keys left in DB.
+
+    Removing the external provider integration does NOT verify or prove deletion on
+    the external provider side; any historical trace is reported as unverified.
+    """
+    if not isinstance(consent_flags, dict):
+        return "none"
+    has_trace = bool(
+        consent_flags.get("external_memory")
+        or consent_flags.get("external_memory_deletion_pending")
+        or consent_flags.get("external_memory_synced_at")
+        or consent_flags.get("external_memory_consented_at")
+    )
+    return "unverified_external_state" if has_trace else "none"
+
+
 def _save_consent(user: User, flags: Dict[str, bool], **audit: Any) -> None:
+    # Preserve unrelated/legacy JSON keys in consent_flags without activating them
+    # or fabricating external-provider deletion timestamps.
     stored = user.consent_flags if isinstance(user.consent_flags, dict) else {}
     user.consent_flags = {**stored, **flags, **audit}
-
-
-def grant_external_memory_consent(subject: str) -> Dict[str, bool]:
-    """External cloud processing requires a distinct, explicit opt-in."""
-    with session_scope() as db:
-        user = _get_user(db, subject, create=False, for_update=True)
-        if user is None:
-            raise PersonalizationConflict("Confirm your profile and data-processing consent first")
-        consent = _consent(user)
-        if not (consent["health_data_processing"] and consent["personalization"]):
-            raise PersonalizationConflict("Health-data and personalization consent are required first")
-        if consent["external_memory_deletion_pending"]:
-            raise PersonalizationConflict("Previous external-memory deletion is still pending")
-        consent["external_memory"] = True
-        _save_consent(user, consent,
-                      external_memory_sync_pending=True,
-                      external_memory_consented_at=datetime.now(timezone.utc).isoformat())
-        db.flush()
-        return {"enabled": True}
-
-
-def revoke_external_memory_consent(subject: str) -> Dict[str, bool]:
-    """Disable all reads/writes before attempting remote deletion."""
-    with session_scope() as db:
-        user = _get_user(db, subject, create=False, for_update=True)
-        if user is None:
-            return {"deletion_pending": False}
-        consent = _consent(user)
-        pending = consent["external_memory"] or consent["external_memory_deletion_pending"]
-        consent["external_memory"] = False
-        consent["external_memory_deletion_pending"] = pending
-        _save_consent(user, consent,
-                      external_memory_revoked_at=datetime.now(timezone.utc).isoformat())
-        db.flush()
-        return {"deletion_pending": pending}
-
-
-def mark_external_memory_deleted(subject: str) -> None:
-    with session_scope() as db:
-        user = _get_user(db, subject, create=False, for_update=True)
-        if user is not None:
-            consent = _consent(user)
-            consent["external_memory_deletion_pending"] = False
-            _save_consent(user, consent,
-                          external_memory_deleted_at=datetime.now(timezone.utc).isoformat())
-            db.flush()
 
 
 def _require_health_consent(user: User) -> None:
@@ -234,13 +212,7 @@ def update_profile(subject: str, payload: Dict[str, Any], *, replace: bool) -> D
                     consent_payload.get("health_data_processing", False)
                 ),
                 "personalization": bool(consent_payload.get("personalization", False)),
-                "external_memory": proposed_consent["external_memory"],
-                "external_memory_deletion_pending": proposed_consent["external_memory_deletion_pending"],
             }
-        if proposed_consent["external_memory"] and not (
-            proposed_consent["health_data_processing"] and proposed_consent["personalization"]
-        ):
-            raise PersonalizationConflict("Delete external memory before revoking parent consents")
         supplied_health_fields = {
             field_map.get(key, key)
             for key, value in payload.items()
@@ -955,7 +927,6 @@ def build_confirmed_personalization_context(subject: str) -> Dict[str, Any]:
             "available": True,
             "confirmed_memory": facts,
             "memory_events": events,
-            "external_memory_consent": consent["external_memory"] and not consent["external_memory_deletion_pending"],
             "profile": {
                 "age_range": user.age_range,
                 "sex_at_birth": user.sex_at_birth,

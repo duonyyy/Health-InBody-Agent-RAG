@@ -1,10 +1,12 @@
-"""Hybrid search cho Health/InBody Agent RAG."""
+"""Hybrid search cho Health/InBody Agent RAG với đồng bộ corpus release và request pinning."""
 import gzip
+import hashlib
 import json
 import logging
 import math
 import os
 import re
+import tempfile
 import unicodedata
 from collections import Counter
 from datetime import datetime, timezone
@@ -17,6 +19,13 @@ from harness.budget import (
     call_with_supported_kwargs,
     remaining_for_call,
     resolve_deadline,
+)
+from rag.corpus_lifecycle import (
+    BM25_TOKENIZER_VERSION,
+    CANONICAL_ID_SCHEMA_VERSION,
+    CorpusReleaseMismatchError,
+    compute_chunk_set_fingerprint,
+    load_release_manifest,
 )
 from rag.provenance import PROVENANCE_METADATA_FIELDS
 from rag.query_rewriter import expand_health_query
@@ -33,7 +42,9 @@ BM25_SNAPSHOT_PATH = os.getenv(
     "BM25_SNAPSHOT_PATH",
     "/usr/src/app/data/generated/bm25_snapshot.json.gz",
 )
+VALID_MISMATCH_POLICIES = {"refuse", "dense_only", "bm25_only"}
 
+# Process-local lexical index state (owned strictly by a single API process; API_WORKERS=1).
 _documents: List[Dict[str, Any]] = []
 _bm25_index: Dict[str, Any] = {}
 _search_engine_initialized = False
@@ -80,6 +91,61 @@ HEALTH_DOMAIN_KEYWORDS = {
         "an toàn",
     ],
 }
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _retrieval_mismatch_policy(explicit: Optional[str] = None) -> str:
+    raw = str(
+        explicit if explicit is not None else os.getenv("RETRIEVAL_MISMATCH_POLICY", "refuse")
+    ).strip().lower()
+    if raw not in VALID_MISMATCH_POLICIES:
+        return "refuse"
+    return raw
+
+
+def validate_lexical_worker_config() -> Dict[str, Any]:
+    """Block unsupported multi-worker configurations while BM25 lives in process-local RAM."""
+    raw_workers = str(os.getenv("API_WORKERS", "1")).strip()
+    try:
+        workers = int(raw_workers) if raw_workers else 1
+    except ValueError:
+        workers = 1
+    bm25_autoload = os.getenv("BM25_AUTOLOAD", "true").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+    allow_override = os.getenv("ALLOW_UNSUPPORTED_MULTI_WORKER_BM25", "false").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+    if workers > 1 and bm25_autoload and not allow_override:
+        raise RuntimeError(
+            f"Cấu hình API_WORKERS={workers} không được hỗ trợ khi BM25 chạy in-memory trong từng process "
+            "(mỗi worker sẽ giữ bản sao RAM riêng và không đồng bộ khi phát hành corpus). "
+            "Giữ API_WORKERS=1 hoặc tắt BM25_AUTOLOAD."
+        )
+    return {
+        "lexical_index_owner": "single_api_process_in_memory",
+        "multi_worker_supported": False,
+        "configured_api_workers": workers,
+        "bm25_autoload": bm25_autoload,
+    }
+
+
+def _resolve_alias_target(alias_name: str, qdrant_client: Any = None) -> Optional[str]:
+    """Resolve current physical collection pointed to by a Qdrant alias, if available."""
+    try:
+        from rag.qdrant.client import get_alias_target
+
+        return get_alias_target(alias_name, qdrant_client=qdrant_client)
+    except Exception as exc:
+        logger.debug("Could not resolve Qdrant alias %s (%s)", alias_name, type(exc).__name__)
+        return None
 
 
 def _normalize_lexical_text(text: str) -> str:
@@ -141,8 +207,6 @@ def _normalize_document(doc: Dict[str, Any], index: int) -> Optional[Dict[str, A
     for key, value in doc.items():
         normalized.setdefault(key, value)
 
-    # Promote provenance fields from nested metadata so snapshot/BM25 retrieval
-    # preserves full source and review metadata into citation/evidence builders.
     for field in PROVENANCE_METADATA_FIELDS:
         if field not in normalized and field in doc_metadata:
             normalized[field] = doc_metadata[field]
@@ -216,16 +280,7 @@ def initialize_search_index(
     documents: List[Dict],
     snapshot_metadata: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """
-    Khoi tao BM25 index tu kho tai lieu suc khoe/InBody.
-
-    Args:
-        documents: Danh sach document co cac field nhu question, content,
-            source, doc_id, content_type.
-
-    Returns:
-        True neu index duoc tao thanh cong.
-    """
+    """Khoi tao BM25 index tu kho tai lieu suc khoe/InBody."""
     global _documents, _bm25_index, _search_engine_initialized, _search_index_metadata
 
     try:
@@ -243,20 +298,31 @@ def initialize_search_index(
             _search_index_metadata = {}
             return False
 
+        fp_info = compute_chunk_set_fingerprint(normalized_docs)
         _documents = normalized_docs
         _bm25_index = _build_bm25_index(_documents)
         _search_engine_initialized = True
-        _search_index_metadata = dict(snapshot_metadata or {})
+        _search_index_metadata = {
+            **dict(snapshot_metadata or {}),
+            "chunk_set_fingerprint": (snapshot_metadata or {}).get("chunk_set_fingerprint")
+            or fp_info["chunk_set_fingerprint"],
+            "unique_chunk_count": fp_info["unique_chunk_count"],
+            "unique_document_count": fp_info["unique_document_count"],
+            "tokenizer_version": BM25_TOKENIZER_VERSION,
+            "canonical_id_schema": CANONICAL_ID_SCHEMA_VERSION,
+            "snapshot_error": None,
+        }
 
         logger.info(
-            "Initialized Health/InBody BM25 index with %s documents",
+            "Initialized Health/InBody BM25 index with %s documents (fp=%s)",
             len(_documents),
+            _search_index_metadata["chunk_set_fingerprint"][:16],
         )
         return True
     except Exception as e:
         logger.error("Failed to initialize Health/InBody search index: %s", e)
         _search_engine_initialized = False
-        _search_index_metadata = {}
+        _search_index_metadata = {"snapshot_error": str(e)}
         return False
 
 
@@ -264,72 +330,302 @@ def save_search_snapshot(
     snapshot_path: str | Path | None = None,
     metadata: Optional[Dict[str, Any]] = None,
 ) -> bool:
-    """Persist normalized BM25 documents atomically without unsafe pickle."""
+    """Persist normalized BM25 documents atomically (temp + fsync + replace) with fingerprint."""
     global _search_index_metadata
     if not _search_engine_initialized or not _documents:
         logger.warning("Cannot persist BM25 snapshot before index initialization")
         return False
 
     path = Path(snapshot_path or BM25_SNAPSHOT_PATH)
-    temporary_path = path.with_suffix(path.suffix + ".tmp")
     created_at = datetime.now(timezone.utc).isoformat()
+    fp_info = compute_chunk_set_fingerprint(_documents)
+    merged_meta = {
+        **dict(metadata or {}),
+        "chunk_set_fingerprint": fp_info["chunk_set_fingerprint"],
+        "unique_chunk_count": fp_info["unique_chunk_count"],
+        "unique_document_count": fp_info["unique_document_count"],
+        "tokenizer_version": BM25_TOKENIZER_VERSION,
+        "canonical_id_schema": CANONICAL_ID_SCHEMA_VERSION,
+    }
+    physical_collection = merged_meta.get("physical_collection")
+    release_id = merged_meta.get("release_id")
+    corpus_version = merged_meta.get("corpus_version")
+
     payload = {
         "schema_version": BM25_SNAPSHOT_SCHEMA_VERSION,
         "collection_name": DEFAULT_COLLECTION_NAME,
+        "physical_collection": physical_collection,
+        "release_id": release_id,
+        "corpus_version": corpus_version,
         "created_at": created_at,
         "document_count": len(_documents),
-        "metadata": dict(metadata or {}),
+        "chunk_set_fingerprint": fp_info["chunk_set_fingerprint"],
+        "metadata": merged_meta,
         "documents": _documents,
     }
+
+    temporary_path: Optional[Path] = None
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with gzip.open(temporary_path, "wt", encoding="utf-8") as file:
-            json.dump(payload, file, ensure_ascii=False, separators=(",", ":"))
-        temporary_path.replace(path)
+        fd, tmp_name = tempfile.mkstemp(
+            dir=str(path.parent),
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+        )
+        temporary_path = Path(tmp_name)
+        with os.fdopen(fd, "wb") as raw_handle:
+            with gzip.GzipFile(fileobj=raw_handle, mode="wb") as gz_handle:
+                gz_handle.write(
+                    json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+                )
+            raw_handle.flush()
+            os.fsync(raw_handle.fileno())
+        os.replace(temporary_path, path)
+        snapshot_sha = _sha256_file(path)
         _search_index_metadata = {
             **_search_index_metadata,
-            **(metadata or {}),
+            **merged_meta,
             "snapshot_persisted": True,
             "snapshot_path": str(path),
+            "snapshot_sha256": snapshot_sha,
             "snapshot_created_at": created_at,
+            "snapshot_error": None,
         }
-        logger.info("Persisted BM25 snapshot with %s documents", len(_documents))
+        logger.info(
+            "Persisted BM25 snapshot with %s documents (fp=%s)",
+            len(_documents),
+            fp_info["chunk_set_fingerprint"][:16],
+        )
         return True
     except Exception as exc:
         logger.error("Failed to persist BM25 snapshot: %s", exc)
-        try:
-            temporary_path.unlink(missing_ok=True)
-        except Exception:
-            pass
+        if temporary_path is not None:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except Exception:
+                pass
         return False
 
 
-def load_search_snapshot(snapshot_path: str | Path | None = None) -> bool:
-    """Load a trusted local JSON-gzip snapshot and rebuild the in-memory index."""
+def load_search_snapshot(
+    snapshot_path: str | Path | None = None,
+    *,
+    expected_physical_collection: Optional[str] = None,
+    expected_corpus_version: Optional[str] = None,
+    expected_release_id: Optional[str] = None,
+    expected_chunk_set_fingerprint: Optional[str] = None,
+    qdrant_client: Any = None,
+    verify_against_qdrant: bool = False,
+) -> bool:
+    """Load a verified local JSON-gzip snapshot and rebuild the in-memory BM25 index.
+
+    Rejects corrupt/partial files, mismatched fingerprints (even when count matches),
+    or mismatched physical release targets.
+    """
+    global _documents, _bm25_index, _search_engine_initialized, _search_index_metadata
+
     path = Path(snapshot_path or BM25_SNAPSHOT_PATH)
     if not path.exists():
         logger.warning("BM25 snapshot is not available at configured path")
+        _search_engine_initialized = False
+        _search_index_metadata = {
+            "snapshot_loaded": False,
+            "snapshot_path": str(path),
+            "snapshot_error": "snapshot_not_found",
+            "release_sync_status": "uninitialized",
+        }
         return False
+
     try:
+        snapshot_sha = _sha256_file(path)
         with gzip.open(path, "rt", encoding="utf-8") as file:
             payload = json.load(file)
+        if not isinstance(payload, dict):
+            raise ValueError("BM25 snapshot root payload is not a JSON object")
         if payload.get("schema_version") != BM25_SNAPSHOT_SCHEMA_VERSION:
             raise ValueError("unsupported BM25 snapshot schema")
         if payload.get("collection_name") != DEFAULT_COLLECTION_NAME:
             raise ValueError("BM25 snapshot collection does not match runtime collection")
-        documents = payload.get("documents") or []
+        documents = payload.get("documents")
+        if not isinstance(documents, list):
+            raise ValueError("BM25 snapshot documents field is invalid")
         if int(payload.get("document_count") or 0) != len(documents):
             raise ValueError("BM25 snapshot document count is inconsistent")
+
+        header_meta = dict(payload.get("metadata") or {})
+        declared_fp = str(
+            payload.get("chunk_set_fingerprint")
+            or header_meta.get("chunk_set_fingerprint")
+            or ""
+        ).strip()
+        computed_fp_info = compute_chunk_set_fingerprint(documents)
+        computed_fp = computed_fp_info["chunk_set_fingerprint"]
+        if declared_fp and declared_fp != computed_fp:
+            raise ValueError(
+                f"BM25 snapshot chunk_set_fingerprint mismatch "
+                f"(declared={declared_fp[:16]} != computed={computed_fp[:16]})"
+            )
+        if expected_chunk_set_fingerprint and computed_fp != expected_chunk_set_fingerprint:
+            raise ValueError(
+                f"BM25 snapshot chunk_set_fingerprint does not match expected release "
+                f"({computed_fp[:16]} != {expected_chunk_set_fingerprint[:16]})"
+            )
+
+        snap_version = str(
+            payload.get("corpus_version") or header_meta.get("corpus_version") or ""
+        ).strip() or None
+        snap_release_id = str(
+            payload.get("release_id") or header_meta.get("release_id") or ""
+        ).strip() or None
+        snap_physical = str(
+            payload.get("physical_collection") or header_meta.get("physical_collection") or ""
+        ).strip() or None
+
+        if expected_corpus_version and snap_version != expected_corpus_version:
+            raise ValueError(
+                f"BM25 snapshot corpus_version={snap_version!r} != expected {expected_corpus_version!r}"
+            )
+        if expected_release_id and snap_release_id != expected_release_id:
+            raise ValueError(
+                f"BM25 snapshot release_id={snap_release_id!r} != expected {expected_release_id!r}"
+            )
+        if expected_physical_collection and snap_physical != expected_physical_collection:
+            raise ValueError(
+                f"BM25 snapshot physical_collection={snap_physical!r} != expected {expected_physical_collection!r}"
+            )
+
+        sync_status = "unverified"
+        if verify_against_qdrant:
+            live_physical = _resolve_alias_target(DEFAULT_COLLECTION_NAME, qdrant_client=qdrant_client)
+            if not live_physical:
+                raise ValueError("Could not resolve live Qdrant alias target for BM25 verification")
+            if not snap_physical or snap_physical != live_physical:
+                raise ValueError(
+                    f"BM25 snapshot physical_collection={snap_physical!r} does not match live "
+                    f"Qdrant alias target {live_physical!r}"
+                )
+            sync_status = "synced"
+
         metadata = {
-            **(payload.get("metadata") or {}),
+            **header_meta,
+            "corpus_version": snap_version,
+            "release_id": snap_release_id,
+            "physical_collection": snap_physical,
+            "chunk_set_fingerprint": computed_fp,
+            "snapshot_sha256": snapshot_sha,
             "snapshot_loaded": True,
             "snapshot_path": str(path),
             "snapshot_created_at": payload.get("created_at"),
+            "release_sync_status": sync_status,
+            "release_mismatch_reason": None,
         }
         return initialize_search_index(documents, snapshot_metadata=metadata)
     except Exception as exc:
         logger.error("Failed to load BM25 snapshot: %s", exc)
+        _documents = []
+        _bm25_index = {}
+        _search_engine_initialized = False
+        _search_index_metadata = {
+            "snapshot_loaded": False,
+            "snapshot_path": str(path),
+            "snapshot_error": str(exc),
+            "release_sync_status": "mismatch",
+            "release_mismatch_reason": str(exc),
+        }
         return False
+
+
+def verify_runtime_release_sync(
+    *,
+    collection_name: str = DEFAULT_COLLECTION_NAME,
+    qdrant_client: Any = None,
+    release_manifest_path: Optional[str | Path] = None,
+) -> Dict[str, Any]:
+    """Verify consistency between live Qdrant alias target, loaded BM25 snapshot, and release manifest."""
+    live_physical = _resolve_alias_target(collection_name, qdrant_client=qdrant_client)
+    bm25_physical = _search_index_metadata.get("physical_collection")
+    bm25_release_id = _search_index_metadata.get("release_id")
+    bm25_version = _search_index_metadata.get("corpus_version")
+    bm25_fp = _search_index_metadata.get("chunk_set_fingerprint")
+
+    manifest_path = release_manifest_path or os.getenv("CORPUS_RELEASE_MANIFEST_PATH") or None
+    manifest: Optional[Dict[str, Any]] = None
+    manifest_error: Optional[str] = None
+    if manifest_path:
+        try:
+            manifest = load_release_manifest(manifest_path)
+        except Exception as exc:
+            manifest_error = str(exc)
+
+    reasons: List[str] = []
+    if manifest_error:
+        reasons.append(f"Release manifest invalid/unreadable: {manifest_error}")
+
+    if _search_index_metadata.get("snapshot_error"):
+        reasons.append(f"BM25 snapshot error: {_search_index_metadata['snapshot_error']}")
+
+    if live_physical and _search_engine_initialized:
+        if bm25_physical and bm25_physical != live_physical:
+            reasons.append(
+                f"BM25 physical_collection={bm25_physical!r} != Qdrant alias {collection_name!r} -> {live_physical!r}"
+            )
+        elif not bm25_physical and manifest is not None:
+            reasons.append("BM25 snapshot lacks physical_collection binding")
+
+    if manifest is not None:
+        m_phys = manifest.get("physical_collection")
+        m_ver = manifest.get("corpus_version")
+        m_rel = manifest.get("release_id")
+        m_fp = (manifest.get("chunk_manifest") or {}).get("chunk_set_fingerprint")
+        if live_physical and m_phys != live_physical:
+            reasons.append(
+                f"Live alias target {live_physical!r} != release manifest physical_collection={m_phys!r}"
+            )
+        if _search_engine_initialized:
+            artifact = manifest.get("bm25_artifact") or {}
+            expected_snapshot_sha = artifact.get("sha256")
+            loaded_snapshot_sha = _search_index_metadata.get("snapshot_sha256")
+            if not expected_snapshot_sha or loaded_snapshot_sha != expected_snapshot_sha:
+                reasons.append("BM25 snapshot sha256 thiếu hoặc không khớp release manifest")
+            if bm25_version and m_ver and bm25_version != m_ver:
+                reasons.append(f"BM25 corpus_version={bm25_version!r} != manifest {m_ver!r}")
+            if bm25_release_id and m_rel and bm25_release_id != m_rel:
+                reasons.append(f"BM25 release_id={bm25_release_id!r} != manifest {m_rel!r}")
+            if bm25_fp and m_fp and bm25_fp != m_fp:
+                reasons.append(
+                    f"BM25 chunk_set_fingerprint={bm25_fp[:16]} != manifest {m_fp[:16]}"
+                )
+
+    if reasons:
+        status = "mismatch"
+    elif live_physical and bm25_physical and live_physical == bm25_physical:
+        status = "synced"
+    elif _search_engine_initialized:
+        status = "unverified"
+    else:
+        status = "uninitialized"
+
+    synced = status == "synced"
+    if not synced and not reasons:
+        reasons.append("Không thể xác minh BM25 và alias Qdrant cùng collection vật lý")
+
+    _search_index_metadata["release_sync_status"] = status
+    _search_index_metadata["release_mismatch_reason"] = "; ".join(reasons) if reasons else None
+    if live_physical:
+        _search_index_metadata["last_pinned_physical_collection"] = live_physical
+
+    return {
+        "synced": synced,
+        "status": status,
+        "alias_name": collection_name,
+        "live_physical_collection": live_physical,
+        "pinned_collection": live_physical or collection_name,
+        "bm25_physical_collection": bm25_physical,
+        "bm25_release_id": bm25_release_id,
+        "bm25_corpus_version": bm25_version,
+        "bm25_chunk_set_fingerprint": bm25_fp,
+        "reasons": reasons,
+    }
 
 
 def _bm25_candidate_indices(filters: Optional[Dict[str, Any]]) -> List[int] | range:
@@ -379,6 +675,7 @@ def bm25_search(
         result = doc.copy()
         result["bm25_score"] = score
         result["search_method"] = "bm25"
+        result["retrieval_mode"] = "bm25_only"
         scored_docs.append((result, score))
 
     scored_docs.sort(key=lambda item: item[1], reverse=True)
@@ -391,18 +688,13 @@ def _get_embedding(
     deadline_monotonic: Optional[float] = None,
     raise_on_timeout: bool = False,
 ):
-    """
-    Lay embedding neu backend da implement.
-
-    brain.py hien con skeleton trong project, nen ham nay fallback ve None khi
-    embedding service chua san sang.
-    """
     try:
         from llm.client import get_embedding
 
         return call_with_supported_kwargs(
             get_embedding,
             query,
+            input_type="query",
             timeout=timeout,
             deadline_monotonic=deadline_monotonic,
         )
@@ -422,10 +714,12 @@ def vector_search_fallback(
     timeout: Optional[float] = None,
     deadline_monotonic: Optional[float] = None,
     raise_on_timeout: bool = False,
+    *,
+    collection_name: Optional[str] = None,
+    qdrant_client: Any = None,
 ) -> List[Dict]:
-    """
-    Tim kiem vector trong Qdrant neu embedding service va vector store san sang.
-    """
+    """Tim kiem vector trong Qdrant tren chinh xac collection da pin cho request."""
+    target_collection = collection_name or DEFAULT_COLLECTION_NAME
     effective_deadline = None
     if deadline_monotonic is not None or timeout is not None:
         effective_deadline = resolve_deadline(
@@ -469,13 +763,14 @@ def vector_search_fallback(
 
         results = call_with_supported_kwargs(
             search_vector,
-            DEFAULT_COLLECTION_NAME,
+            target_collection,
             vector,
             limit=limit,
             filters=filters,
             timeout=qdrant_timeout,
             deadline_monotonic=effective_deadline,
             raise_on_timeout=raise_on_timeout,
+            qdrant_client=qdrant_client,
         )
     except BudgetExhaustedError:
         if raise_on_timeout:
@@ -487,6 +782,8 @@ def vector_search_fallback(
 
     for result in results:
         result["search_method"] = "vector"
+        result["retrieval_mode"] = "dense_only"
+        result["active_physical_collection"] = target_collection
         result["vector_score"] = result.get("similarity_score", 0)
         result["hybrid_score"] = result.get("similarity_score", 0)
         result.setdefault("domain", "health_inbody")
@@ -499,7 +796,36 @@ def vector_search_fallback(
 
 
 def _content_key(doc: Dict[str, Any]) -> str:
-    return (doc.get("doc_id") or doc.get("content") or _document_text(doc)).__str__()
+    return (
+        doc.get("chunk_id")
+        or doc.get("doc_id")
+        or doc.get("content")
+        or _document_text(doc)
+    ).__str__()
+
+
+def is_recipe_document(doc: Dict[str, Any]) -> bool:
+    """Detect whether a document contains culinary recipes rather than clinical/safety evidence."""
+    if doc.get("is_recipe") is True:
+        return True
+    meta = doc.get("metadata") or {}
+    if meta.get("is_recipe") is True or meta.get("document_kind") == "recipe":
+        return True
+    text = (doc.get("content") or "").lower()
+    title = (doc.get("title") or "").lower()
+    recipe_markers = [
+        "công thức món",
+        "công thức nấu",
+        "nguyên liệu:",
+        "cách chế biến:",
+        "hướng dẫn nấu",
+        "muỗng canh",
+        "muỗng cà phê",
+        "thìa cà phê",
+        "hầm 45 phút",
+        "hầm 30 phút",
+    ]
+    return any(marker in text or marker in title for marker in recipe_markers)
 
 
 def _matches_filters(doc: Dict[str, Any], filters: Optional[Dict[str, Any]]) -> bool:
@@ -507,7 +833,14 @@ def _matches_filters(doc: Dict[str, Any], filters: Optional[Dict[str, Any]]) -> 
     if not filters:
         return True
 
+    # Rule: Medical safety retrieval MUST filter out recipe documents (AGENTS.md rule 8)
+    if filters.get("content_type") == "medical_safety" or filters.get("exclude_recipe"):
+        if is_recipe_document(doc):
+            return False
+
     for field, expected in filters.items():
+        if field == "exclude_recipe":
+            continue
         actual = doc.get(field)
         if isinstance(expected, dict):
             if actual is None:
@@ -535,10 +868,9 @@ def combine_search_results(
     dense_weight: float = DEFAULT_DENSE_WEIGHT,
     bm25_weight: float = DEFAULT_BM25_WEIGHT,
 ) -> List[Dict]:
-    """
-    Gop ket qua BM25 va vector search thanh danh sach co hybrid_score.
-    """
+    """Gop ket qua BM25 va vector search thanh danh sach co hybrid_score trung thuc."""
     combined: Dict[str, Dict[str, Any]] = {}
+    both_branches_present = bool(bm25_results) and bool(vector_results)
 
     bm25_scored = [
         (idx, float(doc.get("bm25_score", 0))) for idx, doc in enumerate(bm25_results)
@@ -556,6 +888,7 @@ def combine_search_results(
         item["bm25_score"] = normalized_bm25.get(idx, 0.0)
         item["vector_score"] = 0.0
         item["search_method"] = "bm25"
+        item["retrieval_mode"] = "hybrid" if both_branches_present else "bm25_only"
         combined[key] = item
 
     for idx, doc in enumerate(vector_results):
@@ -565,11 +898,13 @@ def combine_search_results(
             combined[key].update({k: v for k, v in doc.items() if v not in (None, "")})
             combined[key]["vector_score"] = vector_score
             combined[key]["search_method"] = "hybrid"
+            combined[key]["retrieval_mode"] = "hybrid"
         else:
             item = doc.copy()
             item["bm25_score"] = 0.0
             item["vector_score"] = vector_score
             item["search_method"] = "vector"
+            item["retrieval_mode"] = "hybrid" if both_branches_present else "dense_only"
             combined[key] = item
 
     query_content_type = _detect_content_type(query)
@@ -590,7 +925,7 @@ def combine_search_results(
 
     results = list(combined.values())
     results.sort(key=lambda doc: doc.get("hybrid_score", 0.0), reverse=True)
-    logger.info("Combined %s hybrid search results for Health/InBody query", len(results))
+    logger.info("Combined %s search results (mode=%s)", len(results), "hybrid" if both_branches_present else ("bm25_only" if bm25_results else "dense_only"))
     return results
 
 
@@ -598,10 +933,7 @@ def expand_parent_documents(
     docs: List[Dict[str, Any]],
     max_parents: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
-    """
-    Expand retrieved child chunks to their parent documents while deduplicating by parent_id.
-    Preserves the highest ranking/score among child matches for each parent.
-    """
+    """Expand retrieved child chunks to their parent documents while deduplicating by parent_id."""
     if not docs:
         return []
 
@@ -612,7 +944,6 @@ def expand_parent_documents(
         parent_id = doc.get("parent_id") or (doc.get("metadata") or {}).get("parent_id")
         parent_content = doc.get("parent_content") or (doc.get("metadata") or {}).get("parent_content")
 
-        # Fallback if no parent or empty parent_content: use chunk itself
         if not parent_id or not parent_content:
             key = str(doc.get("chunk_id") or doc.get("doc_id") or doc.get("content") or "")
             if key not in seen_parent_keys:
@@ -624,15 +955,11 @@ def expand_parent_documents(
 
         parent_key = str(parent_id)
         if parent_key in seen_parent_keys:
-            # Already have this parent from a higher-scoring child chunk
             continue
 
         seen_parent_keys.add(parent_key)
         parent_doc = doc.copy()
         nested_meta = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
-        # Keep original child info for traceability, while updating chunk_id and
-        # evidence_scope to the expanded parent section so claims supported only
-        # by sibling parent text are never misattributed to a single child chunk.
         parent_doc["child_content"] = doc.get("content", "")
         parent_doc["child_chunk_id"] = str(doc.get("chunk_id") or doc.get("doc_id") or "")
         parent_doc["parent_id"] = parent_key
@@ -645,7 +972,6 @@ def expand_parent_documents(
         )
         parent_doc["chunk_id"] = parent_key
         parent_doc["evidence_scope"] = "parent_section"
-        # Expand content to full parent content
         parent_doc["content"] = parent_content
         if doc.get("parent_title"):
             parent_doc["title"] = doc["parent_title"]
@@ -668,16 +994,19 @@ def hybrid_search(
     timeout: Optional[float] = None,
     deadline_monotonic: Optional[float] = None,
     raise_on_timeout: bool = False,
+    *,
+    qdrant_client: Any = None,
+    mismatch_policy: Optional[str] = None,
+    release_manifest_path: Optional[str | Path] = None,
 ) -> List[Dict]:
     """
-    Tim kiem hybrid cho Health/InBody RAG.
+    Tim kiem hybrid cho Health/InBody RAG voi release consistency & request pinning.
 
-    Luong chay:
-    1. Mo rong query theo thuat ngu Health/InBody.
-    2. Chay BM25 neu index da duoc khoi tao.
-    3. Chay vector search neu embedding/Qdrant san sang (cung chia se deadline).
-    4. Gop diem hybrid va rerank ket qua cuoi trong deadline con lai.
-    5. Expand Child chunk thanh Parent document va deduplicate (Small-to-Big Retrieval).
+    1. Pin physical collection tai dau request (khong tron 2 release neu alias doi giua request).
+    2. Doi chieu BM25 snapshot voi live Qdrant physical release & manifest.
+    3. Neu mismatch: khong am tham chay hybrid; xu ly theo RETRIEVAL_MISMATCH_POLICY
+       (`refuse` mac dinh, hoac `dense_only` / `bm25_only` tuong minh co gan nhan trung thuc).
+    4. Khong goi ket qua la `hybrid` neu chi mot nhanh tham gia.
     """
     if not query or not query.strip():
         return []
@@ -694,25 +1023,70 @@ def hybrid_search(
                 raise BudgetExhaustedError("Hybrid search budget exhausted")
             return []
 
+    # Pin physical collection & check release sync at request start.
+    should_check_sync = bool(
+        qdrant_client is not None
+        or _search_index_metadata.get("physical_collection")
+        or release_manifest_path is not None
+        or os.getenv("CORPUS_RELEASE_MANIFEST_PATH")
+        or os.getenv("CORPUS_VERIFY_ALIAS_ON_SEARCH", "false").strip().lower() in {"1", "true", "yes", "on"}
+    )
+    pinned_collection = DEFAULT_COLLECTION_NAME
+    allow_bm25 = True
+    allow_dense = True
+    release_mismatch_degraded = False
+    active_release_id = _search_index_metadata.get("release_id")
+    active_corpus_version = _search_index_metadata.get("corpus_version")
+
+    if should_check_sync:
+        sync_info = verify_runtime_release_sync(
+            collection_name=DEFAULT_COLLECTION_NAME,
+            qdrant_client=qdrant_client,
+            release_manifest_path=release_manifest_path,
+        )
+        pinned_collection = sync_info["pinned_collection"]
+        if not sync_info["synced"]:
+            policy = _retrieval_mismatch_policy(mismatch_policy)
+            reason = "; ".join(sync_info["reasons"])
+            logger.error(
+                "Corpus release mismatch detected (policy=%s): %s",
+                policy,
+                reason,
+            )
+            if policy == "refuse":
+                raise CorpusReleaseMismatchError(
+                    f"Không thể chạy hybrid search do lệch phiên bản corpus giữa Qdrant và BM25: {reason}"
+                )
+            elif policy == "dense_only":
+                allow_bm25 = False
+                allow_dense = True
+                release_mismatch_degraded = True
+                active_release_id = None
+            elif policy == "bm25_only":
+                allow_bm25 = True
+                allow_dense = False
+                release_mismatch_degraded = True
+                pinned_collection = sync_info["bm25_physical_collection"] or DEFAULT_COLLECTION_NAME
+
     should_expand = ENABLE_PARENT_RETRIEVAL if expand_parents is None else expand_parents
     candidate_limit = limit * 3 if should_expand else limit * 2
 
     expanded_query = expand_health_query(query)
-    bm25_results = bm25_search(expanded_query, limit=candidate_limit, filters=filters)
-    candidate_count = len(_bm25_candidate_indices(filters))
+    bm25_results: List[Dict[str, Any]] = []
+    if allow_bm25:
+        bm25_results = bm25_search(expanded_query, limit=candidate_limit, filters=filters)
+
+    candidate_count = len(_bm25_candidate_indices(filters)) if allow_bm25 else 0
     bm25_covers_filtered_corpus = bool(
-        filters
+        allow_bm25
+        and filters
         and candidate_count
         and candidate_count <= candidate_limit
         and len(bm25_results) >= candidate_count
     )
-    if bm25_covers_filtered_corpus:
-        logger.info(
-            "BM25 covered all %s filtered candidates; skipped redundant vector search",
-            candidate_count,
-        )
-        vector_results = []
-    else:
+
+    vector_results: List[Dict[str, Any]] = []
+    if allow_dense and not bm25_covers_filtered_corpus:
         vector_results = call_with_supported_kwargs(
             vector_search_fallback,
             expanded_query,
@@ -722,16 +1096,34 @@ def hybrid_search(
             timeout=timeout,
             deadline_monotonic=effective_deadline,
             raise_on_timeout=raise_on_timeout,
+            collection_name=pinned_collection,
+            qdrant_client=qdrant_client,
+        )
+    elif bm25_covers_filtered_corpus:
+        logger.info(
+            "BM25 covered all %s filtered candidates; skipped redundant vector search",
+            candidate_count,
         )
 
-    # Qdrant applies its filter server-side, but BM25 is process-local. Apply the
-    # same policy here so a safety query cannot regain recipe/nutrition results
-    # merely because dense retrieval is unavailable.
     bm25_results = [doc for doc in bm25_results if _matches_filters(doc, filters)]
     vector_results = [doc for doc in vector_results if _matches_filters(doc, filters)]
 
     if bm25_results or vector_results:
         combined = combine_search_results(bm25_results, vector_results, query)
+        actual_mode = (
+            "hybrid"
+            if (bm25_results and vector_results)
+            else ("bm25_only" if bm25_results else "dense_only")
+        )
+        for doc in combined:
+            doc["retrieval_mode"] = actual_mode
+            doc["active_physical_collection"] = pinned_collection
+            if active_release_id and not doc.get("release_id"):
+                doc["release_id"] = active_release_id
+            if active_corpus_version and not doc.get("corpus_version") and not release_mismatch_degraded:
+                doc["corpus_version"] = active_corpus_version
+            if release_mismatch_degraded:
+                doc["release_mismatch_degraded"] = True
     else:
         logger.warning("No BM25/vector results available for query: %s", query)
         combined = []
@@ -761,7 +1153,12 @@ def search_engine() -> bool:
 
 
 def get_search_stats() -> Dict:
-    """Lay thong tin trang thai search index."""
+    """Lay thong tin trang thai search index va corpus release."""
+    raw_workers = str(os.getenv("API_WORKERS", "1")).strip()
+    try:
+        workers = int(raw_workers) if raw_workers else 1
+    except ValueError:
+        workers = 1
     return {
         "initialized": _search_engine_initialized,
         "documents_count": len(_documents),
@@ -772,24 +1169,30 @@ def get_search_stats() -> Dict:
             or _search_index_metadata.get("snapshot_persisted")
             else "process_local_nonpersistent"
         ),
+        "lexical_index_owner": "single_api_process_in_memory",
+        "multi_worker_supported": False,
+        "configured_api_workers": workers,
         "snapshot_created_at": _search_index_metadata.get("snapshot_created_at"),
+        "snapshot_sha256": _search_index_metadata.get("snapshot_sha256"),
         "snapshot_point_count": _search_index_metadata.get("qdrant_point_count"),
+        "snapshot_error": _search_index_metadata.get("snapshot_error"),
         "corpus_version": _search_index_metadata.get("corpus_version"),
+        "release_id": _search_index_metadata.get("release_id"),
+        "physical_collection": _search_index_metadata.get("physical_collection"),
+        "chunk_set_fingerprint": _search_index_metadata.get("chunk_set_fingerprint"),
+        "tokenizer_version": _search_index_metadata.get("tokenizer_version") or BM25_TOKENIZER_VERSION,
+        "release_sync_status": _search_index_metadata.get("release_sync_status")
+        or ("uninitialized" if not _search_engine_initialized else "unverified"),
+        "release_mismatch_reason": _search_index_metadata.get("release_mismatch_reason"),
+        "retrieval_mismatch_policy": _retrieval_mismatch_policy(),
         "collection_name": DEFAULT_COLLECTION_NAME,
         "domain": "health_inbody",
     }
 
 
 def force_initialize_if_needed() -> bool:
-    """
-    Thu khoi tao BM25 tu payload trong Qdrant neu index chua co.
-
-    Neu Qdrant/embedding service chua san sang, ham tra False va hybrid_search
-    van co the tiep tuc voi cac thanh phan con lai.
-    """
     if _search_engine_initialized:
         return True
-
     return initialize_from_vector_store()
 
 
@@ -798,19 +1201,25 @@ def initialize_from_vector_store(
     vector_client: Any = None,
     persist_snapshot: bool = False,
     snapshot_path: str | Path | None = None,
+    *,
+    collection_name: Optional[str] = None,
+    corpus_version: Optional[str] = None,
+    release_id: Optional[str] = None,
 ) -> bool:
-    """
-    Load payload tu Qdrant de khoi tao BM25 index.
-    """
+    """Load payload tu Qdrant de khoi tao BM25 index va (tuy chon) luu snapshot gan release."""
+    target_collection = collection_name or DEFAULT_COLLECTION_NAME
     try:
         if vector_client is None:
             from rag.qdrant.client import client as vector_client
+
+        physical_collection = _resolve_alias_target(target_collection, qdrant_client=vector_client)
+        effective_scroll_collection = physical_collection or target_collection
 
         points = []
         next_offset = None
         while True:
             page, next_offset = vector_client.scroll(
-                collection_name=DEFAULT_COLLECTION_NAME,
+                collection_name=effective_scroll_collection,
                 limit=limit,
                 offset=next_offset,
                 with_payload=True,
@@ -839,21 +1248,33 @@ def initialize_from_vector_store(
                 "doc_id": doc_id,
                 "document_id": document_id,
                 "chunk_id": chunk_id,
+                "qdrant_point_id": str(point.id) if getattr(point, "id", None) is not None else payload.get("qdrant_point_id"),
                 "content_type": payload.get("content_type"),
                 "domain": payload.get("domain", "health_inbody"),
             }
         )
 
+    inferred_version = corpus_version or next(
+        (
+            str((point.payload or {}).get("corpus_version"))
+            for point in points
+            if (point.payload or {}).get("corpus_version")
+        ),
+        None,
+    )
+    inferred_release_id = release_id or next(
+        (
+            str((point.payload or {}).get("release_id"))
+            for point in points
+            if (point.payload or {}).get("release_id")
+        ),
+        None,
+    )
     metadata = {
         "qdrant_point_count": len(points),
-        "corpus_version": next(
-            (
-                str((point.payload or {}).get("corpus_version"))
-                for point in points
-                if (point.payload or {}).get("corpus_version")
-            ),
-            None,
-        ),
+        "corpus_version": inferred_version,
+        "release_id": inferred_release_id,
+        "physical_collection": physical_collection or (collection_name if collection_name != DEFAULT_COLLECTION_NAME else None),
     }
     initialized = initialize_search_index(documents, snapshot_metadata=metadata)
     if initialized and persist_snapshot:

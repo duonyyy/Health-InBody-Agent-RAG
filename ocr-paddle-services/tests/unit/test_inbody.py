@@ -123,6 +123,19 @@ def test_local_ocr_environment_names_are_loaded(monkeypatch):
         get_settings.cache_clear()
 
 
+def test_paddle_lang_defaults_to_english(monkeypatch):
+    from inbody_ocr.clients.paddle import PaddleOcrReader
+    monkeypatch.delenv("PADDLE_LANG", raising=False)
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        assert settings.paddle_lang == "en"
+        reader = PaddleOcrReader()
+        assert reader.lang == "en"
+    finally:
+        get_settings.cache_clear()
+
+
 def test_ollama_client_ignores_environment_proxy():
     client = OllamaClient(Settings(ollama_model="test-model"))
     try:

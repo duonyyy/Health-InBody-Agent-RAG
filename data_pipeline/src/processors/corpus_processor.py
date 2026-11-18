@@ -572,7 +572,8 @@ def prepare_dataset(input_path: Path, output_path: Path, report_path: Path) -> N
         "skipped_records": skipped,
         "counts_by_content_type": counts,
         "ready_for_endpoint": "/documents/index",
-        "collection_name": "nmk_chatbot_collection",
+        "collection_name": None,
+        "staging_collection_required": True,
         "embedding_dataset": EMBEDDING_DATASET_NAME,
         "notes": [
             "Ratings were excluded because they are recommender interactions, not RAG documents.",

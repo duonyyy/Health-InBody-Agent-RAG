@@ -1,5 +1,7 @@
 # Embed Serving
 
+> Cập nhật 2026-11-18: cấu hình mẫu hiện chọn `intfloat/multilingual-e5-small` (384 chiều), không phải BGE-M3 như các ví dụ lịch sử bên dưới. Lập chỉ mục dùng `passage: `, tìm kiếm dùng `query: ` qua cấu hình backend. Cần tạo collection staging mới và tái tạo vector trước khi dùng retrieval; xem [báo cáo](../../docs/reports/upgrade-2026/embedding-e5-small-2026-11-18.md). Chưa deploy.
+
 `embed_serving/` cung cap mot REST API nho gon de sinh embedding cho he thong RAG. Service load model duoc cau hinh qua `MODEL_PATH`, chay tren CPU mac dinh va expose cac endpoint de backend goi khi index du lieu hoac semantic search.
 
 ## Cau truc folder

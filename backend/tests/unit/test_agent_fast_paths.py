@@ -92,6 +92,17 @@ def test_plan_agents_request_missing_inputs_instead_of_using_defaults():
 
     assert len(result["tool_results"]) == 2
     assert all(item["result"]["need_more_info"] for item in result["tool_results"])
+    nutrition, training = [item["result"] for item in result["tool_results"]]
+    assert nutrition["missing_fields"] == ["cân nặng hiện tại đã xác nhận", "mục tiêu", "mức vận động"]
+    assert nutrition["message"] == (
+        "Cần thêm cân nặng hiện tại đã xác nhận, mục tiêu, mức vận động "
+        "để lập gợi ý dinh dưỡng mà không đoán dữ liệu."
+    )
+    assert training["missing_fields"] == ["mục tiêu", "số buổi mỗi tuần", "trình độ tập luyện"]
+    assert training["message"] == (
+        "Cần thêm mục tiêu, số buổi mỗi tuần, trình độ tập luyện "
+        "để lập lịch tập mà không đoán dữ liệu."
+    )
     rendered = str(result["tool_results"])
     assert "70" not in rendered
     assert "fat_loss" not in rendered

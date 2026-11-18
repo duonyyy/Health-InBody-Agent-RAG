@@ -8,6 +8,7 @@ from ..context import (
     _explicit_goal,
     _first_present,
     _latest_measurement,
+    _missing_input_result,
     _profile,
     _question,
 )
@@ -34,22 +35,14 @@ def nutrition_agent(state: AgentState) -> AgentState:
         active_goal.get("weekly_activity_level"),
         profile.get("activity_level"),
     )
-    missing = [
-        label
-        for value, label in (
-            (weight, "cân nặng hiện tại đã xác nhận"),
-            (goal, "mục tiêu"),
-            (activity_level, "mức vận động"),
-        )
-        if value is None
-    ]
-    if missing:
-        result = {
-            "need_more_info": True,
-            "missing_fields": missing,
-            "message": "Cần thêm " + ", ".join(missing) + " để lập gợi ý dinh dưỡng mà không đoán dữ liệu.",
-        }
-    else:
+    result = _missing_input_result(
+        "lập gợi ý dinh dưỡng",
+        (weight, "cân nặng hiện tại đã xác nhận"),
+        (goal, "mục tiêu"),
+        (activity_level, "mức vận động"),
+    )
+    missing = result is not None
+    if not missing:
         result = suggest_nutrition_goal(goal, weight, activity_level)
     results = list(state.get("tool_results") or [])
     results.append({"agent": NUTRITION_AGENT, "tool": "suggest_nutrition_goal", "result": result})

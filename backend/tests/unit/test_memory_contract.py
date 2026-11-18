@@ -305,35 +305,6 @@ def test_http_task_owner_checked_before_result_lookup(memory_db, monkeypatch):
     assert lookups == [task_id]
 
 
-def test_sync_failure_blocks_recall_until_retry_and_revoke_blocks_export(memory_db, monkeypatch):
-    from memory import sync, zep_memory
-    cid = store.open_conversation("alice")["conversation_id"]
-    turn = store.record_turn("alice", cid, "Tôi ăn chay.", "Đã hiểu.")
-    fact = store.propose_fact("alice", turn["user_message_id"], "dietary_preference", "Tôi ăn chay.")
-    store.confirm_fact("alice", fact["id"])
-    profiles.grant_external_memory_consent("alice")
-    monkeypatch.setattr(zep_memory, "available", lambda: True)
-    exported = []
-    monkeypatch.setattr(zep_memory, "forget", lambda subject: None)
-    monkeypatch.setattr(zep_memory, "remember_confirmed", lambda *a, **k: (_ for _ in ()).throw(TimeoutError()))
-    with pytest.raises(TimeoutError):
-        sync.sync_confirmed("alice")
-    monkeypatch.setattr(zep_memory, "recall", lambda *a, **k: (_ for _ in ()).throw(AssertionError("must not recall dirty cloud")))
-    assert sync.recall_confirmed("alice", "private question") == ""
-    monkeypatch.setattr(zep_memory, "remember_confirmed", lambda subject, facts, **k: exported.extend(facts))
-    assert sync.sync_confirmed("alice")["fact_count"] == 1
-    assert exported[0]["status"] == "confirmed"
-    profiles.revoke_external_memory_consent("alice")
-    assert sync.recall_confirmed("alice", "private question") == ""
-    with pytest.raises(profiles.PersonalizationConflict):
-        sync.sync_confirmed("alice")
-    sync.finish_deletion("alice")
-    with memory_db() as db:
-        flags = db.query(User).filter_by(external_id="alice").one().consent_flags
-        assert flags["external_memory"] is False
-        assert flags["external_memory_deletion_pending"] is False
-
-
 def test_event_memory_has_owner_time_and_validity(memory_db):
     from persistence.models import PersonalizedPlan, CheckIn
     from memory.context import event_context, answer_memory_question
@@ -377,13 +348,13 @@ def test_retention_preserves_confirmed_fact_but_removes_source(memory_db):
     assert store.purge_expired()["facts_removed"] == 1
 
 
-def test_general_composer_uses_confirmed_local_preferences_without_zep(monkeypatch):
+def test_general_composer_uses_confirmed_local_preferences(monkeypatch):
     import time
     from agents import graph
     prompts = []
     monkeypatch.setattr(graph, "vietnamese_llm_chat_complete", lambda messages, **kw: prompts.append(messages) or "Mình đã hiểu.")
     graph.response_composer_agent({"question": "Hãy giải thích đơn giản giúp tôi.",
-        "selected_agents": [graph.GENERAL_CHAT_AGENT], "history": [], "memory_context": "",
+        "selected_agents": [graph.GENERAL_CHAT_AGENT], "history": [],
         "deadline_at": time.monotonic() + 30,
         "personalization_context": {"available": True, "confirmed_memory": [{"text": "Tôi thích câu trả lời ngắn gọn."}]},
         "safety_result": {"risk_level": "low"}, "agent_trace": [], "errors": []})
@@ -406,7 +377,7 @@ def test_worker_uses_same_history_and_checks_owner(memory_db, monkeypatch):
     result = execute("health-inbody-agent", "alice", "Tin mới", cid, task_id)
     assert result["conversation_id"] == cid
     assert seen[0]["history"][0]["content"] == "Tin cũ."
-    assert seen[0]["use_zep_memory"] is False
+    assert "use_zep_memory" not in seen[0]
 
 
 def test_urgent_chat_does_not_touch_memory_storage(monkeypatch):

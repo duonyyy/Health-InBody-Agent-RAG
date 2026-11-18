@@ -54,7 +54,12 @@ MAX_HEADER_LEVEL = 3
 
 # Cấu hình kết nối Cơ sở dữ liệu Vector Qdrant
 DEFAULT_QDRANT_URL = os.getenv("QDRANT_URL", "http://localhost:6333")
-DEFAULT_COLLECTION_NAME = os.getenv("QDRANT_COLLECTION_NAME", "nmk_chatbot_active")
+DEFAULT_COLLECTION_ALIAS = os.getenv("QDRANT_COLLECTION_ALIAS", "nmk_chatbot_active")
+# Không mặc định đích ghi là serving alias; staging collection và corpus version phải chọn tường minh.
+DEFAULT_STAGING_COLLECTION = os.getenv("QDRANT_STAGING_COLLECTION", "").strip()
+DEFAULT_COLLECTION_NAME = DEFAULT_STAGING_COLLECTION
+DEFAULT_CORPUS_VERSION = os.getenv("CORPUS_VERSION", "").strip()
+DEFAULT_RELEASE_MANIFEST_PATH = PROCESSED_DIR / "release_manifest.json"
 DEFAULT_VECTOR_SIZE = int(os.getenv("VECTOR_SIZE", "1024"))
 DEFAULT_DISTANCE = "Cosine"
 DEFAULT_BATCH_SIZE = int(os.getenv("BATCH_SIZE", "50"))

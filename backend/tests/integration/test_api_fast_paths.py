@@ -54,3 +54,30 @@ def test_agent_bmi_contract_exposes_tool_result():
     payload = response.json()
     assert payload["fast_path"] == "inbody_tools"
     assert payload["tool_results"][0]["result"]["bmi"] == 24.91
+
+
+def test_urgent_api_bypasses_provider_retrieval_and_review(monkeypatch):
+    from agents import composer, graph
+    from rag import provenance
+    from rag.qdrant import client as qdrant_client
+
+    calls = []
+    def forbidden(*args, **kwargs):
+        calls.append(True)
+        raise AssertionError("urgent path reached dependency")
+
+    for name in ("openai_chat_complete", "vietnamese_llm_chat_complete", "rewrite_query_to_multi_queries", "hybrid_search", "rerank_documents", "tavily_search_health"):
+        monkeypatch.setattr(graph, name, forbidden)
+    monkeypatch.setattr(qdrant_client, "search_vector", forbidden)
+    monkeypatch.setattr(provenance, "load_review_registry", forbidden)
+    monkeypatch.setattr(composer, "prepare_composer_context", forbidden)
+    for question in ("Tôi đau ngực và khó thở.", "Toi dau nguc va kho tho."):
+        response = client.post("/agent/answer", headers=AUTH_HEADERS, json={"question": question, "history": []})
+        assert response.status_code == 200
+        payload = response.json()
+        assert payload["fast_path"] == "urgent_safety"
+        assert payload["safety_result"]["risk_level"] == "urgent"
+        assert "dừng tập ngay" in payload["answer"].lower()
+        assert "liên hệ" in payload["answer"].lower() and "cấp cứu" in payload["answer"].lower()
+        assert payload.get("claim_evidence_links", []) == [] and payload.get("evidence", []) == []
+    assert calls == []

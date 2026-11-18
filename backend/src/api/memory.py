@@ -4,8 +4,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Response
 from pydantic import BaseModel, Field
 from auth.context import CurrentUser, get_current_user
-from api.personalization import _execute, _require_trusted_memory_identity
-from memory import store, sync
+from api.personalization import _execute
+from memory import store
 
 router = APIRouter(prefix="/me", tags=["memory"])
 
@@ -51,9 +51,3 @@ def confirm(fact_id: UUID, user: CurrentUser = Depends(get_current_user)):
 def delete_fact(fact_id: UUID, user: CurrentUser = Depends(get_current_user)):
     _execute(store.delete_fact, user.subject, str(fact_id))
     return Response(status_code=204)
-
-
-@router.post("/memory/sync")
-def synchronize(user: CurrentUser = Depends(get_current_user)):
-    _require_trusted_memory_identity(user)
-    return _execute(sync.sync_confirmed, user.subject)

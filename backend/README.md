@@ -32,7 +32,7 @@ backend/
 │   ├── jobs/                  # Celery tasks
 │   ├── llm/                   # LLM client, embedding và summarizer
 │   ├── persistence/           # PostgreSQL models, database, personalization
-│   ├── pipelines/             # Import/reuse vector pipelines
+│   ├── pipelines/             # Import corpus vào staging
 │   └── rag/                   # Retrieval, chunking, rerank và Qdrant client
 ├── data/
 ├── .dockerignore
@@ -138,12 +138,8 @@ Bearer JWT từ POST /auth/register hoặc /auth/login, xác minh HS256/signatur
 - **Không tìm thấy kết quả RAG:** Kiểm tra cấu hình `CUSTOM_EMBEDDING_API_URL`, đảm bảo `embed_serving` đang chạy, và collection trong Qdrant đã chứa dữ liệu.
 - **Lỗi sinh văn bản (LLM):** Kiểm tra cấu hình `LLM_PROVIDER`. Nếu dùng Ollama, đảm bảo model đã được tải (`ollama run qwen2.5:3b`).
 
-## 8. Zep conversational memory (opt-in)
+## 8. Bộ nhớ hội thoại & cá nhân hóa (PostgreSQL local)
 
-Zep Cloud adapter nằm tại `src/memory/zep_memory.py`; cấu hình mẫu trong `.env.example`.
-Bộ nhớ ngoài mặc định tắt, cần xác thực tin cậy và consent riêng qua
-`PUT /me/memory-consent`; `DELETE /me/memory` tắt quyền và yêu cầu xóa trên Zep.
-Chỉ mirror các sở thích đã xác nhận, không tự gửi transcript. Lịch sử phiên/fact/sự kiện
-do PostgreSQL quản lý; cần migration `20260929_02_memory` và một Celery Beat scheduler.
-Xem [hợp đồng bộ nhớ](src/memory/README.md) và
-[trạng thái/gate triển khai](../docs/implementation-roadmap/09-day17-memory-completion-2026-09-29.md).
+Lịch sử hội thoại (`/me/conversations/*`), sở thích đã xác nhận (`/me/memory/facts/*`), hồ sơ/chỉ số/mục tiêu/kế hoạch/check-in và retention (`CHAT_RETENTION_DAYS`, Celery Beat `purge_memory`) được quản lý hoàn toàn trên **PostgreSQL** theo quyền sở hữu (owner-scoped) và consent local (`health_data_processing`, `personalization`).
+
+Dự án **đã gỡ tích hợp Zep** (không dùng bộ nhớ ngoài hay các route `/me/memory-consent`, `/me/memory/sync`, `DELETE /me/memory`). Xem [hợp đồng bộ nhớ](src/memory/README.md) và [báo cáo gỡ tích hợp Zep](../docs/reports/upgrade-2026/remove-zep-2026-11-18.md).

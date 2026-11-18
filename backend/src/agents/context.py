@@ -148,6 +148,18 @@ def _first_present(*values: Any) -> Any:
     return None
 
 
+def _missing_input_result(purpose: str, *fields: tuple) -> Optional[Dict[str, Any]]:
+    """Build the shared clarification result without treating zero as missing."""
+    missing = [label for value, label in fields if value is None]
+    if not missing:
+        return None
+    return {
+        "need_more_info": True,
+        "missing_fields": missing,
+        "message": "Cần thêm " + ", ".join(missing) + f" để {purpose} mà không đoán dữ liệu.",
+    }
+
+
 def _medical_conditions(state: AgentState) -> List[str]:
     conditions = _profile(state).get("medical_conditions")
     if not conditions:

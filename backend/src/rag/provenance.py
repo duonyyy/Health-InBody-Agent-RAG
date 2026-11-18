@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 from urllib.parse import urlparse
 
-PROVENANCE_POLICY_VERSION = "2026-11-18-v1"
+PROVENANCE_POLICY_VERSION = "2026-11-19-v2"
 
 DEFAULT_REVIEW_REGISTRY_PATH = (
     Path(__file__).resolve().parents[2] / "data" / "medical_review_registry.json"
@@ -76,6 +76,10 @@ PROVENANCE_METADATA_FIELDS = (
 
 _ZERO_WIDTH_RE = re.compile(r"[\u200B-\u200D\uFEFF\u200E\u200F]")
 _HEX_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+class _ResolvedProvenance(dict):
+    """In-process result of registry resolution; JSON payloads cannot create it."""
 
 
 def normalize_provenance_text(text: str) -> str:
@@ -215,12 +219,22 @@ def validate_review_record(
     reviewer_info = reviewers.get(reviewer_id) if reviewer_id and isinstance(reviewers, Mapping) else None
     if not reviewer_id or not isinstance(reviewer_info, Mapping):
         errors.append("reviewer_id is not registered in managed reviewers directory")
-    elif not reviewer_info.get("active", True):
-        errors.append("reviewer_id is inactive")
+    elif reviewer_info.get("active") is not True:
+        errors.append("reviewer_id is inactive or has no explicit active status")
 
     review_scope = str(review.get("review_scope") or "").strip()
     if not review_scope:
         errors.append("missing review_scope")
+    if isinstance(reviewer_info, Mapping) and reviewer_info.get("allowed_scopes") is not None:
+        allowed = reviewer_info.get("allowed_scopes")
+        if not isinstance(allowed, list) or review_scope not in allowed:
+            errors.append("reviewer is not authorized for review_scope")
+    if review.get("revoked") or review.get("revoked_at"):
+        errors.append("review record is revoked")
+    expires = review.get("expires_at") or review.get("valid_until")
+    if expires:
+        if not is_valid_iso_date(expires) or date.fromisoformat(str(expires)[:10]) < date.today():
+            errors.append("review record is expired or has an invalid expiry")
 
     review_role = str(
         review.get("review_role")
@@ -277,11 +291,8 @@ def resolve_document_provenance(
     metadata = dict(record.get("metadata") or {}) if isinstance(record.get("metadata"), Mapping) else {}
     document_id = _first_non_empty(record, metadata, "document_id", "doc_id", "id") or ""
     raw_content = content if content is not None else str(record.get("content") or record.get("page_content") or "")
-    doc_hash = (
-        compute_document_content_hash(raw_content)
-        if raw_content.strip()
-        else str(_first_non_empty(record, metadata, "document_content_hash") or "").lower()
-    )
+    # A supplied hash is not authority for missing document content.
+    doc_hash = compute_document_content_hash(raw_content) if raw_content.strip() else ""
     doc_version = _first_non_empty(record, metadata, "document_version", "version")
 
     raw_claimed_status = _first_non_empty(
@@ -312,16 +323,26 @@ def resolve_document_provenance(
         if registry is not None
         else load_review_registry(allow_synthetic=allow_synthetic_registry)
     )
+    if not isinstance(active_registry, Mapping):
+        raise ValueError("Review registry must be a mapping")
+    if "schema_version" in active_registry and active_registry["schema_version"] != 1:
+        raise ValueError("Unsupported medical review registry schema_version")
     _assert_registry_allowed(active_registry, allow_synthetic_registry=allow_synthetic_registry)
+    if not isinstance(active_registry.get("reviewers"), Mapping) or not isinstance(active_registry.get("reviews"), list):
+        raise ValueError("Review registry must define 'reviewers' object and 'reviews' list")
     reviewers = active_registry.get("reviewers") or {}
     reviews = active_registry.get("reviews") or []
 
     valid_doc_reviews: List[Dict[str, Any]] = []
+    revoked_review_present = False
+    invalid_review_present = False
     for entry in reviews:
         if not isinstance(entry, Mapping):
             continue
         if str(entry.get("document_id") or "").strip() != document_id:
             continue
+        if entry.get("revoked") or entry.get("revoked_at"):
+            revoked_review_present = True
         if entry.get("is_synthetic_fixture") and not allow_synthetic_registry:
             continue
         ok, _ = validate_review_record(
@@ -331,15 +352,22 @@ def resolve_document_provenance(
         )
         if ok:
             valid_doc_reviews.append(dict(entry))
+        else:
+            invalid_review_present = True
 
+    # A revocation cannot be bypassed by falling back to an older approval.
+    if revoked_review_present or invalid_review_present:
+        valid_doc_reviews = []
     valid_doc_reviews.sort(key=lambda item: str(item.get("reviewed_at") or ""), reverse=True)
 
     matching_review: Optional[Dict[str, Any]] = None
-    for entry in valid_doc_reviews:
+    for entry in valid_doc_reviews[:1]:
         entry_hash = str(entry.get("content_hash") or "").strip().lower()
         entry_version = str(entry.get("document_version") or "").strip()
-        version_ok = not (entry_version and doc_version and entry_version != doc_version)
-        if doc_hash and entry_hash == doc_hash and version_ok:
+        version_ok = not entry_version or entry_version == doc_version
+        content_type = _first_non_empty(record, metadata, "content_type") or ""
+        scope_ok = str(entry.get("review_scope") or "").strip() in {"whole_document", content_type}
+        if doc_hash and entry_hash == doc_hash and version_ok and scope_ok:
             matching_review = entry
             break
 
@@ -408,7 +436,7 @@ def resolve_document_provenance(
             base["review_verification_status"] = "verified_not_approved"
             base["source_tier"] = None
             base["source_tier_verified"] = False
-        return base
+        return _ResolvedProvenance(base)
 
     if valid_doc_reviews:
         latest_stale = valid_doc_reviews[0]
@@ -421,7 +449,7 @@ def resolve_document_provenance(
             "source_tier": None,
             "source_tier_verified": False,
         })
-        return base
+        return _ResolvedProvenance(base)
 
     # No valid registry entry exists for this document.
     if raw_claimed_status and raw_claimed_status.lower() in (
@@ -438,12 +466,12 @@ def resolve_document_provenance(
             "source_tier": None,
             "source_tier_verified": False,
         })
-    return base
+    return _ResolvedProvenance(base)
 
 
 def is_verified_medical_review(metadata: Mapping[str, Any]) -> bool:
     """Return True only when a record carries a verified, non-stale approved review."""
-    if not isinstance(metadata, Mapping):
+    if not isinstance(metadata, _ResolvedProvenance):
         return False
     if metadata.get("is_synthetic_fixture"):
         return False
@@ -486,73 +514,53 @@ def normalize_evidence_provenance(
     merged: Dict[str, Any] = {**metadata, **doc}
     is_seed = str(merged.get("source") or "") == "internal_seed" or str(merged.get("source_origin") or "") == "internal_seed"
 
-    # If payload already carries a verified review stamp, validate its internal consistency.
-    if (
-        str(merged.get("review_verification_status") or "").strip() == "verified"
-        and str(merged.get("medical_review_status") or "").strip() == "approved"
-    ):
-        if merged.get("is_synthetic_fixture") and not allow_synthetic_registry:
-            # Never let a synthetic fixture masquerade as a real review record.
-            pass
-        else:
-            doc_hash = str(merged.get("document_content_hash") or "").strip().lower()
-            reviewed_hash = str(merged.get("reviewed_content_hash") or "").strip().lower()
-            has_required_fields = (
-                bool(str(merged.get("review_id") or "").strip())
-                and bool(str(merged.get("reviewer_id") or "").strip())
-                and bool(str(merged.get("review_scope") or "").strip())
-                and is_valid_iso_date(merged.get("reviewed_at"))
-                and bool(_HEX_SHA256_RE.fullmatch(reviewed_hash))
-            )
-            if has_required_fields and (not doc_hash or doc_hash == reviewed_hash):
-                tier = str(merged.get("source_tier") or "").strip() or None
-                tier_verified = bool(merged.get("source_tier_verified")) and tier in ALLOWED_SOURCE_TIERS
-                return {
-                    "source_url": sanitize_http_url(merged.get("source_url")),
-                    "publisher": str(merged.get("publisher") or "").strip() or None,
-                    "source_tier": tier if tier_verified else None,
-                    "source_tier_verified": tier_verified,
-                    "published_at": str(merged.get("published_at") or "").strip() if is_valid_iso_date(merged.get("published_at")) else None,
-                    "reviewed_at": str(merged.get("reviewed_at") or "").strip(),
-                    "medical_review_status": "approved",
-                    "review_verification_status": "verified",
-                    "review_id": str(merged.get("review_id") or "").strip(),
-                    "reviewer_id": str(merged.get("reviewer_id") or "").strip(),
-                    "review_role": str(merged.get("review_role") or "").strip() or None,
-                    "review_scope": str(merged.get("review_scope") or "").strip(),
-                    "reviewed_content_hash": reviewed_hash,
-                    "document_content_hash": doc_hash or reviewed_hash,
-                    "privacy_review_status": str(merged.get("privacy_review_status") or "").strip() or None,
-                }
-            if has_required_fields and doc_hash and doc_hash != reviewed_hash:
-                return {
-                    "source_url": sanitize_http_url(merged.get("source_url")),
-                    "publisher": str(merged.get("publisher") or "").strip() or None,
-                    "source_tier": None,
-                    "source_tier_verified": False,
-                    "published_at": str(merged.get("published_at") or "").strip() if is_valid_iso_date(merged.get("published_at")) else None,
-                    "reviewed_at": None,
-                    "medical_review_status": "stale_review",
-                    "review_verification_status": "stale_content_mismatch",
-                    "review_id": None,
-                    "reviewer_id": None,
-                    "review_role": None,
-                    "review_scope": None,
-                    "reviewed_content_hash": reviewed_hash,
-                    "document_content_hash": doc_hash,
-                    "stale_review_id": str(merged.get("review_id") or "").strip(),
-                    "privacy_review_status": str(merged.get("privacy_review_status") or "").strip() or None,
-                }
+    # Retrieved payload stamps and document hashes are claims, not authority.  Hash
+    # the complete supplied content, before the composer truncates it. A chunk
+    # whose relationship to the reviewed document is not independently provable
+    # therefore fails closed instead of trusting its document_content_hash.
+    content = str(merged.get("content") or merged.get("page_content") or "")
+    try:
+        resolved = resolve_document_provenance(
+            merged, content=content, registry=registry, is_seed=is_seed,
+            allow_synthetic_registry=allow_synthetic_registry,
+        )
+    except (ValueError, OSError, TypeError, KeyError) as exc:
+        resolved = resolve_document_provenance(
+            merged, content=content, registry=empty_review_registry(), is_seed=is_seed,
+        )
+        resolved["review_verification_status"] = "registry_unavailable"
+        resolved["review_failure_reason"] = type(exc).__name__
 
-    # Otherwise resolve against the managed review registry (or downgrade legacy claims).
-    resolved = resolve_document_provenance(
-        merged,
-        content=str(merged.get("content") or merged.get("excerpt") or ""),
-        registry=registry,
-        is_seed=is_seed,
-        allow_synthetic_registry=allow_synthetic_registry,
-    )
-    return {
+    if resolved["review_verification_status"] == "verified":
+        scope = str(resolved.get("review_scope") or "")
+        content_type = str(merged.get("content_type") or "")
+        inconsistent = not content.strip() or scope not in {"whole_document", content_type}
+        identity_claims = {
+            str(source[key]).strip()
+            for source in (metadata, doc) for key in ("document_id", "doc_id")
+            if source.get(key) is not None and str(source[key]).strip()
+        }
+        if len(identity_claims) > 1:
+            inconsistent = True
+        for field in ("document_id", "document_version", "review_id", "reviewer_id", "review_role", "review_scope", "reviewed_at", "reviewed_content_hash", "document_content_hash", "medical_review_status", "review_verification_status"):
+            if field in {"document_id", "document_version"}:
+                expected = _first_non_empty(doc, metadata, field)
+            else:
+                expected = resolved.get(field)
+            for source in (metadata, doc):
+                claimed = source.get(field)
+                if claimed is not None and str(claimed).strip() != str(expected or "").strip():
+                    inconsistent = True
+        if inconsistent:
+            resolved["medical_review_status"] = "unverified_legacy"
+            resolved["review_verification_status"] = "binding_unverified"
+            resolved["review_id"] = None
+            resolved["reviewer_id"] = None
+            resolved["review_scope"] = None
+            resolved["source_tier"] = None
+            resolved["source_tier_verified"] = False
+
+    return _ResolvedProvenance({
         "source_url": resolved["source_url"],
         "publisher": resolved["publisher"],
         "source_tier": resolved["source_tier"],
@@ -570,4 +578,5 @@ def normalize_evidence_provenance(
         "stale_review_id": resolved["stale_review_id"],
         "legacy_claimed_review_status": resolved["legacy_claimed_review_status"],
         "privacy_review_status": resolved["privacy_review_status"],
-    }
+        "review_failure_reason": resolved.get("review_failure_reason"),
+    })

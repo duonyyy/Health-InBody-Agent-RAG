@@ -9,7 +9,6 @@ class AgentState(TypedDict, total=False):
     history: List[Dict[str, str]]
     user_profile: Dict[str, Any]
     personalization_context: Dict[str, Any]
-    memory_context: str
     latest_measurement: Dict[str, Any]
     standalone_question: str
     selected_agents: List[str]

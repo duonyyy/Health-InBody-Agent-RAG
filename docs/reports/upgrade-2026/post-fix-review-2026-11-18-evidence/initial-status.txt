@@ -1,0 +1,57 @@
+ M README.md
+ M backend/.env.example
+ M backend/README.md
+ M backend/requirements.txt
+ M backend/scripts/build_bm25_snapshot.py
+ M backend/scripts/evaluate_phase1.py
+ M backend/src/agents/composer.py
+ M backend/src/agents/graph.py
+ M backend/src/agents/nodes/rag.py
+ M backend/src/agents/state.py
+ M backend/src/api/app.py
+ M backend/src/api/memory.py
+ M backend/src/api/personalization.py
+ M backend/src/core/response_cache.py
+ M backend/src/jobs/tasks.py
+ M backend/src/memory/README.md
+ M backend/src/memory/chat.py
+ M backend/src/memory/store.py
+ D backend/src/memory/sync.py
+ D backend/src/memory/zep_memory.py
+ M backend/src/persistence/personalization_service.py
+ M backend/src/pipelines/import_data.py
+ M backend/src/pipelines/import_missing_vectors.py
+ M backend/src/pipelines/reuse_qdrant_vectors.py
+ M backend/src/rag/corpus_policy.py
+ M backend/src/rag/qdrant/client.py
+ M backend/src/rag/qdrant/collection_admin.py
+ M backend/src/rag/search.py
+ M backend/src/rag/vector_metadata.py
+ D backend/tests/integration/test_zep_sdk_contract.py
+ M backend/tests/unit/test_corpus_privacy.py
+ M backend/tests/unit/test_import_data.py
+ M backend/tests/unit/test_llm_response_cache.py
+ M backend/tests/unit/test_memory_contract.py
+ M backend/tests/unit/test_personalization_api.py
+ M backend/tests/unit/test_phase02_claim_and_provenance.py
+ D backend/tests/unit/test_zep_memory.py
+ M data_pipeline/configs/pipeline_config.py
+ M data_pipeline/run_pipeline.py
+ M data_pipeline/src/indexers/bm25_indexer.py
+ M data_pipeline/src/indexers/qdrant_indexer.py
+ M data_pipeline/src/processors/corpus_processor.py
+ M data_pipeline/tests/test_data_pipeline.py
+ M docs/QDRANT_BLUE_GREEN_IMPORT.md
+ M docs/implementation-roadmap/08-zep-memory-integration-2026-09-29.md
+ M docs/implementation-roadmap/09-day17-memory-completion-2026-09-29.md
+ M docs/implementation-roadmap/README.md
+?? backend/src/rag/corpus_lifecycle.py
+?? backend/tests/integration/test_phase04_qdrant_local_lifecycle.py
+?? backend/tests/unit/test_local_memory_without_zep.py
+?? backend/tests/unit/test_phase04_corpus_lifecycle.py
+?? data_pipeline/src/processors/lifecycle_bridge.py
+?? docs/reports/upgrade-2026/phase04-corpus-lifecycle-2026-11-18.md
+?? docs/reports/upgrade-2026/post-fix-review-2026-11-18-evidence/
+?? docs/reports/upgrade-2026/project-reassessment-2026-11-17-evidence.json
+?? docs/reports/upgrade-2026/project-reassessment-2026-11-17.md
+?? docs/reports/upgrade-2026/remove-zep-2026-11-18.md

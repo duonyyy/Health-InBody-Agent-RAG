@@ -28,7 +28,6 @@ def _cacheable_state(**updates):
         "personalization_context": {},
         "user_profile": {},
         "history": [],
-        "memory_context": "",
         "errors": [],
         "agent_trace": [],
         "limitations": [],
@@ -84,7 +83,6 @@ def test_public_rag_cache_policy_rejects_personal_or_unsafe_context():
         "history": [],
         "personalization_context": {},
         "user_profile": {},
-        "memory_context": "",
         "tool_results": [],
         "errors": [],
     }

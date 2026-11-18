@@ -1,0 +1,327 @@
+{
+  "scope": "real_loopback_HTTP_actual_API_SQLite_synthetic_search_Ollama_OCR_upstream",
+  "config": {
+    "search_concurrency": 2,
+    "search_queue": 1,
+    "search_timeout": 0.45,
+    "summarize_concurrency": 1,
+    "summarize_queue": 0,
+    "summarize_timeout": 0.45
+  },
+  "persistence": {
+    "profile_status": 200,
+    "create_status": 201,
+    "readback_status": 200,
+    "readback_weight": 72.5,
+    "other_owner_status": 404,
+    "checkin_status": 201,
+    "checkin_risk": "urgent",
+    "readback_checkin_risk": [
+      "urgent"
+    ]
+  },
+  "under_search_summarize_load": {
+    "urgent": {
+      "n": 30,
+      "p50_ms": 6.657,
+      "p95_ms": 8.163,
+      "max_ms": 9.026,
+      "statuses": {
+        "200": 30
+      }
+    },
+    "bmi": {
+      "n": 30,
+      "p50_ms": 51.352,
+      "p95_ms": 65.339,
+      "max_ms": 74.138,
+      "statuses": {
+        "200": 30
+      }
+    },
+    "loads": [
+      {
+        "status": 504,
+        "ms": 462.214
+      },
+      {
+        "status": 504,
+        "ms": 481.562
+      },
+      {
+        "status": 503,
+        "ms": 160.403
+      },
+      {
+        "status": 504,
+        "ms": 498.719
+      }
+    ],
+    "lane_stats": {
+      "probe": {
+        "lane": "probe",
+        "scope": "per_process",
+        "active": 0,
+        "abandoned": 0,
+        "queued": 0,
+        "max_concurrency": 4,
+        "max_queue": 4,
+        "queue_timeout_seconds": 2.0,
+        "completed_total": 35,
+        "rejected_total": 0,
+        "timed_out_total": 0
+      },
+      "chat": {
+        "lane": "chat",
+        "scope": "per_process",
+        "active": 0,
+        "abandoned": 0,
+        "queued": 0,
+        "max_concurrency": 4,
+        "max_queue": 8,
+        "queue_timeout_seconds": 5.0,
+        "completed_total": 31,
+        "rejected_total": 0,
+        "timed_out_total": 0
+      },
+      "search": {
+        "lane": "search",
+        "scope": "per_process",
+        "active": 0,
+        "abandoned": 0,
+        "queued": 0,
+        "max_concurrency": 2,
+        "max_queue": 1,
+        "queue_timeout_seconds": 0.12,
+        "completed_total": 0,
+        "rejected_total": 1,
+        "timed_out_total": 2
+      },
+      "summarize": {
+        "lane": "summarize",
+        "scope": "per_process",
+        "active": 0,
+        "abandoned": 0,
+        "queued": 0,
+        "max_concurrency": 1,
+        "max_queue": 0,
+        "queue_timeout_seconds": 3.0,
+        "completed_total": 0,
+        "rejected_total": 0,
+        "timed_out_total": 1
+      }
+    },
+    "upstream_calls": {
+      "/search": 2,
+      "/api/chat": 1
+    }
+  },
+  "admission": {
+    "summary": {
+      "n": 8,
+      "p50_ms": 46.204,
+      "p95_ms": 483.335,
+      "max_ms": 483.335,
+      "statuses": {
+        "504": 2,
+        "503": 6
+      }
+    },
+    "lane_stats": {
+      "probe": {
+        "lane": "probe",
+        "scope": "per_process",
+        "active": 0,
+        "abandoned": 0,
+        "queued": 0,
+        "max_concurrency": 4,
+        "max_queue": 4,
+        "queue_timeout_seconds": 2.0,
+        "completed_total": 43,
+        "rejected_total": 0,
+        "timed_out_total": 0
+      },
+      "chat": {
+        "lane": "chat",
+        "scope": "per_process",
+        "active": 0,
+        "abandoned": 0,
+        "queued": 0,
+        "max_concurrency": 4,
+        "max_queue": 8,
+        "queue_timeout_seconds": 5.0,
+        "completed_total": 31,
+        "rejected_total": 0,
+        "timed_out_total": 0
+      },
+      "search": {
+        "lane": "search",
+        "scope": "per_process",
+        "active": 0,
+        "abandoned": 0,
+        "queued": 0,
+        "max_concurrency": 2,
+        "max_queue": 1,
+        "queue_timeout_seconds": 0.12,
+        "completed_total": 0,
+        "rejected_total": 7,
+        "timed_out_total": 4
+      },
+      "summarize": {
+        "lane": "summarize",
+        "scope": "per_process",
+        "active": 0,
+        "abandoned": 0,
+        "queued": 0,
+        "max_concurrency": 1,
+        "max_queue": 0,
+        "queue_timeout_seconds": 3.0,
+        "completed_total": 0,
+        "rejected_total": 0,
+        "timed_out_total": 1
+      }
+    }
+  },
+  "after_timeout": {
+    "status": 200,
+    "ms": 45.581
+  },
+  "disconnect": {
+    "during": {
+      "lane": "summarize",
+      "scope": "per_process",
+      "active": 1,
+      "abandoned": 0,
+      "queued": 0,
+      "max_concurrency": 1,
+      "max_queue": 0,
+      "queue_timeout_seconds": 3.0,
+      "completed_total": 0,
+      "rejected_total": 0,
+      "timed_out_total": 1
+    },
+    "immediate_followup": {
+      "status": 503,
+      "ms": 6.921
+    },
+    "after": {
+      "lane": "summarize",
+      "scope": "per_process",
+      "active": 0,
+      "abandoned": 0,
+      "queued": 0,
+      "max_concurrency": 1,
+      "max_queue": 0,
+      "queue_timeout_seconds": 3.0,
+      "completed_total": 1,
+      "rejected_total": 1,
+      "timed_out_total": 1
+    },
+    "completed_delta": 1,
+    "recovered": {
+      "status": 200,
+      "ms": 57.211
+    }
+  },
+  "retry": {
+    "sample": {
+      "status": 200,
+      "ms": 649.714
+    },
+    "upstream_calls": 2,
+    "response_status": "degraded",
+    "errors": [
+      "Response composition is temporarily unavailable"
+    ]
+  },
+  "ocr_pool_saturation": {
+    "active_ocr_at_urgent": 40,
+    "urgent": {
+      "status": 200,
+      "ms": 1505.445
+    },
+    "ocr_statuses": {
+      "200": 40
+    },
+    "measurements_after_extraction": 2
+  },
+  "negative_input": {
+    "status": 422,
+    "ms": 9.708
+  },
+  "health": {
+    "status": 200,
+    "ms": 1016.646
+  },
+  "final_lanes": {
+    "probe": {
+      "lane": "probe",
+      "scope": "per_process",
+      "active": 0,
+      "abandoned": 0,
+      "queued": 0,
+      "max_concurrency": 4,
+      "max_queue": 4,
+      "queue_timeout_seconds": 2.0,
+      "completed_total": 49,
+      "rejected_total": 0,
+      "timed_out_total": 0
+    },
+    "chat": {
+      "lane": "chat",
+      "scope": "per_process",
+      "active": 0,
+      "abandoned": 0,
+      "queued": 0,
+      "max_concurrency": 4,
+      "max_queue": 8,
+      "queue_timeout_seconds": 5.0,
+      "completed_total": 32,
+      "rejected_total": 0,
+      "timed_out_total": 0
+    },
+    "search": {
+      "lane": "search",
+      "scope": "per_process",
+      "active": 0,
+      "abandoned": 0,
+      "queued": 0,
+      "max_concurrency": 2,
+      "max_queue": 1,
+      "queue_timeout_seconds": 0.12,
+      "completed_total": 1,
+      "rejected_total": 7,
+      "timed_out_total": 4
+    },
+    "summarize": {
+      "lane": "summarize",
+      "scope": "per_process",
+      "active": 0,
+      "abandoned": 0,
+      "queued": 0,
+      "max_concurrency": 1,
+      "max_queue": 0,
+      "queue_timeout_seconds": 3.0,
+      "completed_total": 2,
+      "rejected_total": 1,
+      "timed_out_total": 1
+    }
+  },
+  "upstream_final": {
+    "calls": {
+      "/search": 5,
+      "/api/chat": 5,
+      "/ocr/inbody": 40
+    },
+    "active": {
+      "/search": 0,
+      "/api/chat": 0,
+      "/ocr/inbody": 0
+    },
+    "maximum": {
+      "/search": 2,
+      "/api/chat": 1,
+      "/ocr/inbody": 40
+    }
+  }
+}

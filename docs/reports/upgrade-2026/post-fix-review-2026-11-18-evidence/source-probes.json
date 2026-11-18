@@ -1,0 +1,232 @@
+{
+  "scope": "synthetic_in_process_no_network",
+  "claims": [
+    {
+      "name": "drop_not",
+      "source": "BMI không đủ để chẩn đoán sức khỏe.",
+      "answer": "BMI đủ để chẩn đoán sức khỏe [1].",
+      "expected_supported": false,
+      "actual_supported": false,
+      "status": "unsupported",
+      "reasons": [
+        "epistemic_escalation",
+        "negation_dropped"
+      ]
+    },
+    {
+      "name": "add_not",
+      "source": "BMI là chỉ số khối cơ thể.",
+      "answer": "BMI không là chỉ số khối cơ thể [1].",
+      "expected_supported": false,
+      "actual_supported": false,
+      "status": "unsupported",
+      "reasons": [
+        "negation_added"
+      ]
+    },
+    {
+      "name": "other_sentence_negation",
+      "source": "BMI là chỉ số khối cơ thể. BMI không thay thế bác sĩ.",
+      "answer": "BMI là chỉ số khối cơ thể [1].",
+      "expected_supported": true,
+      "actual_supported": true,
+      "status": "supported",
+      "reasons": []
+    },
+    {
+      "name": "exact",
+      "source": "PBF là tỷ lệ phần trăm mỡ cơ thể.",
+      "answer": "PBF là tỷ lệ phần trăm mỡ cơ thể [1].",
+      "expected_supported": true,
+      "actual_supported": true,
+      "status": "supported",
+      "reasons": []
+    },
+    {
+      "name": "paraphrase",
+      "source": "PBF là tỷ lệ phần trăm mỡ cơ thể.",
+      "answer": "PBF phản ánh tỷ lệ phần trăm mỡ cơ thể [1].",
+      "expected_supported": true,
+      "actual_supported": true,
+      "status": "supported",
+      "reasons": []
+    },
+    {
+      "name": "wrong_unit",
+      "source": "PBF ở nam là 25%.",
+      "answer": "PBF ở nam là 25 kg [1].",
+      "expected_supported": false,
+      "actual_supported": false,
+      "status": "unsupported",
+      "reasons": [
+        "unit_mismatch"
+      ]
+    },
+    {
+      "name": "wrong_number",
+      "source": "Cân nặng là 72 kg.",
+      "answer": "Cân nặng là 82 kg [1].",
+      "expected_supported": false,
+      "actual_supported": false,
+      "status": "unsupported",
+      "reasons": [
+        "number_mismatch"
+      ]
+    },
+    {
+      "name": "wrong_subject",
+      "source": "PBF ở nam là 25%.",
+      "answer": "PBF ở nữ là 25% [1].",
+      "expected_supported": false,
+      "actual_supported": false,
+      "status": "unsupported",
+      "reasons": [
+        "subject_population_mismatch"
+      ]
+    },
+    {
+      "name": "drop_condition",
+      "source": "Nếu có bệnh thận, cần tham khảo bác sĩ trước khi tăng protein.",
+      "answer": "Cần tham khảo bác sĩ trước khi tăng protein [1].",
+      "expected_supported": false,
+      "actual_supported": false,
+      "status": "unsupported",
+      "reasons": [
+        "condition_dropped",
+        "subject_scope_dropped"
+      ]
+    },
+    {
+      "name": "unrelated_id",
+      "source": "BMI là chỉ số khối cơ thể.",
+      "answer": "Uống nước chữa khỏi bệnh thận [1].",
+      "expected_supported": false,
+      "actual_supported": false,
+      "status": "unsupported",
+      "reasons": [
+        "epistemic_escalation",
+        "negation_added",
+        "subject_population_mismatch"
+      ]
+    },
+    {
+      "name": "swap_population_values",
+      "source": "PBF ở nam là 20% và ở nữ là 30%.",
+      "answer": "PBF ở nam là 30% và ở nữ là 20% [1].",
+      "expected_supported": false,
+      "actual_supported": true,
+      "status": "supported",
+      "reasons": []
+    },
+    {
+      "name": "swap_metric_values",
+      "source": "SMM là 30 kg và BFM là 20 kg.",
+      "answer": "SMM là 20 kg và BFM là 30 kg [1].",
+      "expected_supported": false,
+      "actual_supported": true,
+      "status": "supported",
+      "reasons": []
+    },
+    {
+      "name": "swap_relationship",
+      "source": "Tập luyện giúp cải thiện sức khỏe.",
+      "answer": "Sức khỏe giúp cải thiện tập luyện [1].",
+      "expected_supported": false,
+      "actual_supported": true,
+      "status": "supported",
+      "reasons": []
+    },
+    {
+      "name": "valid_unlisted_paraphrase",
+      "source": "BMI là chỉ số khối cơ thể.",
+      "answer": "Chỉ số khối cơ thể được viết tắt là BMI [1].",
+      "expected_supported": true,
+      "actual_supported": false,
+      "status": "inconclusive",
+      "reasons": [
+        "insufficient_grounded_support"
+      ]
+    }
+  ],
+  "claim_counts": {
+    "false_acceptances": 3,
+    "false_rejections": 1
+  },
+  "forged_provenance": {
+    "registry_reviews": 0,
+    "admitted": 1,
+    "rejected": 0,
+    "statuses": [
+      "verified"
+    ]
+  },
+  "ocr": [
+    {
+      "name": "fabricated_value_and_raw",
+      "accepted": true,
+      "status": "needs_confirmation",
+      "warnings": []
+    },
+    {
+      "name": "wrong_metric",
+      "accepted": true,
+      "status": "needs_confirmation",
+      "warnings": []
+    },
+    {
+      "name": "wrong_unit",
+      "accepted": true,
+      "status": "needs_confirmation",
+      "warnings": []
+    },
+    {
+      "name": "nonexistent_span",
+      "accepted": true,
+      "status": "needs_confirmation",
+      "warnings": []
+    }
+  ],
+  "corpus_mixing": {
+    "sync": {
+      "synced": true,
+      "status": "unverified",
+      "alias_name": "nmk_chatbot_active",
+      "live_physical_collection": "physical-new",
+      "pinned_collection": "physical-new",
+      "bm25_physical_collection": null,
+      "bm25_release_id": null,
+      "bm25_corpus_version": null,
+      "bm25_chunk_set_fingerprint": "ff6cc3690e8ba3954f5c6afd94c465ef26cf631defac2762b3fc52278c888e27",
+      "reasons": []
+    },
+    "result_versions": [
+      "new",
+      "old"
+    ],
+    "retrieval_modes": [
+      "hybrid"
+    ]
+  },
+  "syntax": {
+    "count": 139,
+    "errors": [],
+    "runtime": "host 3.13; grammar 3.10, not image execution"
+  },
+  "snapshot": {
+    "sha256": "9d8e4e00a0c487768e1077ac652af7954081c7bae9bc238b6e1741c87b999a9f",
+    "keys": [
+      "collection_name",
+      "created_at",
+      "document_count",
+      "documents",
+      "metadata",
+      "schema_version"
+    ],
+    "metadata": {
+      "corpus_version": "2026.1",
+      "built_by": "data_pipeline",
+      "chunk_count": 4405
+    },
+    "document_count": 4405
+  }
+}

@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import math
+import os
 from typing import List, Union
 
 import requests
@@ -90,7 +91,8 @@ class EmbeddingClient:
         if not texts:
             return []
 
-        cleaned_texts = [t.replace("\n", " ").strip() for t in texts]
+        prefix = os.getenv("EMBEDDING_PASSAGE_PREFIX", "")
+        cleaned_texts = [prefix + t.replace("\n", " ").strip() for t in texts]
         payload = {
             "texts": cleaned_texts,
             "batch_size": len(cleaned_texts),

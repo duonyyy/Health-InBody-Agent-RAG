@@ -76,94 +76,266 @@ def index_document_v2(
     id,
     question,
     content,
-    collection_name=DEFAULT_COLLECTION_NAME,
+    collection_name: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
-):
+    *,
+    corpus_version: Optional[str] = None,
+    qdrant_client: Any = None,
+    require_allowlist: bool = False,
+    lease: Any = None,
+    lease_manager: Any = None,
+) -> Dict[str, Any]:
     """
-    Tach, embed va upsert mot tai lieu Health/InBody vao Qdrant.
+    Tach, embed va upsert mot tai lieu Health/InBody vao physical staging Qdrant collection.
+
+    Tra ve WriteReceipt trung thuc; chan moi ghi vao serving alias hoac physical target dang phuc vu.
     """
-    from rag.splitter import split_document
-    from rag.qdrant.client import add_vector
+    import hashlib
+    from rag.corpus_lifecycle import (
+        CorpusWriteValidationError,
+        current_embedding_config,
+        finalize_write_receipt,
+        new_write_receipt,
+        validate_vector_values,
+        verify_staging_write_target,
+    )
     from rag.corpus_policy import validate_shared_document
+    from pipelines.import_data import split_document_safe
+    from rag.qdrant.client import add_vector, client as default_qdrant_client
 
-    validate_shared_document({"question": question, "content": content, "metadata": metadata or {}})
+    active_qdrant = default_qdrant_client if qdrant_client is None else qdrant_client
+    meta = dict(metadata or {})
+    effective_version = corpus_version or meta.get("corpus_version") or None
 
-    text = f"{question or ''}\n{content or ''}".strip()
-    chunks = split_document(
-        text,
-        metadata={
-            "doc_id": id,
-            "question": question,
-            "source": (metadata or {}).get("source", "manual_index"),
-            **(metadata or {}),
-        },
+    # R06: Fail-closed staging admission BEFORE splitting/embedding/writing.
+    verify_staging_write_target(
+        collection_name,
+        qdrant_client=active_qdrant,
+        corpus_version=effective_version,
+        require_corpus_version=False,
+        require_allowlist=require_allowlist,
+        dry_run=False,
     )
 
+    validate_shared_document({"question": question, "content": content, "metadata": meta})
+
+    text = f"{question or ''}\n{content or ''}".strip()
+    doc_id_str = str(id)
+    chunks = split_document_safe(
+        text,
+        metadata={
+            "doc_id": doc_id_str,
+            "document_id": doc_id_str,
+            "question": question,
+            "source": meta.get("source", "manual_index"),
+            **meta,
+        },
+        chunk_size=512,
+        chunk_overlap=50,
+    )
+
+    emb_cfg = current_embedding_config()
     vectors = {}
     for index, chunk in enumerate(chunks):
-        vector = get_embedding(chunk.page_content)
-        chunk_key = f"{id}-{index}"
+        chunk_text = str(chunk.page_content or "")
+        vector = get_embedding(chunk_text)
+        validate_vector_values(vector, point_id=f"{doc_id_str}-{index}")
+        chunk_key = f"{doc_id_str}-{index}"
         point_id = str(uuid.uuid5(uuid.NAMESPACE_URL, chunk_key))
+        content_hash = hashlib.sha256(chunk_text.encode("utf-8")).hexdigest()
+        payload = {
+            **chunk.metadata,
+            "doc_id": doc_id_str,
+            "document_id": doc_id_str,
+            "question": question,
+            "content": chunk_text,
+            "chunk_id": chunk_key,
+            "content_hash": content_hash,
+            "qdrant_point_id": point_id,
+            "embedding_fingerprint": emb_cfg["fingerprint"],
+        }
+        if effective_version:
+            payload["corpus_version"] = effective_version
         vectors[point_id] = {
             "vector": vector,
-            "payload": {
-                **chunk.metadata,
-                "question": question,
-                "content": chunk.page_content,
-                "chunk_id": chunk_key,
-                "qdrant_point_id": point_id,
-            },
+            "payload": payload,
         }
 
     if not vectors:
-        return {"status": "no_chunks_created"}
+        receipt = new_write_receipt(
+            collection_name=str(collection_name),
+            corpus_version=effective_version,
+        )
+        receipt["errors"].append({"document_id": doc_id_str, "error": "no_chunks_created"})
+        return finalize_write_receipt(receipt)
 
-    add_vector_status = add_vector(
+    receipt = add_vector(
         collection_name=collection_name,
         vectors=vectors,
+        raise_on_error=False,
+        corpus_version=effective_version,
+        embedding_fingerprint=emb_cfg["fingerprint"],
+        enforce_staging_policy=True,
+        require_corpus_version=False,
+        require_allowlist=require_allowlist,
+        lease=lease,
+        lease_manager=lease_manager,
+        qdrant_client=active_qdrant,
     )
-    logger.info("Indexed Health/InBody document %s with %s chunks", id, len(vectors))
-    return add_vector_status
+    receipt["document_id"] = doc_id_str
+    logger.info(
+        "Indexed Health/InBody document %s into %s: ok=%s committed=%s failed=%s",
+        doc_id_str,
+        collection_name,
+        receipt.get("ok"),
+        receipt.get("committed_points"),
+        receipt.get("failed_points"),
+    )
+    return receipt
 
 
 @shared_task()
-def index_health_documents(documents: List[Dict[str, Any]], collection_name=DEFAULT_COLLECTION_NAME):
+def index_health_documents(
+    documents: List[Dict[str, Any]],
+    collection_name: Optional[str] = None,
+    *,
+    corpus_version: Optional[str] = None,
+    qdrant_client: Any = None,
+    require_allowlist: bool = False,
+    raise_on_error: bool = False,
+    lock_dir: Optional[str] = None,
+) -> Dict[str, Any]:
     """
-    Index nhieu tai lieu Health/InBody va khoi tao BM25 search index.
+    Index nhieu tai lieu Health/InBody vao physical staging collection voi write receipt trung thuc.
+
+    Khong tu dong mutate BM25 in-memory index cua serving collection va khong bao thanh cong khi co loi batch.
     """
+    from rag.corpus_lifecycle import (
+        CorpusLeaseManager,
+        QdrantWriteError,
+        finalize_write_receipt,
+        new_write_receipt,
+        verify_staging_write_target,
+    )
     from rag.corpus_policy import validate_shared_document
+    from rag.qdrant.client import client as default_qdrant_client
+
+    active_qdrant = default_qdrant_client if qdrant_client is None else qdrant_client
+    verify_staging_write_target(
+        collection_name,
+        qdrant_client=active_qdrant,
+        corpus_version=corpus_version,
+        require_corpus_version=False,
+        require_allowlist=require_allowlist,
+        dry_run=False,
+    )
+
     for document in documents or []:
         validate_shared_document(document)
-    statuses = []
-    normalized_docs = []
 
-    for index, doc in enumerate(documents or []):
-        doc_id = doc.get("doc_id") or doc.get("id") or str(uuid.uuid4())
-        question = doc.get("question") or doc.get("title") or ""
-        content = doc.get("content") or doc.get("page_content") or ""
-        metadata = {
-            **(doc.get("metadata") or {}),
-            "source": doc.get("source", "batch_index"),
-            "content_type": doc.get("content_type"),
-            "domain": doc.get("domain", "health_inbody"),
-            "language": doc.get("language"),
-            "title": doc.get("title"),
-        }
-        statuses.append(index_document_v2(doc_id, question, content, collection_name, metadata))
-        normalized_docs.append(
-            {
-                "doc_id": doc_id,
-                "question": question,
-                "content": content,
-                "source": metadata["source"],
-                "content_type": metadata.get("content_type"),
-                "domain": "health_inbody",
+    manager = CorpusLeaseManager(lock_dir=lock_dir)
+    lease = manager.acquire_write_lease(
+        str(collection_name),
+        qdrant_client=active_qdrant,
+        corpus_version=corpus_version,
+        require_corpus_version=False,
+        require_allowlist=require_allowlist,
+    )
+
+    aggregate = new_write_receipt(
+        collection_name=str(collection_name),
+        corpus_version=corpus_version,
+    )
+    statuses: List[Dict[str, Any]] = []
+    attempted_documents = 0
+    committed_documents = 0
+    failed_documents = 0
+
+    try:
+        for doc in documents or []:
+            attempted_documents += 1
+            doc_id = str(doc.get("doc_id") or doc.get("id") or uuid.uuid4())
+            question = doc.get("question") or doc.get("title") or ""
+            content = doc.get("content") or doc.get("page_content") or ""
+            metadata = {
+                **(doc.get("metadata") or {}),
+                "source": doc.get("source", "batch_index"),
+                "content_type": doc.get("content_type"),
+                "domain": doc.get("domain", "health_inbody"),
+                "language": doc.get("language"),
+                "title": doc.get("title"),
             }
-        )
+            if corpus_version and not metadata.get("corpus_version"):
+                metadata["corpus_version"] = corpus_version
+            try:
+                doc_receipt = index_document_v2(
+                    doc_id,
+                    question,
+                    content,
+                    collection_name=collection_name,
+                    metadata=metadata,
+                    corpus_version=corpus_version,
+                    qdrant_client=active_qdrant,
+                    require_allowlist=require_allowlist,
+                    lease=lease,
+                    lease_manager=manager,
+                )
+            except Exception as exc:
+                failed_documents += 1
+                err_entry = {
+                    "document_id": doc_id,
+                    "ok": False,
+                    "status": "failed",
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                }
+                statuses.append(err_entry)
+                aggregate["errors"].append(err_entry)
+                aggregate["failed_points"] += 1
+                aggregate["attempted_points"] += 1
+                continue
 
-    if collection_name == DEFAULT_COLLECTION_NAME:
-        initialize_search_index(normalized_docs)
-    return {"indexed": len(statuses), "statuses": statuses}
+            statuses.append(doc_receipt)
+            aggregate["attempted_points"] += int(doc_receipt.get("attempted_points") or 0)
+            aggregate["acknowledged_points"] += int(doc_receipt.get("acknowledged_points") or 0)
+            aggregate["committed_points"] += int(doc_receipt.get("committed_points") or 0)
+            aggregate["failed_points"] += int(doc_receipt.get("failed_points") or 0)
+            aggregate["unconfirmed_points"] += int(doc_receipt.get("unconfirmed_points") or 0)
+            aggregate["batches_attempted"] += int(doc_receipt.get("batches_attempted") or 0)
+            aggregate["batches_committed"] += int(doc_receipt.get("batches_committed") or 0)
+            aggregate["batches_unconfirmed"] += int(doc_receipt.get("batches_unconfirmed") or 0)
+            aggregate["batches_failed"] += int(doc_receipt.get("batches_failed") or 0)
+            aggregate["errors"].extend(doc_receipt.get("errors") or [])
+
+            if doc_receipt.get("ok"):
+                committed_documents += 1
+            else:
+                failed_documents += 1
+    finally:
+        manager.release_lease(lease)
+
+    finalize_write_receipt(aggregate)
+    if failed_documents > 0:
+        aggregate["ok"] = False
+        aggregate["status"] = "partial" if committed_documents > 0 else "failed"
+        aggregate["partial_write"] = committed_documents > 0
+
+    result = {
+        **aggregate,
+        "indexed": committed_documents,
+        "attempted_documents": attempted_documents,
+        "committed_documents": committed_documents,
+        "failed_documents": failed_documents,
+        "bm25_index_mutated": False,
+        "statuses": statuses,
+    }
+    if raise_on_error and not result["ok"]:
+        raise QdrantWriteError(
+            f"Batch indexing failed/incomplete for {collection_name!r}: "
+            f"committed_docs={committed_documents}, failed_docs={failed_documents}",
+            receipt=result,
+        )
+    return result
 
 
 # ==========================================
@@ -360,7 +532,6 @@ def llm_handle_message(
     Main handler cho Health/InBody Multi-Agent RAG chat.
 
     Recheck persisted task ownership and use bounded PostgreSQL history.
-    Cloud memory is disabled on this asynchronous path.
     Honors shared queue+worker deadline when deadline_epoch is provided.
     """
     logger.info("Start Health/InBody message handling bot_id=%s", bot_id)
@@ -379,7 +550,6 @@ def llm_handle_message(
         user_id,
         conversation_id,
         bot_id=bot_id,
-        use_zep_memory=False,
         deadline_monotonic=deadline_monotonic,
     )
 
@@ -387,7 +557,4 @@ def llm_handle_message(
 @shared_task()
 def purge_memory():
     from memory.store import purge_expired
-    from memory.sync import maintain_external_memory
-    result = purge_expired()
-    result.update(maintain_external_memory())
-    return result
+    return purge_expired()

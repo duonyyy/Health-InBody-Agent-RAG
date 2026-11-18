@@ -130,9 +130,7 @@ def list_facts(subject: str) -> dict:
         _require_consent(user, personalization=True)
         rows = db.query(MemoryFact).filter(MemoryFact.user_id == user.id, MemoryFact.status != "rejected",
                                          MemoryFact.expires_at > now()).order_by(MemoryFact.created_at.desc()).limit(40).all()
-        return {"items": [_fact_dict(row) for row in rows],
-                "external_memory": bool((user.consent_flags or {}).get("external_memory")),
-                "sync_pending": bool((user.consent_flags or {}).get("external_memory_sync_pending"))}
+        return {"items": [_fact_dict(row) for row in rows]}
 
 
 def propose_fact(subject: str, message_id: str, kind: str, text: str) -> dict:
@@ -186,7 +184,6 @@ def confirm_fact(subject: str, fact_id: str) -> dict:
             raise profiles.PersonalizationConflict("Tối đa 20 ghi nhớ đã xác nhận; hãy xóa thông tin cũ.")
         row.status, row.confirmed_at = "confirmed", now()
         row.expires_at = now() + timedelta(days=180)
-        profiles._save_consent(user, {}, external_memory_sync_pending=True)
         db.flush()
         return _fact_dict(row)
 
@@ -196,7 +193,6 @@ def delete_fact(subject: str, fact_id: str) -> None:
         user = locked_user(db, subject)
         row = _owned_fact(db, user, fact_id)
         db.delete(row)
-        profiles._save_consent(user, {}, external_memory_sync_pending=True)
 
 
 def propose_from_turn(subject: str, message_id: str, question: str) -> list[dict]:
@@ -260,7 +256,6 @@ def purge_expired() -> dict:
             ).delete(synchronize_session=False)
             expired = db.query(MemoryFact).filter(MemoryFact.user_id == owner_id, MemoryFact.expires_at <= now()).all()
             if expired:
-                profiles._save_consent(user, {}, external_memory_sync_pending=True)
                 for fact in expired:
                     db.delete(fact)
                 counts["facts_removed"] += len(expired)

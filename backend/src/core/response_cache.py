@@ -36,6 +36,7 @@ from rag.provenance import PROVENANCE_POLICY_VERSION
 
 _ALLOWED_EMPTY_CONTEXT_KEYS = {"available", "reason"}
 RESPONSE_CACHE_SCHEMA_VERSION = "health-inbody-rag-response-v2"
+RELEASE_CACHE_POLICY_VERSION = "corpus-release-binding-v1"
 
 
 def _has_personal_data(context: Any) -> bool:
@@ -73,7 +74,6 @@ def is_cacheable_public_rag_request(
     history: Optional[List[Dict[str, str]]],
     personalization_context: Any,
     user_profile: Any,
-    memory_context: Optional[str],
     tool_results: Optional[List[Dict[str, Any]]],
     errors: Optional[List[str]],
     has_untrusted_input: bool = False,
@@ -85,7 +85,7 @@ def is_cacheable_public_rag_request(
         return False
     if selected_agents != [rag_agent] or user_id:
         return False
-    if history or memory_context or tool_results or errors or has_untrusted_input:
+    if history or tool_results or errors or has_untrusted_input:
         return False
     if _has_personal_data(personalization_context) or _has_personal_data(user_profile):
         return False
@@ -115,6 +115,7 @@ def build_llm_response_cache_key(
         "schema": RESPONSE_CACHE_SCHEMA_VERSION,
         "claim_validation_policy": CLAIM_VALIDATION_POLICY_VERSION,
         "provenance_policy": PROVENANCE_POLICY_VERSION,
+        "release_cache_policy": RELEASE_CACHE_POLICY_VERSION,
         "messages": messages,
         "model_config": model_config,
         "corpus_fingerprint": corpus_fingerprint,

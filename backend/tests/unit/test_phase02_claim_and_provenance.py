@@ -45,7 +45,6 @@ def _rag_state(docs, **extra):
         "personalization_context": {},
         "user_profile": {},
         "history": [],
-        "memory_context": "",
         "agent_trace": [],
         "errors": [],
         "limitations": [],
@@ -462,7 +461,7 @@ def test_r07_matching_review_hash_is_verified_and_modified_content_becomes_stale
     registry = _synthetic_registry("doc-rev-1", original_content)
 
     verified = resolve_document_provenance(
-        {"doc_id": "doc-rev-1", "content": original_content},
+        {"doc_id": "doc-rev-1", "content": original_content, "document_version": "1.0", "content_type": "medical_safety"},
         registry=registry,
         allow_synthetic_registry=True,
     )
@@ -476,7 +475,7 @@ def test_r07_matching_review_hash_is_verified_and_modified_content_becomes_stale
     # Modify content -> hash changes -> review MUST become stale, NOT inherit approved.
     modified_content = original_content + " Nội dung mới chưa được chuyên gia xem lại."
     stale = resolve_document_provenance(
-        {"doc_id": "doc-rev-1", "content": modified_content},
+        {"doc_id": "doc-rev-1", "content": modified_content, "document_version": "1.0", "content_type": "medical_safety"},
         registry=registry,
         allow_synthetic_registry=True,
     )
@@ -586,6 +585,7 @@ def test_r07_provenance_preserved_from_vector_store_scroll_to_evidence(monkeypat
                 "content_type": "inbody_metric",
                 "domain": "health_inbody",
                 "corpus_version": "2026-11-18-v1",
+                "document_version": "1.0",
                 "document_content_hash": content_hash,
                 "medical_review_status": "approved",
                 "review_verification_status": "verified",
@@ -606,6 +606,9 @@ def test_r07_provenance_preserved_from_vector_store_scroll_to_evidence(monkeypat
             return [FakePoint()], None
 
     captured = {}
+    registry = _synthetic_registry("doc-vs-1", content)
+    registry["reviews"][0].update({"review_id": "rev-vs-001", "reviewer_id": "clinician-1", "review_scope": "inbody_metric", "verified_source_tier": "clinic_education"})
+    registry["reviewers"]["clinician-1"] = registry["reviewers"]["clinician-syn-1"]
     monkeypatch.setattr(
         search,
         "initialize_search_index",
@@ -614,7 +617,7 @@ def test_r07_provenance_preserved_from_vector_store_scroll_to_evidence(monkeypat
     assert search.initialize_from_vector_store(limit=10, vector_client=FakeQdrant()) is True
     docs = captured["documents"]
     assert len(docs) == 1
-    ev = build_evidence(docs)
+    ev = build_evidence(docs, review_registry=registry, allow_synthetic_registry=True)
     assert ev[0]["document_id"] == "doc-vs-1"
     assert ev[0]["chunk_id"] == "doc-vs-1-chunk-001"
     assert ev[0]["review_id"] == "rev-vs-001"
@@ -706,9 +709,11 @@ def test_r07_import_build_chunk_payloads_preserves_provenance_to_payload_and_sea
         "content_type": "inbody_metric",
         "domain": "health_inbody",
         "language": "vi",
+        "document_version": "1.0",
         "metadata": {"privacy_review_status": "approved"},
     }
     registry = _synthetic_registry("doc-imp-1", content)
+    registry["reviews"][0]["review_scope"] = "inbody_metric"
     payloads, search_doc = import_data.build_chunk_payloads(
         record,
         line_number=1,

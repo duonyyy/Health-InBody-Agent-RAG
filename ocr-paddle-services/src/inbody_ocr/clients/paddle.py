@@ -39,7 +39,7 @@ class PaddleOcrReader:
 
     def __init__(
         self,
-        lang: str = "ch",
+        lang: str = "en",
         use_gpu: bool = False,
         min_confidence: float = 0.5,
         engine: Any = None,

@@ -77,6 +77,7 @@ def test_strict_source_validation_rejects_legacy_and_self_claimed_and_accepts_re
         require_trusted_source_metadata=True,
     )
     curated = _trusted_record("trusted")
+    curated["document_version"] = "1.0"
     trusted_errors = import_data.validate_document(
         curated,
         line_number=3,
@@ -129,8 +130,25 @@ def test_chunk_payload_has_version_hash_and_stable_id(monkeypatch):
     assert payload["text"] == payload["content"]
 
 
+def _fake_qdrant_client(active_target: str = "prod_collection_v1"):
+    class _Alias:
+        def __init__(self, alias_name: str, collection_name: str):
+            self.alias_name = alias_name
+            self.collection_name = collection_name
+
+    class _AliasesResp:
+        def __init__(self, items):
+            self.aliases = items
+
+    class _FakeQdrant:
+        def get_aliases(self):
+            return _AliasesResp([_Alias("nmk_chatbot_active", active_target)])
+
+    return _FakeQdrant()
+
+
 def test_qdrant_write_failure_stops_import_and_writes_manifest(
-    monkeypatch,
+    monkeypatch, tmp_path
 ):
     persisted = []
 
@@ -145,19 +163,14 @@ def test_qdrant_write_failure_stops_import_and_writes_manifest(
         "write_import_manifest",
         lambda path, payload: persisted.append(payload),
     )
-    monkeypatch.setattr(import_data, "ensure_payload_indexes_safe", lambda *_: None)
+    monkeypatch.setattr(import_data, "ensure_payload_indexes_safe", lambda *a, **k: None)
     monkeypatch.setattr(
         import_data,
-        "build_chunk_vectors",
-        lambda *args, **kwargs: (
-            {
-                "point-1": {
-                    "vector": [0.1],
-                    "payload": {"content": "test"},
-                }
-            },
-            {"doc_id": "doc-001"},
-        ),
+        "embed_chunk_payloads",
+        lambda payloads, *args, **kwargs: {
+            pid: {"vector": [0.1, 0.2, 0.3], "payload": pl}
+            for pid, pl in payloads.items()
+        },
     )
     monkeypatch.setattr(
         import_data,
@@ -178,14 +191,18 @@ def test_qdrant_write_failure_stops_import_and_writes_manifest(
         data_file_path=Path(import_data.__file__),
         collection_name="collection_v2",
         batch_size=1,
+        vector_size=3,
         corpus_version="2026-07-30-v2",
         skip_collection_create=True,
-        manifest_file="manifest.json",
+        manifest_file=tmp_path / "manifest.json",
+        qdrant_client=_fake_qdrant_client(),
+        lock_dir=tmp_path / "locks",
     )
 
     assert result["status"] is False
     assert result["fatal_error"] == "Qdrant unavailable"
     assert result["upserted_chunks"] == 0
+    assert result["write_receipt"]["ok"] is False
     assert persisted[-1]["status"] is False
     assert persisted[-1]["last_successful_upsert_line"] == 0
 
@@ -220,9 +237,10 @@ def test_dry_run_can_resume_from_jsonl_line(monkeypatch):
     assert result["processed_docs"] == 1
     assert result["last_processed_line"] == 2
     assert result["total_chunks"] == 1
+    assert result["topology_verified"] is False
 
 
-def test_skip_existing_points_does_not_call_embedding_or_upsert(monkeypatch):
+def test_skip_existing_points_does_not_call_embedding_or_upsert(monkeypatch, tmp_path):
     monkeypatch.setattr(
         import_data,
         "load_jsonl",
@@ -243,13 +261,21 @@ def test_skip_existing_points_does_not_call_embedding_or_upsert(monkeypatch):
         chunk_overlap=50,
         corpus_version="2026-07-30-v2",
     )
-    existing_id = next(iter(payloads))
+    existing_id, existing_payload = next(iter(payloads.items()))
 
-    monkeypatch.setattr(import_data, "ensure_payload_indexes_safe", lambda *_: None)
+    monkeypatch.setattr(import_data, "ensure_payload_indexes_safe", lambda *a, **k: None)
     monkeypatch.setattr(
         import_data,
-        "get_collection_point_ids_safe",
-        lambda *_: {existing_id},
+        "get_collection_point_fingerprints_safe",
+        lambda *a, **k: {
+            existing_id: {
+                "qdrant_point_id": existing_id,
+                "document_id": existing_payload["document_id"],
+                "chunk_id": existing_payload["chunk_id"],
+                "content_hash": existing_payload["content_hash"],
+                "corpus_version": "2026-07-30-v2",
+            }
+        },
     )
     monkeypatch.setattr(
         import_data,
@@ -272,6 +298,8 @@ def test_skip_existing_points_does_not_call_embedding_or_upsert(monkeypatch):
         corpus_version="2026-07-30-v2",
         skip_collection_create=True,
         skip_existing_points=True,
+        qdrant_client=_fake_qdrant_client(),
+        lock_dir=tmp_path / "locks",
     )
 
     assert result["status"] is True

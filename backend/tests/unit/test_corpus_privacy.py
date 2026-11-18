@@ -34,12 +34,24 @@ def test_http_corpus_requires_trusted_admin_and_rejects_batch_before_write(monke
     os.environ.setdefault("DATABASE_URL", "sqlite://")
     from fastapi.testclient import TestClient
     from auth.context import get_current_user, CurrentUser
+    from rag.qdrant import client as qdrant_mod
     api = importlib.import_module("api.app")
     monkeypatch.setenv("AUTH_MODE", "development")
     monkeypatch.setenv("ENABLE_CORPUS_ADMIN_API", "true")
     monkeypatch.setenv("CORPUS_STAGING_COLLECTIONS", "staging-v1")
+
+    class _Alias:
+        def __init__(self, alias_name, collection_name):
+            self.alias_name = alias_name
+            self.collection_name = collection_name
+
+    class _FakeQdrant:
+        def get_aliases(self):
+            return type("Resp", (), {"aliases": [_Alias("nmk_chatbot_active", "prod-v0")]})()
+
+    monkeypatch.setattr(qdrant_mod, "client", _FakeQdrant())
     writes = []
-    monkeypatch.setattr(api, "index_health_documents", lambda *a, **k: writes.append(a) or {})
+    monkeypatch.setattr(api, "index_health_documents", lambda *a, **k: writes.append(a) or {"ok": True, "indexed": 1})
     document = {"content": "Kiến thức chung.", "data_scope": "shared_knowledge",
                 "privacy_review_status": "approved", "source_url": "https://example.org/article"}
     payload = {"collection_name": "staging-v1", "documents": [document]}

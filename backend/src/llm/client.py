@@ -393,7 +393,7 @@ def vietnamese_llm_chat_complete(
     )
 
 
-def get_embedding(text, model=None, timeout=None, deadline_monotonic=None):
+def get_embedding(text, model=None, timeout=None, deadline_monotonic=None, input_type="passage"):
     """
     Lay embedding cho truy xuat tai lieu Health/InBody.
 
@@ -401,10 +401,15 @@ def get_embedding(text, model=None, timeout=None, deadline_monotonic=None):
         text: Cau hoi hoac chunk can embed.
         model: Giu lai de tuong thich, custom_embedding se quyet dinh model.
     """
+    if input_type not in {"query", "passage"}:
+        raise ValueError("input_type must be query or passage")
+    prefix = os.getenv("EMBEDDING_QUERY_PREFIX" if input_type == "query" else "EMBEDDING_PASSAGE_PREFIX", "")
+    def prepare(item):
+        return prefix + item.replace("\n", " ").strip()
     if isinstance(text, list):
-        cleaned = [item.replace("\n", " ").strip() for item in text]
+        cleaned = [prepare(item) for item in text]
     else:
-        cleaned = text.replace("\n", " ").strip()
+        cleaned = prepare(text)
 
     logger.info("Generating embedding for Health/InBody text")
     return call_with_supported_kwargs(

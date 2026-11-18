@@ -16,7 +16,7 @@ def _private_keys(value) -> bool:
         return any(str(key).lower() in PRIVATE_KEYS
                    or (str(key).lower() == "data_scope" and item != "shared_knowledge")
                    or (str(key).lower() == "source" and str(item).lower() in
-                       {"chat_history", "personal_memory", "user_profile", "zep_memory"})
+                       {"chat_history", "personal_memory", "user_profile", "zep_memory"})  # legacy provider source blocked from shared RAG
                    or _private_keys(item) for key, item in value.items())
     if isinstance(value, list):
         return any(_private_keys(item) for item in value)
@@ -50,9 +50,42 @@ def validate_shared_document(record: dict, *, require_review: bool = False) -> N
 
 
 def require_staging_collection(name: str) -> str:
-    allowed = {item.strip() for item in os.getenv("CORPUS_STAGING_COLLECTIONS", "").split(",") if item.strip()}
-    serving = {os.getenv("QDRANT_COLLECTION_NAME", "nmk_chatbot_active"),
-               os.getenv("QDRANT_COLLECTION_ALIAS", "nmk_chatbot_active")}
-    if name not in allowed or name in serving:
+    """Static env-level staging allowlist check (serving names always blocked).
+
+    For any real write operation, prefer `require_verified_staging_collection` which
+    also inspects live Qdrant alias topology (fail-closed) so allowlist entries cannot
+    bypass actual alias-target protection.
+    """
+    from rag.corpus_lifecycle import (
+        get_protected_serving_aliases,
+        get_staging_allowlist,
+    )
+
+    target = str(name or "").strip()
+    allowed = get_staging_allowlist()
+    serving = get_protected_serving_aliases()
+    if not target or target not in allowed or target in serving:
         raise ValueError("Chỉ được ghi collection staging đã cấu hình; không ghi collection đang phục vụ.")
-    return name
+    return target
+
+
+def require_verified_staging_collection(
+    name: str,
+    *,
+    qdrant_client=None,
+    corpus_version: str | None = None,
+    require_corpus_version: bool = False,
+    require_allowlist: bool = True,
+    dry_run: bool = False,
+) -> dict:
+    """Full staging admission check including live Qdrant alias target verification."""
+    from rag.corpus_lifecycle import verify_staging_write_target
+
+    return verify_staging_write_target(
+        name,
+        qdrant_client=qdrant_client,
+        corpus_version=corpus_version,
+        require_corpus_version=require_corpus_version,
+        require_allowlist=require_allowlist,
+        dry_run=dry_run,
+    )

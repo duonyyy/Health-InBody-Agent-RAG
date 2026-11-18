@@ -1,5 +1,11 @@
 # Zep memory: trạng thái triển khai 2026-09-29
 
+> [!WARNING]
+> **Tài liệu lịch sử — Tích hợp Zep đã được loại bỏ ngày 2026-11-18.**
+> Dự án không còn sử dụng Zep hoặc bất kỳ dịch vụ bộ nhớ ngoài nào; bộ nhớ hội thoại và facts
+> được quản lý hoàn toàn trên PostgreSQL. Xem [báo cáo gỡ bỏ Zep](../reports/upgrade-2026/remove-zep-2026-11-18.md)
+> và [tài liệu bộ nhớ hiện hành](../../backend/src/memory/README.md).
+
 > Bản ghi lịch sử của bước adapter ban đầu. Thiết kế raw-chat và thiếu task owner bên dưới
 > đã được thay thế trong [báo cáo hoàn thiện Day17](09-day17-memory-completion-2026-09-29.md).
 > Dùng báo cáo 09 cho cấu hình, hợp đồng và gate hiện tại.

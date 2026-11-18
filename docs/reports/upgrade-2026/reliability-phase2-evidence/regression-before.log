@@ -1,0 +1,27 @@
+FFF.F                                                                    [100%]
+================================== FAILURES ===================================
+___________ test_unregistered_self_asserted_review_is_not_admitted ____________
+backend\tests\unit\test_reliability_phase2.py:20: in test_unregistered_self_asserted_review_is_not_admitted
+    assert docs == [] and evidence == [] and rejected == 1
+E   AssertionError: assert ([{'document_i...rified', ...}] == []
+E     
+E     Left contains one more item: {'document_id': 'forged', 'chunk_id': 'forged-1', 'content': 'Dữ liệu tổng hợp về sức khỏe.', 'review_verification_status': 'verified', ...}
+E     Use -v to get more diff)
+_ test_swapped_relations_are_not_supported[SMM l\xe0 30 kg v\xe0 BFM l\xe0 20 kg.-SMM l\xe0 20 kg v\xe0 BFM l\xe0 30 kg [1].] _
+backend\tests\unit\test_reliability_phase2.py:29: in test_swapped_relations_are_not_supported
+    assert not result["supported"]
+E   assert not True
+_ test_swapped_relations_are_not_supported[PBF \u1edf nam l\xe0 20% v\xe0 \u1edf n\u1eef l\xe0 30%.-PBF \u1edf nam l\xe0 30% v\xe0 \u1edf n\u1eef l\xe0 20% [1].] _
+backend\tests\unit\test_reliability_phase2.py:29: in test_swapped_relations_are_not_supported
+    assert not result["supported"]
+E   assert not True
+_ test_definition_positive_controls[Ch\u1ec9 s\u1ed1 kh\u1ed1i c\u01a1 th\u1ec3 \u0111\u01b0\u1ee3c vi\u1ebft t\u1eaft l\xe0 BMI [1].] _
+backend\tests\unit\test_reliability_phase2.py:36: in test_definition_positive_controls
+    assert result["supported"]
+E   assert False
+=========================== short test summary info ===========================
+FAILED backend/tests/unit/test_reliability_phase2.py::test_unregistered_self_asserted_review_is_not_admitted
+FAILED backend/tests/unit/test_reliability_phase2.py::test_swapped_relations_are_not_supported[SMM l\xe0 30 kg v\xe0 BFM l\xe0 20 kg.-SMM l\xe0 20 kg v\xe0 BFM l\xe0 30 kg [1].]
+FAILED backend/tests/unit/test_reliability_phase2.py::test_swapped_relations_are_not_supported[PBF \u1edf nam l\xe0 20% v\xe0 \u1edf n\u1eef l\xe0 30%.-PBF \u1edf nam l\xe0 30% v\xe0 \u1edf n\u1eef l\xe0 20% [1].]
+FAILED backend/tests/unit/test_reliability_phase2.py::test_definition_positive_controls[Ch\u1ec9 s\u1ed1 kh\u1ed1i c\u01a1 th\u1ec3 \u0111\u01b0\u1ee3c vi\u1ebft t\u1eaft l\xe0 BMI [1].]
+4 failed, 1 passed in 1.64s

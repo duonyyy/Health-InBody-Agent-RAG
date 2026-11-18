@@ -36,9 +36,10 @@ def build_evidence(
     *,
     review_registry: Optional[Mapping[str, Any]] = None,
     allow_synthetic_registry: bool = False,
+    _admitted_provenance: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     evidence: List[Dict[str, Any]] = []
-    for doc in docs:
+    for doc_index, doc in enumerate(docs):
         scoped = _sanitize_parent_scope(doc)
         if scoped is None:
             continue
@@ -53,7 +54,7 @@ def build_evidence(
         content = scoped.get("content") or ""
         if not document_id or not content:
             continue
-        provenance = normalize_evidence_provenance(
+        provenance = _admitted_provenance[doc_index] if _admitted_provenance is not None else normalize_evidence_provenance(
             scoped,
             registry=review_registry,
             allow_synthetic_registry=allow_synthetic_registry,
@@ -120,6 +121,7 @@ def prepare_composer_context(
     allow_synthetic_registry: bool = False,
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], int]:
     admitted: List[Dict[str, Any]] = []
+    admitted_provenance: List[Dict[str, Any]] = []
     rejected = 0
     for doc in docs:
         if len(admitted) >= max_docs:
@@ -128,23 +130,23 @@ def prepare_composer_context(
         if scoped is None:
             rejected += 1
             continue
+        provenance = normalize_evidence_provenance(
+            scoped, registry=review_registry, allow_synthetic_registry=allow_synthetic_registry,
+        )
         safe = clean_retrieved_document(scoped, max_chars)
         if safe is None:
             rejected += 1
             continue
-        provenance = normalize_evidence_provenance(
-            safe,
-            registry=review_registry,
-            allow_synthetic_registry=allow_synthetic_registry,
-        )
         safe.update(provenance)
         if require_verified_medical_review and not is_verified_medical_review(provenance):
             rejected += 1
             continue
         admitted.append(safe)
+        admitted_provenance.append(provenance)
     evidence = build_evidence(
         admitted,
         review_registry=review_registry,
         allow_synthetic_registry=allow_synthetic_registry,
+        _admitted_provenance=admitted_provenance,
     )
     return admitted, evidence, rejected

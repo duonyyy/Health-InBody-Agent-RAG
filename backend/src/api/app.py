@@ -61,6 +61,8 @@ from rag.search import (
     hybrid_search,
     initialize_search_index,
     load_search_snapshot,
+    validate_lexical_worker_config,
+    verify_runtime_release_sync,
 )
 from llm.summarizer import summarize_health_report, summarize_text
 from jobs.tasks import index_document_v2, index_health_documents, llm_handle_message
@@ -254,12 +256,13 @@ async def invalid_health_input_handler(request: Request, exc: InvalidHealthInput
 
 @app.on_event("startup")
 def load_bm25_snapshot_on_startup():
-    """Load the versioned local BM25 snapshot without blocking dense fallback."""
+    """Validate single-worker lexical ownership and load the versioned BM25 snapshot."""
+    validate_lexical_worker_config()
     if os.getenv("BM25_AUTOLOAD", "true").strip().lower() not in {"1", "true", "yes", "on"}:
         logger.info("BM25 snapshot autoload is disabled")
         return
     if not load_search_snapshot():
-        logger.warning("BM25 snapshot unavailable; continuing with dense retrieval")
+        logger.warning("BM25 snapshot unavailable or invalid; see /health/ready for corpus_release_sync")
 
 
 class HistoryTurn(BaseModel):
@@ -284,12 +287,6 @@ class AgentRequest(BaseModel):
     conversation_id: Optional[UUID] = None
 
 
-def _memory_identity_allowed(current_user: CurrentUser) -> bool:
-    return (current_user.auth_source == "server_context"
-            or (current_user.auth_source == "development_header"
-                and os.getenv("ZEP_ALLOW_DEV_IDENTITY", "false").lower() in {"1", "true", "yes", "on"}))
-
-
 class SearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
     limit: int = Field(default=5, ge=1, le=20)
@@ -297,7 +294,7 @@ class SearchRequest(BaseModel):
 
 
 class CollectionCreateRequest(BaseModel):
-    collection_name: str = DEFAULT_COLLECTION_NAME
+    collection_name: str = Field(min_length=3, max_length=255)
     vector_size: int = Field(default=DEFAULT_VECTOR_SIZE, ge=1)
 
 
@@ -305,13 +302,15 @@ class DocumentCreateRequest(BaseModel):
     id: str = Field(min_length=1, max_length=256)
     question: Optional[str] = Field(default="", max_length=2000)
     content: str = Field(min_length=1, max_length=100000)
-    collection_name: str = DEFAULT_COLLECTION_NAME
+    collection_name: str = Field(min_length=3, max_length=255)
+    corpus_version: Optional[str] = Field(default=None, max_length=128)
     metadata: Optional[Dict[str, Any]] = None
 
 
 class DocumentsIndexRequest(BaseModel):
     documents: List[Dict[str, Any]] = Field(min_length=1, max_length=100)
-    collection_name: str = DEFAULT_COLLECTION_NAME
+    collection_name: str = Field(min_length=3, max_length=255)
+    corpus_version: Optional[str] = Field(default=None, max_length=128)
 
 
 class SummaryRequest(BaseModel):
@@ -454,9 +453,28 @@ def _readiness_report(deadline_monotonic: Optional[float] = None) -> dict:
             except requests.RequestException as exc:
                 logger.warning("Readiness %s probe failed (%s)", name, type(exc).__name__)
                 dependencies[name] = False
+    search_stats = get_search_stats()
+    corpus_release_sync: Optional[bool] = None
+    if search_stats.get("snapshot_error") or search_stats.get("release_sync_status") == "mismatch":
+        corpus_release_sync = False
+    elif dependencies.get("qdrant") and search_stats.get("initialized") and search_stats.get("physical_collection"):
+        sync_info = verify_runtime_release_sync()
+        corpus_release_sync = bool(sync_info.get("synced"))
+    dependencies["corpus_release_sync"] = corpus_release_sync
     ready = all(value is not False for value in dependencies.values())
-    return {"status": "ready" if ready else "degraded", "dependencies": dependencies,
-            "llm_provider": "not_checked"}
+    return {
+        "status": "ready" if ready else "degraded",
+        "dependencies": dependencies,
+        "corpus_release": {
+            "release_id": search_stats.get("release_id"),
+            "corpus_version": search_stats.get("corpus_version"),
+            "physical_collection": search_stats.get("physical_collection"),
+            "release_sync_status": search_stats.get("release_sync_status"),
+            "release_mismatch_reason": search_stats.get("release_mismatch_reason"),
+            "lexical_index_owner": search_stats.get("lexical_index_owner"),
+        },
+        "llm_provider": "not_checked",
+    }
 
 
 @app.get("/health/ready")
@@ -579,7 +597,6 @@ def _run_chat_in_lane(
     subject: str,
     *,
     bot_id: str = "health-inbody-agent",
-    use_zep_memory: bool = False,
     conversation_id=None,
     deadline_monotonic: Optional[float] = None,
     cancel_event: Any = None,
@@ -590,7 +607,6 @@ def _run_chat_in_lane(
         question,
         subject,
         bot_id=bot_id,
-        use_zep_memory=use_zep_memory,
         conversation_id=conversation_id,
         deadline_monotonic=deadline_monotonic,
         cancel_event=cancel_event,
@@ -626,7 +642,6 @@ async def complete(data: CompleteRequest, current_user: CurrentUser = Depends(ge
             data.user_message,
             current_user.subject,
             bot_id=data.bot_id,
-            use_zep_memory=False,
             conversation_id=None,
         )
         response["latency_ms"] = round((time.perf_counter() - request_started) * 1000, 2)
@@ -647,7 +662,6 @@ async def complete(data: CompleteRequest, current_user: CurrentUser = Depends(ge
                 data.user_message,
                 current_user.subject,
                 bot_id=data.bot_id,
-                use_zep_memory=_memory_identity_allowed(current_user),
                 conversation_id=data.conversation_id,
                 deadline_monotonic=budget.deadline_monotonic,
                 budget=budget,
@@ -723,9 +737,15 @@ async def complete(data: CompleteRequest, current_user: CurrentUser = Depends(ge
 
 
 @app.get("/chat/complete/{task_id}")
-async def get_response(task_id: UUID, current_user: CurrentUser = Depends(get_current_user)):
+async def get_response(
+    task_id: UUID,
+    wait: bool = Query(default=True, description="Chờ kết quả trong khoảng thời gian ngắn hoặc trả về ngay trạng thái hiện tại"),
+    current_user: CurrentUser = Depends(get_current_user),
+):
     task_id = str(task_id)
-    budget = RequestBudget.start(_task_poll_timeout_seconds(), max_timeout_seconds=55.0)
+    # Giới hạn thời gian giữ kết nối (mặc định tối đa 10s) để tránh treo HTTP connection và bão hòa lane probe
+    hold_limit = _env_float("TASK_POLL_HOLD_SECONDS", 10.0, minimum=0.5, maximum=20.0) if wait else 0.0
+    budget = RequestBudget.start(hold_limit, max_timeout_seconds=20.0) if wait else RequestBudget.start(2.0, max_timeout_seconds=5.0)
     try:
         await get_lane("probe").run(
             _execute,
@@ -744,8 +764,6 @@ async def get_response(task_id: UUID, current_user: CurrentUser = Depends(get_cu
         raise HTTPException(status_code=503, detail="Celery result backend unavailable")
 
     while True:
-        if budget.exhausted():
-            raise HTTPException(status_code=504, detail="Yêu cầu chờ kết quả quá thời gian cho phép. Vui lòng thử lại.")
         try:
             task_status, task_result_value = await get_lane("probe").run(
                 _poll_celery_task,
@@ -753,16 +771,44 @@ async def get_response(task_id: UUID, current_user: CurrentUser = Depends(get_cu
                 budget=budget,
                 pass_cancel_event=False,
             )
-        except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+        except BudgetExhaustedError:
+            return JSONResponse(
+                status_code=200,
+                content={
+                    "task_id": task_id,
+                    "task_status": "STARTED",
+                    "task_result": None,
+                },
+                headers={"Retry-After": "1"},
+            )
+        except (CapacityExceededError, QueueTimeoutError) as exc:
             _raise_lane_http_error(exc)
         except Exception as exc:
             logger.warning("Celery result lookup failed (%s)", type(exc).__name__)
             raise HTTPException(status_code=503, detail="Không thể kiểm tra trạng thái yêu cầu hội thoại.") from exc
 
         if task_status in {"PENDING", "STARTED", "RETRY"}:
+            if not wait or budget.exhausted():
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "task_id": task_id,
+                        "task_status": task_status,
+                        "task_result": None,
+                    },
+                    headers={"Retry-After": "1"},
+                )
             remaining = budget.remaining_seconds()
             if remaining <= 0.0:
-                raise HTTPException(status_code=504, detail="Yêu cầu chờ kết quả quá thời gian cho phép. Vui lòng thử lại.")
+                return JSONResponse(
+                    status_code=200,
+                    content={
+                        "task_id": task_id,
+                        "task_status": task_status,
+                        "task_result": None,
+                    },
+                    headers={"Retry-After": "1"},
+                )
             await asyncio.sleep(min(POLLING_INTERVAL, remaining))
             continue
 
@@ -789,7 +835,6 @@ async def agent_answer(data: AgentRequest, current_user: CurrentUser = Depends(g
             run_chat,
             data.question,
             current_user.subject,
-            use_zep_memory=False,
             conversation_id=None,
         )
     else:
@@ -805,7 +850,6 @@ async def agent_answer(data: AgentRequest, current_user: CurrentUser = Depends(g
                 _run_chat_in_lane,
                 data.question,
                 current_user.subject,
-                use_zep_memory=_memory_identity_allowed(current_user),
                 conversation_id=data.conversation_id,
                 deadline_monotonic=budget.deadline_monotonic,
                 budget=budget,
@@ -882,6 +926,14 @@ async def search_endpoint(data: SearchRequest, request: Request):
     except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
         _raise_lane_http_error(exc)
     except Exception as exc:
+        from rag.corpus_lifecycle import CorpusReleaseMismatchError
+
+        if isinstance(exc, CorpusReleaseMismatchError):
+            logger.error("Search refused due to corpus release mismatch: %s", exc)
+            raise HTTPException(
+                status_code=503,
+                detail="Chỉ mục tìm kiếm chưa đồng bộ phiên bản corpus. Vui lòng thử lại sau khi hoàn tất phát hành.",
+            ) from exc
         logger.warning("Search endpoint failed (%s)", type(exc).__name__)
         raise HTTPException(
             status_code=503,
@@ -891,23 +943,36 @@ async def search_endpoint(data: SearchRequest, request: Request):
 
 @app.post("/collection/create")
 async def create_vector_collection(data: CollectionCreateRequest, admin: CurrentUser = Depends(require_corpus_admin)):
-    _validate_corpus_admission(data.collection_name, [])
     budget = RequestBudget.start(_indexing_timeout_seconds(), max_timeout_seconds=55.0)
     index_limit = _env_int("INDEXING_RATE_LIMIT_PER_MINUTE", 10, minimum=0, maximum=200)
     await _check_rate_limit_async("indexing", f"admin:{admin.subject}", index_limit, budget)
+    await _validate_corpus_admission_async(data.collection_name, [], budget=budget)
     try:
+        from rag.corpus_lifecycle import CorpusAdmissionError, CorpusLockError, CorpusTopologyUnavailableError
         from rag.qdrant.client import create_collection
 
         create_status = await get_lane("indexing").run(
             create_collection,
             data.collection_name,
             data.vector_size,
+            require_allowlist=True,
             budget=budget,
             pass_cancel_event=False,
         )
-        return {"status": create_status is not None, "result": str(create_status)}
+        if not create_status:
+            return JSONResponse(
+                status_code=502,
+                content={"status": False, "detail": "Qdrant không xác nhận tạo collection."},
+            )
+        return {"status": True, "collection_name": data.collection_name, "result": str(create_status)}
     except HTTPException:
         raise
+    except CorpusAdmissionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except CorpusLockError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except CorpusTopologyUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
         _raise_lane_http_error(exc)
     except Exception as e:
@@ -917,11 +982,24 @@ async def create_vector_collection(data: CollectionCreateRequest, admin: Current
 
 @app.post("/document/create")
 async def create_document(data: DocumentCreateRequest, admin: CurrentUser = Depends(require_corpus_admin)):
-    _validate_corpus_admission(data.collection_name, [data.model_dump()])
     budget = RequestBudget.start(_indexing_timeout_seconds(), max_timeout_seconds=55.0)
     index_limit = _env_int("INDEXING_RATE_LIMIT_PER_MINUTE", 10, minimum=0, maximum=200)
     await _check_rate_limit_async("indexing", f"admin:{admin.subject}", index_limit, budget)
+    await _validate_corpus_admission_async(
+        data.collection_name,
+        [data.model_dump()],
+        corpus_version=data.corpus_version,
+        budget=budget,
+    )
     try:
+        from rag.corpus_lifecycle import (
+            CorpusAdmissionError,
+            CorpusLockError,
+            CorpusTopologyUnavailableError,
+            CorpusWriteValidationError,
+            QdrantWriteError,
+        )
+
         index_status = await get_lane("indexing").run(
             index_document_v2,
             data.id,
@@ -929,12 +1007,34 @@ async def create_document(data: DocumentCreateRequest, admin: CurrentUser = Depe
             data.content,
             collection_name=data.collection_name,
             metadata=data.metadata,
+            corpus_version=data.corpus_version,
+            require_allowlist=True,
             budget=budget,
             pass_cancel_event=False,
         )
+        if _receipt_indicates_failure(index_status):
+            return JSONResponse(
+                status_code=502,
+                content={
+                    "status": False,
+                    "detail": "Ghi tài liệu vào Qdrant thất bại hoặc chưa được xác nhận hoàn tất.",
+                    "index_status": index_status,
+                },
+            )
         return {"status": True, "index_status": index_status}
     except HTTPException:
         raise
+    except (CorpusAdmissionError, CorpusWriteValidationError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except CorpusLockError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except CorpusTopologyUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except QdrantWriteError as exc:
+        return JSONResponse(
+            status_code=502,
+            content={"status": False, "detail": str(exc), "index_status": exc.receipt},
+        )
     except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
         _raise_lane_http_error(exc)
     except Exception as e:
@@ -945,21 +1045,57 @@ async def create_document(data: DocumentCreateRequest, admin: CurrentUser = Depe
 @app.post("/documents/index")
 async def index_documents(data: DocumentsIndexRequest, admin: CurrentUser = Depends(require_corpus_admin)):
     _validate_index_batch_limits(data.documents)
-    _validate_corpus_admission(data.collection_name, data.documents)
     budget = RequestBudget.start(_indexing_timeout_seconds(), max_timeout_seconds=55.0)
     index_limit = _env_int("INDEXING_RATE_LIMIT_PER_MINUTE", 10, minimum=0, maximum=200)
     await _check_rate_limit_async("indexing", f"admin:{admin.subject}", index_limit, budget)
+    await _validate_corpus_admission_async(
+        data.collection_name,
+        data.documents,
+        corpus_version=data.corpus_version,
+        budget=budget,
+    )
     try:
+        from rag.corpus_lifecycle import (
+            CorpusAdmissionError,
+            CorpusLockError,
+            CorpusTopologyUnavailableError,
+            CorpusWriteValidationError,
+            QdrantWriteError,
+        )
+
         result = await get_lane("indexing").run(
+            call_with_supported_kwargs,
             index_health_documents,
             data.documents,
             collection_name=data.collection_name,
+            corpus_version=data.corpus_version,
+            require_allowlist=True,
             budget=budget,
             pass_cancel_event=False,
         )
+        if _receipt_indicates_failure(result):
+            return JSONResponse(
+                status_code=502,
+                content={
+                    "status": False,
+                    "detail": "Lập chỉ mục lô tài liệu gặp lỗi hoặc mới ghi được một phần.",
+                    "result": result,
+                },
+            )
         return {"status": True, "result": result}
     except HTTPException:
         raise
+    except (CorpusAdmissionError, CorpusWriteValidationError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except CorpusLockError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except CorpusTopologyUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except QdrantWriteError as exc:
+        return JSONResponse(
+            status_code=502,
+            content={"status": False, "detail": str(exc), "result": exc.receipt},
+        )
     except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
         _raise_lane_http_error(exc)
     except Exception as e:
@@ -1043,26 +1179,79 @@ async def safety_endpoint(data: SafetyRequest):
 @app.post("/data/import")
 async def import_data_endpoint(data: DocumentsIndexRequest, admin: CurrentUser = Depends(require_corpus_admin)):
     _validate_index_batch_limits(data.documents)
-    _validate_corpus_admission(data.collection_name, data.documents)
     budget = RequestBudget.start(_indexing_timeout_seconds(), max_timeout_seconds=55.0)
     index_limit = _env_int("INDEXING_RATE_LIMIT_PER_MINUTE", 10, minimum=0, maximum=200)
     await _check_rate_limit_async("indexing", f"admin:{admin.subject}", index_limit, budget)
+    await _validate_corpus_admission_async(
+        data.collection_name,
+        data.documents,
+        corpus_version=data.corpus_version,
+        budget=budget,
+    )
     try:
+        from rag.corpus_lifecycle import (
+            CorpusAdmissionError,
+            CorpusLockError,
+            CorpusTopologyUnavailableError,
+            CorpusWriteValidationError,
+            QdrantWriteError,
+        )
+
         result = await get_lane("indexing").run(
+            call_with_supported_kwargs,
             index_health_documents,
             data.documents,
             collection_name=data.collection_name,
+            corpus_version=data.corpus_version,
+            require_allowlist=True,
             budget=budget,
             pass_cancel_event=False,
         )
-        return {"success": True, "result": result}
+        if _receipt_indicates_failure(result):
+            return JSONResponse(
+                status_code=502,
+                content={
+                    "success": False,
+                    "status": False,
+                    "detail": "Nhập dữ liệu vào Qdrant thất bại hoặc mới ghi được một phần.",
+                    "result": result,
+                },
+            )
+        return {"success": True, "status": True, "result": result}
     except HTTPException:
         raise
+    except (CorpusAdmissionError, CorpusWriteValidationError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except CorpusLockError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except CorpusTopologyUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except QdrantWriteError as exc:
+        return JSONResponse(
+            status_code=502,
+            content={"success": False, "status": False, "detail": str(exc), "result": exc.receipt},
+        )
     except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
         _raise_lane_http_error(exc)
     except Exception as exc:
         logger.error("Data import failed (%s)", type(exc).__name__)
         raise HTTPException(status_code=503, detail="Không thể nhập dữ liệu lúc này.") from exc
+
+
+def _receipt_indicates_failure(result: Any) -> bool:
+    if not isinstance(result, dict):
+        return False
+    if result.get("ok") is False:
+        return True
+    if int(result.get("failed_points") or 0) > 0:
+        return True
+    if int(result.get("failed_documents") or 0) > 0:
+        return True
+    if int(result.get("unconfirmed_points") or 0) > 0:
+        return True
+    if result.get("errors"):
+        return True
+    return False
 
 
 def _validate_index_batch_limits(documents: list) -> None:
@@ -1086,13 +1275,60 @@ def _validate_index_batch_limits(documents: list) -> None:
         )
 
 
-def _validate_corpus_admission(collection_name: str, documents: list) -> None:
+def _validate_corpus_admission(
+    collection_name: str,
+    documents: list,
+    *,
+    corpus_version: Optional[str] = None,
+) -> None:
+    from rag.corpus_lifecycle import (
+        CorpusAdmissionError,
+        CorpusTopologyUnavailableError,
+        verify_staging_write_target,
+    )
+    from rag.qdrant.client import client as qdrant_client
+
     try:
-        require_staging_collection(collection_name)
+        # 1. Check document privacy/public scope first (pure offline).
         for document in documents:
             validate_shared_document(document, require_review=True)
-    except ValueError as exc:
+        # 2. Check static allowlist + serving aliases + live Qdrant alias target (fail-closed).
+        require_staging_collection(collection_name)
+        verify_staging_write_target(
+            collection_name,
+            qdrant_client=qdrant_client,
+            corpus_version=corpus_version,
+            require_corpus_version=False,
+            require_allowlist=True,
+            dry_run=False,
+        )
+    except (CorpusAdmissionError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except CorpusTopologyUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+async def _validate_corpus_admission_async(
+    collection_name: str,
+    documents: list,
+    *,
+    corpus_version: Optional[str] = None,
+    budget: Optional[RequestBudget] = None,
+) -> None:
+    """Offload live Qdrant topology verification onto the probe lane so event loop stays free."""
+    try:
+        await get_lane("probe").run(
+            _validate_corpus_admission,
+            collection_name,
+            documents,
+            corpus_version=corpus_version,
+            budget=budget,
+            pass_cancel_event=False,
+        )
+    except HTTPException:
+        raise
+    except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+        _raise_lane_http_error(exc)
 
 
 if __name__ == "__main__":

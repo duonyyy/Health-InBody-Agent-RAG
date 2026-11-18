@@ -1,0 +1,1639 @@
+{
+  "embedding_health": {
+    "cuda_available": false,
+    "device": "cpu",
+    "dtype": "float32",
+    "embedding_dim": 384,
+    "encode_batch_size": 2,
+    "max_batch_size": 32,
+    "model_loaded": true,
+    "requested_device": "cpu",
+    "status": "healthy",
+    "timestamp": 1794993335.5637407,
+    "torch_cuda_version": null,
+    "torch_version": "2.12.0+cpu"
+  },
+  "ollama_tags": {
+    "models": []
+  },
+  "qdrant_collections": {
+    "result": {
+      "collections": [
+        {
+          "name": "health_knowledge_e5_v1"
+        },
+        {
+          "name": "nmk_chatbot_e5small_v20261118"
+        }
+      ]
+    },
+    "status": "ok",
+    "time": 6.316e-06
+  },
+  "aliases": {
+    "result": {
+      "aliases": []
+    },
+    "status": "ok",
+    "time": 1.7454e-05
+  },
+  "backend_health": {
+    "error_type": "URLError"
+  },
+  "frontend": {
+    "error_type": "URLError"
+  },
+  "health_knowledge_e5_v1": {
+    "result": {
+      "status": "green",
+      "optimizer_status": "ok",
+      "indexed_vectors_count": 0,
+      "points_count": 3846,
+      "segments_count": 8,
+      "config": {
+        "params": {
+          "vectors": {
+            "size": 384,
+            "distance": "Cosine"
+          },
+          "shard_number": 1,
+          "replication_factor": 1,
+          "write_consistency_factor": 1,
+          "on_disk_payload": true
+        },
+        "hnsw_config": {
+          "m": 16,
+          "ef_construct": 100,
+          "full_scan_threshold": 10000,
+          "max_indexing_threads": 0,
+          "on_disk": false
+        },
+        "optimizer_config": {
+          "deleted_threshold": 0.2,
+          "vacuum_min_vector_number": 1000,
+          "default_segment_number": 0,
+          "max_segment_size": null,
+          "memmap_threshold": null,
+          "indexing_threshold": 10000,
+          "flush_interval_sec": 5,
+          "max_optimization_threads": null,
+          "prevent_unoptimized": null
+        },
+        "wal_config": {
+          "wal_capacity_mb": 32,
+          "wal_segments_ahead": 0,
+          "wal_retain_closed": 1
+        },
+        "quantization_config": null
+      },
+      "payload_schema": {
+        "doc_id": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "language": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "release_id": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "review_status": {
+          "data_type": "keyword",
+          "points": 0
+        },
+        "chunk_id": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "corpus_version": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "domain": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "content_type": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "medical_review_status": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "content_hash": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "review_id": {
+          "data_type": "keyword",
+          "points": 0
+        },
+        "review_verification_status": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "privacy_review_status": {
+          "data_type": "keyword",
+          "points": 0
+        },
+        "document_id": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "source": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "embedding_fingerprint": {
+          "data_type": "keyword",
+          "points": 3846
+        }
+      },
+      "update_queue": {
+        "length": 0
+      },
+      "created_at": "2026-11-18T09:11:37.785Z"
+    },
+    "status": "ok",
+    "time": 0.000772956
+  },
+  "nmk_chatbot_e5small_v20261118": {
+    "result": {
+      "status": "green",
+      "optimizer_status": "ok",
+      "indexed_vectors_count": 0,
+      "points_count": 3846,
+      "segments_count": 8,
+      "config": {
+        "params": {
+          "vectors": {
+            "size": 384,
+            "distance": "Cosine"
+          },
+          "shard_number": 1,
+          "replication_factor": 1,
+          "write_consistency_factor": 1,
+          "on_disk_payload": true
+        },
+        "hnsw_config": {
+          "m": 16,
+          "ef_construct": 100,
+          "full_scan_threshold": 10000,
+          "max_indexing_threads": 0,
+          "on_disk": false
+        },
+        "optimizer_config": {
+          "deleted_threshold": 0.2,
+          "vacuum_min_vector_number": 1000,
+          "default_segment_number": 0,
+          "max_segment_size": null,
+          "memmap_threshold": null,
+          "indexing_threshold": 10000,
+          "flush_interval_sec": 5,
+          "max_optimization_threads": null,
+          "prevent_unoptimized": null
+        },
+        "wal_config": {
+          "wal_capacity_mb": 32,
+          "wal_segments_ahead": 0,
+          "wal_retain_closed": 1
+        },
+        "quantization_config": null
+      },
+      "payload_schema": {
+        "review_id": {
+          "data_type": "keyword",
+          "points": 0
+        },
+        "doc_id": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "content_hash": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "language": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "chunk_id": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "source": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "review_status": {
+          "data_type": "keyword",
+          "points": 0
+        },
+        "privacy_review_status": {
+          "data_type": "keyword",
+          "points": 0
+        },
+        "document_id": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "release_id": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "embedding_fingerprint": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "corpus_version": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "domain": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "review_verification_status": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "content_type": {
+          "data_type": "keyword",
+          "points": 3846
+        },
+        "medical_review_status": {
+          "data_type": "keyword",
+          "points": 3846
+        }
+      },
+      "update_queue": {
+        "length": 0
+      },
+      "created_at": "2026-11-18T08:41:39.160Z"
+    },
+    "status": "ok",
+    "time": 0.001017546
+  },
+  "config": {
+    "backend/.env": {
+      "exists": true,
+      "selected_nonsecret_values": {
+        "LLM_PROVIDER": "ollama",
+        "OLLAMA_MODEL": "qwen3:8b",
+        "AGENT_REQUEST_TIMEOUT_SECONDS": "50",
+        "VECTOR_SIZE": "1024",
+        "QDRANT_COLLECTION_NAME": "nmk_chatbot_active",
+        "QDRANT_COLLECTION_ALIAS": "nmk_chatbot_active"
+      }
+    },
+    "backend/.env.example": {
+      "exists": true,
+      "selected_nonsecret_values": {
+        "AUTH_MODE": "production",
+        "QDRANT_COLLECTION_NAME": "nmk_chatbot_active",
+        "QDRANT_COLLECTION_ALIAS": "nmk_chatbot_active",
+        "CORPUS_VERSION": "",
+        "VECTOR_SIZE": "384",
+        "EMBEDDING_MODEL_ID": "intfloat/multilingual-e5-small",
+        "EMBEDDING_MODEL_REVISION": "62ff60abe92eb88c1b297fabaad28f7ac77b5875",
+        "EMBEDDING_QUERY_PREFIX": "\"query: \"",
+        "EMBEDDING_PASSAGE_PREFIX": "\"passage: \"",
+        "USE_OPENAI_FALLBACK": "false",
+        "LLM_PROVIDER": "none",
+        "OLLAMA_MODEL": "",
+        "AGENT_REQUEST_TIMEOUT_SECONDS": "50",
+        "RAG_MAX_RETRIEVAL_QUERIES": "1",
+        "API_WORKERS": "1",
+        "BM25_AUTOLOAD": "true",
+        "BM25_SNAPSHOT_PATH": "/usr/src/app/data/generated/bm25_snapshot.json.gz",
+        "OPENAI_MODEL": ""
+      }
+    },
+    "infra/embed_serving/.env.serving": {
+      "exists": true,
+      "selected_nonsecret_values": {}
+    },
+    "frontend/.env": {
+      "exists": false,
+      "selected_nonsecret_values": {}
+    },
+    "frontend/.env.local": {
+      "exists": false,
+      "selected_nonsecret_values": {}
+    }
+  },
+  "shell_overrides": {},
+  "packages": {
+    "pytest": "9.1.1",
+    "qdrant-client": "1.19.1",
+    "langchain": "1.4.2",
+    "fastapi": "0.140.0",
+    "pydantic": "2.13.5",
+    "langgraph": "1.2.11"
+  },
+  "artifacts": {
+    "e5small-2026-11-18-v1": {
+      "import.json": {
+        "status": true,
+        "ok": true,
+        "dry_run": false,
+        "topology_verified": true,
+        "admission_warning": null,
+        "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+        "data_file": "backend\\artifacts\\e5small-2026-11-18-v1\\embedding_documents_filtered.jsonl",
+        "data_file_sha256": "bcd3cb9369e08f064a605547a474e9a2869acc506e6726c8c76cba57d8c25ecf",
+        "collection_name": "nmk_chatbot_e5small_v20261118",
+        "corpus_version": "e5small-2026-11-18-v1",
+        "embedding_config": {
+          "model_identifier": "intfloat/multilingual-e5-small",
+          "model_revision": "62ff60abe92eb88c1b297fabaad28f7ac77b5875",
+          "vector_size": 384,
+          "distance": "Cosine",
+          "normalize_embeddings": true,
+          "max_length": null,
+          "query_prefix": "query: ",
+          "passage_prefix": "passage: ",
+          "fingerprint": "2f4b5160f4d0e47bf741ad12f59d66cde1014c353d2123f3f2485c30b1ad0c97"
+        },
+        "resume_signature": {
+          "collection_name": "nmk_chatbot_e5small_v20261118",
+          "corpus_version": "e5small-2026-11-18-v1",
+          "data_file_sha256": "bcd3cb9369e08f064a605547a474e9a2869acc506e6726c8c76cba57d8c25ecf",
+          "chunk_size": 512,
+          "chunk_overlap": 50,
+          "vector_size": 384,
+          "embedding_fingerprint": "2f4b5160f4d0e47bf741ad12f59d66cde1014c353d2123f3f2485c30b1ad0c97",
+          "splitter_version": "fallback_char_splitter"
+        },
+        "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+        "unique_document_count": 1008,
+        "unique_chunk_count": 3846,
+        "started_at": "2026-11-18T08:46:23.060936+00:00",
+        "finished_at": "2026-11-18T08:54:38.013049+00:00",
+        "start_line": 1,
+        "last_processed_line": 1008,
+        "last_successful_upsert_line": 1008,
+        "processed_docs": 1008,
+        "skipped_docs": 0,
+        "total_chunks": 3846,
+        "skip_existing_points": true,
+        "initial_existing_points": 463,
+        "skipped_existing_chunks": 463,
+        "newly_embedded_chunks": 3383,
+        "upserted_chunks": 3383,
+        "bm25_index_persisted": false,
+        "trusted_source_metadata_required": false,
+        "counts_by_content_type": {
+          "inbody_metric": 35,
+          "nutrition": 558,
+          "exercise": 403,
+          "medical_safety": 11,
+          "general_health": 1
+        },
+        "provenance_counts": {
+          "verified": 0,
+          "provisional": 952,
+          "unverified_legacy": 56,
+          "stale_review": 0
+        },
+        "error_count": 0,
+        "conflict_count": 0,
+        "conflicts_preview": [],
+        "validation_errors_preview": [],
+        "fatal_error": null,
+        "write_receipt": {
+          "ok": true,
+          "status": "committed",
+          "collection_name": "nmk_chatbot_e5small_v20261118",
+          "corpus_version": "e5small-2026-11-18-v1",
+          "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+          "dry_run": false,
+          "attempted_points": 3383,
+          "acknowledged_points": 3383,
+          "committed_points": 3383,
+          "verified_points": 0,
+          "failed_points": 0,
+          "unconfirmed_points": 0,
+          "skipped_points": 463,
+          "skipped_reasons": {
+            "already_present_matching_content": 463
+          },
+          "conflict_points": 0,
+          "batches_attempted": 113,
+          "batches_committed": 113,
+          "batches_unconfirmed": 0,
+          "batches_failed": 0,
+          "partial_write": false,
+          "rollback_performed": false,
+          "errors": [],
+          "batch_receipts": [
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 48
+            },
+            {
+              "batch": 2,
+              "point_count": 2,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 49
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 50
+            },
+            {
+              "batch": 2,
+              "point_count": 1,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 51
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 52
+            },
+            {
+              "batch": 2,
+              "point_count": 3,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 53
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 54
+            },
+            {
+              "batch": 2,
+              "point_count": 3,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 55
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 56
+            },
+            {
+              "batch": 2,
+              "point_count": 2,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 57
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 58
+            },
+            {
+              "batch": 2,
+              "point_count": 4,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 59
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 60
+            },
+            {
+              "batch": 2,
+              "point_count": 4,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 61
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 62
+            },
+            {
+              "batch": 2,
+              "point_count": 1,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 63
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 64
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 65
+            },
+            {
+              "batch": 2,
+              "point_count": 4,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 66
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 67
+            },
+            {
+              "batch": 2,
+              "point_count": 3,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 68
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 69
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 70
+            },
+            {
+              "batch": 2,
+              "point_count": 2,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 71
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 72
+            },
+            {
+              "batch": 2,
+              "point_count": 2,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 73
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 74
+            },
+            {
+              "batch": 2,
+              "point_count": 3,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 75
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 76
+            },
+            {
+              "batch": 2,
+              "point_count": 1,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 77
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 78
+            },
+            {
+              "batch": 2,
+              "point_count": 3,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 79
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 80
+            },
+            {
+              "batch": 2,
+              "point_count": 3,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 81
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 82
+            },
+            {
+              "batch": 2,
+              "point_count": 3,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 83
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 84
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 85
+            },
+            {
+              "batch": 2,
+              "point_count": 3,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 86
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 87
+            },
+            {
+              "batch": 2,
+              "point_count": 2,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 88
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 89
+            },
+            {
+              "batch": 2,
+              "point_count": 5,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 90
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 91
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 92
+            },
+            {
+              "batch": 2,
+              "point_count": 2,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 93
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 94
+            },
+            {
+              "batch": 2,
+              "point_count": 1,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 95
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 96
+            },
+            {
+              "batch": 2,
+              "point_count": 3,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 97
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 98
+            },
+            {
+              "batch": 2,
+              "point_count": 3,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 99
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 100
+            },
+            {
+              "batch": 2,
+              "point_count": 3,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 101
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 102
+            },
+            {
+              "batch": 2,
+              "point_count": 1,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 103
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 104
+            },
+            {
+              "batch": 2,
+              "point_count": 1,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 105
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 106
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 107
+            },
+            {
+              "batch": 2,
+              "point_count": 2,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 108
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 109
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 110
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 111
+            },
+            {
+              "batch": 2,
+              "point_count": 2,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 112
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 113
+            },
+            {
+              "batch": 2,
+              "point_count": 2,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 114
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 115
+            },
+            {
+              "batch": 2,
+              "point_count": 3,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 116
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 117
+            },
+            {
+              "batch": 2,
+              "point_count": 2,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 118
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 119
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 120
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 121
+            },
+            {
+              "batch": 2,
+              "point_count": 1,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 122
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 123
+            },
+            {
+              "batch": 2,
+              "point_count": 1,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 124
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 125
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 126
+            },
+            {
+              "batch": 2,
+              "point_count": 3,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 127
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 128
+            },
+            {
+              "batch": 2,
+              "point_count": 1,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 129
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 130
+            },
+            {
+              "batch": 2,
+              "point_count": 5,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 131
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 132
+            },
+            {
+              "batch": 2,
+              "point_count": 1,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 133
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 134
+            },
+            {
+              "batch": 2,
+              "point_count": 3,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 135
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 136
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 137
+            },
+            {
+              "batch": 2,
+              "point_count": 5,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 138
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 139
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 140
+            },
+            {
+              "batch": 2,
+              "point_count": 5,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 141
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 142
+            },
+            {
+              "batch": 2,
+              "point_count": 5,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 143
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 144
+            },
+            {
+              "batch": 2,
+              "point_count": 2,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 145
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 146
+            },
+            {
+              "batch": 2,
+              "point_count": 2,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 147
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 148
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 149
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 150
+            },
+            {
+              "batch": 2,
+              "point_count": 1,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 151
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 152
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 153
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 154
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 155
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 156
+            },
+            {
+              "batch": 2,
+              "point_count": 1,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 157
+            },
+            {
+              "batch": 1,
+              "point_count": 50,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 158
+            },
+            {
+              "batch": 2,
+              "point_count": 1,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 159
+            },
+            {
+              "batch": 1,
+              "point_count": 17,
+              "status": "committed",
+              "server_status": "completed",
+              "operation_id": 160
+            }
+          ]
+        }
+      },
+      "release.json": {
+        "schema_version": 2,
+        "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+        "corpus_version": "e5small-2026-11-18-v1",
+        "physical_collection": "nmk_chatbot_e5small_v20261118",
+        "serving_alias": "nmk_chatbot_active",
+        "created_at": "2026-11-18T08:54:38.019392+00:00",
+        "updated_at": "2026-11-18T08:59:15.918998+00:00",
+        "canonical_id_schema": "canonical-doc-chunk-v2",
+        "source_manifest": {
+          "path": "backend\\artifacts\\e5small-2026-11-18-v1\\embedding_documents_filtered.jsonl",
+          "sha256": "bcd3cb9369e08f064a605547a474e9a2869acc506e6726c8c76cba57d8c25ecf",
+          "document_count": 1008,
+          "counts_by_content_type": {
+            "inbody_metric": 35,
+            "nutrition": 558,
+            "exercise": 403,
+            "medical_safety": 11,
+            "general_health": 1
+          }
+        },
+        "chunk_manifest": {
+          "expected_count": 3846,
+          "unique_document_count": 1008,
+          "unique_chunk_count": 3846,
+          "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc"
+        },
+        "chunking_config": {
+          "chunk_size": 512,
+          "chunk_overlap": 50,
+          "splitter_version": "fallback_char_splitter"
+        },
+        "embedding_config": {
+          "model_identifier": "intfloat/multilingual-e5-small",
+          "model_revision": "62ff60abe92eb88c1b297fabaad28f7ac77b5875",
+          "vector_size": 384,
+          "distance": "Cosine",
+          "normalize_embeddings": true,
+          "max_length": null,
+          "query_prefix": "query: ",
+          "passage_prefix": "passage: ",
+          "fingerprint": "2f4b5160f4d0e47bf741ad12f59d66cde1014c353d2123f3f2485c30b1ad0c97"
+        },
+        "bm25_artifact": {
+          "status": "ok",
+          "output_path": "backend\\artifacts\\e5small-2026-11-18-v1\\bm25_snapshot.json.gz",
+          "sha256": "4c88f618a1e9eee70231a3f99fe7fa14284599c9f57e19b524b857759def75bb",
+          "document_count": 3846,
+          "unique_document_count": 1008,
+          "unique_chunk_count": 3846,
+          "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+          "collection_name": "nmk_chatbot_active",
+          "physical_collection": "nmk_chatbot_e5small_v20261118",
+          "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+          "corpus_version": "e5small-2026-11-18-v1",
+          "schema_version": 1,
+          "tokenizer_version": "vi-nfd-alnum-v1",
+          "created_at": "2026-11-18T08:59:15.632317+00:00",
+          "file_size_kb": 1210.3,
+          "path": "C:\\Users\\Admin\\Desktop\\KLTN\\LLL RAG\\backend\\artifacts\\e5small-2026-11-18-v1\\bm25_snapshot.json.gz"
+        },
+        "provenance_summary": {
+          "verified": 0,
+          "provisional": 952,
+          "unverified_legacy": 56,
+          "stale_review": 0
+        },
+        "eval_binding": {
+          "suite_path": null,
+          "suite_version": null,
+          "suite_sha256": null,
+          "label_granularity": null,
+          "status": "not_run",
+          "last_eval_at": null,
+          "report_sha256": null
+        },
+        "write_receipt": {
+          "ok": true,
+          "status": "committed",
+          "attempted_points": 3383,
+          "acknowledged_points": 3383,
+          "committed_points": 3383,
+          "failed_points": 0,
+          "unconfirmed_points": 0,
+          "skipped_points": 463,
+          "conflict_points": 0,
+          "partial_write": false,
+          "rollback_performed": false
+        },
+        "build_status": "imported",
+        "publication_status": "staging",
+        "verification": {
+          "verified_at": null,
+          "qdrant_verified": false,
+          "bm25_verified": false,
+          "count_matched": false,
+          "fingerprint_matched": false,
+          "payload_indexes_verified": false,
+          "errors": []
+        },
+        "previous_release": {}
+      },
+      "snapshot": {
+        "header": {
+          "schema_version": 1,
+          "collection_name": "nmk_chatbot_active",
+          "physical_collection": "nmk_chatbot_e5small_v20261118",
+          "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+          "corpus_version": "e5small-2026-11-18-v1",
+          "created_at": "2026-11-18T08:59:15.632317+00:00",
+          "document_count": 3846,
+          "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+          "metadata": {
+            "corpus_version": "e5small-2026-11-18-v1",
+            "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+            "physical_collection": "nmk_chatbot_e5small_v20261118",
+            "serving_alias": "nmk_chatbot_active",
+            "built_by": "data_pipeline",
+            "chunk_count": 3846,
+            "unique_chunk_count": 3846,
+            "unique_document_count": 1008,
+            "duplicate_chunk_ids": 0,
+            "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+            "tokenizer_version": "vi-nfd-alnum-v1",
+            "canonical_id_schema": "canonical-doc-chunk-v2"
+          }
+        },
+        "actual_sha256": "4c88f618a1e9eee70231a3f99fe7fa14284599c9f57e19b524b857759def75bb",
+        "rows": 3846,
+        "content_types": {
+          "nutrition": 2500,
+          "exercise": 1255,
+          "inbody_metric": 67,
+          "medical_safety": 23,
+          "general_health": 1
+        },
+        "record_keys": [
+          "document_id",
+          "chunk_id",
+          "corpus_version",
+          "content_hash",
+          "document_content_hash",
+          "source_url",
+          "publisher",
+          "source_name",
+          "source_origin",
+          "source_tier",
+          "source_tier_verified",
+          "claimed_source_tier",
+          "published_at",
+          "reviewed_at",
+          "medical_review_status",
+          "review_verification_status",
+          "review_id",
+          "reviewer_id",
+          "review_role",
+          "review_scope",
+          "reviewed_content_hash",
+          "reviewed_document_version",
+          "review_notes",
+          "stale_review_id",
+          "legacy_claimed_review_status",
+          "legacy_claimed_reviewed_at",
+          "privacy_review_status",
+          "data_scope",
+          "doc_id",
+          "qdrant_point_id",
+          "question",
+          "title",
+          "content",
+          "source",
+          "content_type",
+          "domain",
+          "parent_id",
+          "parent_title",
+          "parent_content",
+          "has_parent",
+          "metadata",
+          "release_id",
+          "physical_collection"
+        ]
+      }
+    },
+    "health_knowledge_e5_v1": {
+      "copy_receipt.json": {
+        "source": "nmk_chatbot_e5small_v20261118",
+        "target": "health_knowledge_e5_v1",
+        "status": "committed",
+        "committed_points": 3846,
+        "batches": 39,
+        "integrity": {
+          "name": "health_knowledge_e5_v1",
+          "vector_size": 384,
+          "vectors_count": null,
+          "indexed_vectors_count": 0,
+          "points_count": 3846,
+          "status": "green",
+          "optimizer_status": "ok",
+          "payload_indexes": [
+            "chunk_id",
+            "content_hash",
+            "content_type",
+            "corpus_version",
+            "doc_id",
+            "document_id",
+            "domain",
+            "embedding_fingerprint",
+            "language",
+            "medical_review_status",
+            "privacy_review_status",
+            "release_id",
+            "review_id",
+            "review_status",
+            "review_verification_status",
+            "source"
+          ],
+          "scrolled_points": 3846,
+          "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+          "unique_chunk_count": 3846,
+          "unique_document_count": 1008,
+          "duplicate_chunk_ids": 0,
+          "corpus_versions_found": [
+            "e5small-2026-11-18-v1"
+          ],
+          "verified": true,
+          "errors": []
+        }
+      },
+      "release.json": {
+        "schema_version": 2,
+        "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+        "corpus_version": "e5small-2026-11-18-v1",
+        "physical_collection": "health_knowledge_e5_v1",
+        "serving_alias": "nmk_chatbot_active",
+        "created_at": "2026-11-18T08:54:38.019392+00:00",
+        "updated_at": "2026-11-18T09:12:17.118449+00:00",
+        "canonical_id_schema": "canonical-doc-chunk-v2",
+        "source_manifest": {
+          "path": "backend\\artifacts\\e5small-2026-11-18-v1\\embedding_documents_filtered.jsonl",
+          "sha256": "bcd3cb9369e08f064a605547a474e9a2869acc506e6726c8c76cba57d8c25ecf",
+          "document_count": 1008,
+          "counts_by_content_type": {
+            "inbody_metric": 35,
+            "nutrition": 558,
+            "exercise": 403,
+            "medical_safety": 11,
+            "general_health": 1
+          }
+        },
+        "chunk_manifest": {
+          "expected_count": 3846,
+          "unique_document_count": 1008,
+          "unique_chunk_count": 3846,
+          "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc"
+        },
+        "chunking_config": {
+          "chunk_size": 512,
+          "chunk_overlap": 50,
+          "splitter_version": "fallback_char_splitter"
+        },
+        "embedding_config": {
+          "model_identifier": "intfloat/multilingual-e5-small",
+          "model_revision": "62ff60abe92eb88c1b297fabaad28f7ac77b5875",
+          "vector_size": 384,
+          "distance": "Cosine",
+          "normalize_embeddings": true,
+          "max_length": null,
+          "query_prefix": "query: ",
+          "passage_prefix": "passage: ",
+          "fingerprint": "2f4b5160f4d0e47bf741ad12f59d66cde1014c353d2123f3f2485c30b1ad0c97"
+        },
+        "bm25_artifact": {
+          "status": "ok",
+          "output_path": "backend\\artifacts\\health_knowledge_e5_v1\\bm25_snapshot.json.gz",
+          "sha256": "50c561162feb5c707d77fed5b79dda4f548a6805af5b8870d2e9ca0d2526909a",
+          "document_count": 3846,
+          "unique_document_count": 1008,
+          "unique_chunk_count": 3846,
+          "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+          "collection_name": "nmk_chatbot_active",
+          "physical_collection": "health_knowledge_e5_v1",
+          "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+          "corpus_version": "e5small-2026-11-18-v1",
+          "schema_version": 1,
+          "tokenizer_version": "vi-nfd-alnum-v1",
+          "created_at": "2026-11-18T09:12:16.586373+00:00",
+          "file_size_kb": 1203.6,
+          "path": "C:\\Users\\Admin\\Desktop\\KLTN\\LLL RAG\\backend\\artifacts\\health_knowledge_e5_v1\\bm25_snapshot.json.gz"
+        },
+        "provenance_summary": {
+          "verified": 0,
+          "provisional": 952,
+          "unverified_legacy": 56,
+          "stale_review": 0
+        },
+        "eval_binding": {
+          "suite_path": null,
+          "suite_version": null,
+          "suite_sha256": null,
+          "label_granularity": null,
+          "status": "not_run",
+          "last_eval_at": null,
+          "report_sha256": null
+        },
+        "write_receipt": {
+          "ok": true,
+          "status": "committed",
+          "attempted_points": 3846,
+          "acknowledged_points": 3846,
+          "committed_points": 3846,
+          "failed_points": 0,
+          "unconfirmed_points": 0,
+          "conflict_points": 0,
+          "partial_write": false,
+          "rollback_performed": false
+        },
+        "build_status": "imported",
+        "publication_status": "staging",
+        "verification": {
+          "verified_at": null,
+          "qdrant_verified": false,
+          "bm25_verified": false,
+          "count_matched": false,
+          "fingerprint_matched": false,
+          "payload_indexes_verified": false,
+          "errors": []
+        },
+        "previous_release": {}
+      },
+      "snapshot": {
+        "header": {
+          "schema_version": 1,
+          "collection_name": "nmk_chatbot_active",
+          "physical_collection": "health_knowledge_e5_v1",
+          "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+          "corpus_version": "e5small-2026-11-18-v1",
+          "created_at": "2026-11-18T09:12:16.586373+00:00",
+          "document_count": 3846,
+          "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+          "metadata": {
+            "corpus_version": "e5small-2026-11-18-v1",
+            "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+            "physical_collection": "health_knowledge_e5_v1",
+            "serving_alias": "nmk_chatbot_active",
+            "built_by": "data_pipeline",
+            "chunk_count": 3846,
+            "unique_chunk_count": 3846,
+            "unique_document_count": 1008,
+            "duplicate_chunk_ids": 0,
+            "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+            "tokenizer_version": "vi-nfd-alnum-v1",
+            "canonical_id_schema": "canonical-doc-chunk-v2"
+          }
+        },
+        "actual_sha256": "50c561162feb5c707d77fed5b79dda4f548a6805af5b8870d2e9ca0d2526909a",
+        "rows": 3846,
+        "content_types": {
+          "nutrition": 2500,
+          "exercise": 1255,
+          "inbody_metric": 67,
+          "medical_safety": 23,
+          "general_health": 1
+        },
+        "record_keys": [
+          "document_id",
+          "chunk_id",
+          "corpus_version",
+          "content_hash",
+          "document_content_hash",
+          "source_url",
+          "publisher",
+          "source_name",
+          "source_origin",
+          "source_tier",
+          "source_tier_verified",
+          "claimed_source_tier",
+          "published_at",
+          "reviewed_at",
+          "medical_review_status",
+          "review_verification_status",
+          "review_id",
+          "reviewer_id",
+          "review_role",
+          "review_scope",
+          "reviewed_content_hash",
+          "reviewed_document_version",
+          "review_notes",
+          "stale_review_id",
+          "legacy_claimed_review_status",
+          "legacy_claimed_reviewed_at",
+          "privacy_review_status",
+          "data_scope",
+          "doc_id",
+          "qdrant_point_id",
+          "question",
+          "title",
+          "content",
+          "source",
+          "content_type",
+          "domain",
+          "parent_id",
+          "parent_title",
+          "parent_content",
+          "has_parent",
+          "metadata",
+          "release_id",
+          "physical_collection"
+        ]
+      }
+    }
+  },
+  "captured_at": "2026-11-18T09:15:41.873892+00:00"
+}

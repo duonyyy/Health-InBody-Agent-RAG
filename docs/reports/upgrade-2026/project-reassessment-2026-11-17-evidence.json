@@ -1,0 +1,128 @@
+{
+  "revision": "5c8124c",
+  "evidence_type": "in_process_synthetic_mocks",
+  "backend": {
+    "citation_polarity": {
+      "source": "BMI không đủ để chẩn đoán sức khỏe.",
+      "answer": "BMI đủ để chẩn đoán sức khỏe [1].",
+      "accepted": true
+    },
+    "composer_polarity": {
+      "answer_retained": true,
+      "evidence_status": "supported",
+      "links": 1
+    },
+    "openai_timeout": {
+      "requested_seconds": 0.01,
+      "sdk_request_timeout_present": false
+    },
+    "custom_timeout": {
+      "requested_seconds": 0.01,
+      "http_timeout_seconds": 60
+    },
+    "event_loop": {
+      "timer_requested_ms": 10,
+      "timer_observed_ms": 200.95,
+      "mock_search_delay_ms": 200
+    },
+    "importer_serving_write": {
+      "default_collection": "nmk_chatbot_active",
+      "mock_write_targets": [
+        "nmk_chatbot_active"
+      ],
+      "status": true,
+      "actual_network_calls": 0
+    },
+    "index_api_error_status": {
+      "http_handler_status": true,
+      "reported_indexed": 1,
+      "writer_error_present": true
+    },
+    "unauthenticated_routes": {
+      "search": 200,
+      "summarize": 200,
+      "agent_answer": 401
+    }
+  },
+  "frontend": {
+    "citation": {
+      "backend_excerpt_present": true,
+      "ui_content_field": null,
+      "ui_score_field": null
+    },
+    "check_ins": {
+      "backend_items": 1,
+      "frontend_items": 0
+    },
+    "memory_facts": {
+      "backend_items": 1,
+      "frontend_items": 0
+    },
+    "measurement_nulls": {
+      "smm_kg": 0,
+      "bfm_kg": 0,
+      "pbf_percent": 0,
+      "visceral_fat_level": 0
+    },
+    "category_requests": [
+      {
+        "query": "synthetic",
+        "limit": 8,
+        "use_rerank": false
+      },
+      {
+        "query": "synthetic",
+        "limit": 8,
+        "use_rerank": false
+      }
+    ],
+    "expired_token": {
+      "response_status": 401,
+      "returned_items": 0,
+      "access_token_retained": true
+    },
+    "checkin_safety": {
+      "backend_risk_level": "urgent",
+      "frontend_safety_result": null
+    }
+  },
+  "ocr": {
+    "actual_ocr_text": "72.5 kg",
+    "llm_value": 82.5,
+    "llm_raw_text": "82.5 kg",
+    "accepted": true,
+    "status": "needs_confirmation",
+    "warnings": []
+  },
+  "corpus": {
+    "local_only": true,
+    "document_count": 1009,
+    "content_types": {
+      "inbody_metric": 35,
+      "nutrition": 558,
+      "exercise": 404,
+      "medical_safety": 11,
+      "general_health": 1
+    },
+    "source_metadata_present": {
+      "source_url": 56,
+      "publisher": 56,
+      "source_tier": 56,
+      "published_at": 56,
+      "reviewed_at": 56,
+      "medical_review_status": 56
+    },
+    "snapshot": {
+      "document_count": 4405,
+      "collection_name": "nmk_chatbot_active",
+      "corpus_version": "2026.1",
+      "sha256": "9d8e4e00a0c487768e1077ac652af7954081c7bae9bc238b6e1741c87b999a9f",
+      "unique_doc_ids": 4405
+    },
+    "eval_current_snapshot": {
+      "executed": false,
+      "preflight_error_type": "ValueError",
+      "preflight_error": "fixture corpus_version does not match snapshot"
+    }
+  }
+}

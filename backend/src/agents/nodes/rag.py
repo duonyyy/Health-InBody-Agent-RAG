@@ -177,9 +177,14 @@ def rag_agent(state: AgentState) -> AgentState:
                                                  if doc.get("corpus_version")), None))
                 break
             except Exception as exc:
+                from rag.corpus_lifecycle import CorpusReleaseMismatchError
+
                 _trace_call(state, RAG_AGENT, "hybrid_search", started, "warning",
                             error_code=type(exc).__name__)
                 logger.warning("Hybrid search failed (%s)", type(exc).__name__)
+                if isinstance(exc, CorpusReleaseMismatchError):
+                    append_error(state, "Corpus release mismatch between Qdrant and BM25")
+                    break
                 backoff = _backoff_seconds(
                     state,
                     AGENT_RETRY_BACKOFF_SECONDS,

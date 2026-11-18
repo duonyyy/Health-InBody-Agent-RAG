@@ -7,6 +7,7 @@ from ..context import (
     _explicit_fitness_level,
     _explicit_goal,
     _first_present,
+    _missing_input_result,
     _profile,
     _question,
 )
@@ -31,22 +32,14 @@ def training_agent(state: AgentState) -> AgentState:
         active_goal.get("training_days_per_week"),
     )
     fitness_level = _explicit_fitness_level(question)
-    missing = [
-        label
-        for value, label in (
-            (goal, "mục tiêu"),
-            (days, "số buổi mỗi tuần"),
-            (fitness_level, "trình độ tập luyện"),
-        )
-        if value is None
-    ]
-    if missing:
-        result = {
-            "need_more_info": True,
-            "missing_fields": missing,
-            "message": "Cần thêm " + ", ".join(missing) + " để lập lịch tập mà không đoán dữ liệu.",
-        }
-    else:
+    result = _missing_input_result(
+        "lập lịch tập",
+        (goal, "mục tiêu"),
+        (days, "số buổi mỗi tuần"),
+        (fitness_level, "trình độ tập luyện"),
+    )
+    missing = result is not None
+    if not missing:
         result = suggest_training_plan(
             goal,
             fitness_level=fitness_level,

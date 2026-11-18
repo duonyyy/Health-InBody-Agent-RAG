@@ -168,9 +168,22 @@ def test_caution_composer_keeps_action_on_every_exit(isolated, monkeypatch, fail
              "retrieved_docs": [], "deadline_monotonic": time.monotonic() + 30}
     if failure in {"provider", "unsafe_output"}:
         from rag.provenance import compute_document_content_hash
+        from agents import composer
+        from harness.layers.citation_checker import prepare_composer_context
 
         safety_text = "Hỏi bác sĩ khi dùng thuốc."
         safety_hash = compute_document_content_hash(safety_text)
+        registry = {
+            "schema_version": 1, "is_synthetic_fixture": True,
+            "reviewers": {"reviewer-test-001": {"role": "clinical_reviewer", "active": True}},
+            "reviews": [{"review_id": "rev-test-caution-001", "reviewer_id": "reviewer-test-001",
+                         "document_id": "synthetic-safety", "review_scope": "medical_safety",
+                         "reviewed_at": "2026-11-18T00:00:00Z", "content_hash": safety_hash,
+                         "decision": "approved", "notes": "synthetic"}],
+        }
+        def prepare_with_fixture(docs, **kwargs):
+            return prepare_composer_context(docs, review_registry=registry, allow_synthetic_registry=True, **kwargs)
+        monkeypatch.setattr(composer, "prepare_composer_context", prepare_with_fixture)
         state["retrieved_docs"] = [
             {
                 "document_id": "synthetic-safety",

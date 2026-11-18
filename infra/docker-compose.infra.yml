@@ -85,7 +85,7 @@ services:
       - ./embed_serving/models:/app/models
       - ./embed_serving/logs:/app/logs
     environment:
-      MODEL_PATH: ${MODEL_PATH:-/app/models/bge-m3}
+      MODEL_PATH: ${MODEL_PATH:-/app/models/multilingual-e5-small}
       API_HOST: 0.0.0.0
       API_PORT: 5000
       DEBUG: "false"

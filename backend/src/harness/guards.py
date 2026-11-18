@@ -16,7 +16,7 @@ import re
 import unicodedata
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-CLAIM_VALIDATION_POLICY_VERSION = "2026-11-18-v2"
+CLAIM_VALIDATION_POLICY_VERSION = "2026-11-19-v3"
 
 
 def _normalize_match_text(text: str) -> str:
@@ -558,6 +558,9 @@ def _check_conditions(norm_claim: str, norm_ev: str) -> Optional[str]:
             return "condition_overgeneralized"
 
     ev_conditions = _extract_condition_clauses(norm_ev)
+    claim_conditions = _extract_condition_clauses(norm_claim)
+    if claim_conditions and not ev_conditions:
+        return "condition_added"
     if not ev_conditions:
         return None
 
@@ -566,6 +569,11 @@ def _check_conditions(norm_claim: str, norm_ev: str) -> Optional[str]:
         overlap_ratio = len(cond_tokens & claim_tokens) / max(1, len(cond_tokens))
         if overlap_ratio < 0.5:
             return "condition_dropped"
+
+    ev_tokens = _claim_tokens(norm_ev)
+    for _, cond_tokens in claim_conditions:
+        if len(cond_tokens & ev_tokens) / max(1, len(cond_tokens)) < 0.5:
+            return "condition_added"
 
     return None
 
@@ -581,6 +589,37 @@ def _check_modality(norm_claim: str, norm_ev: str) -> Optional[str]:
         if in_claim and in_ev and ev_neg and not claim_neg:
             return "epistemic_escalation"
     return None
+
+
+def _quantity_bindings(text: str) -> Optional[dict]:
+    """Bind quantities to their local subject; reject ambiguous compounds."""
+    parts = [p.strip() for p in re.split(r"\s+va\s+|;", text) if p.strip()]
+    quantity_count = sum(len(_extract_quantities(p)) for p in parts)
+    if quantity_count < 2:
+        return None
+    if len(parts) < 2:
+        # A single range is handled by the range checker; other multi-number
+        # clauses need an explicit binding and fail closed when ambiguous.
+        return None if quantity_count == 2 and len(_extract_ranges(text)) == 1 else {}
+    bindings = {}
+    previous_entities: set[str] = set()
+    for part in parts:
+        quantities = _extract_quantities(part)
+        if not quantities:
+            return {}
+        entities = _extract_tagged_groups(part, _HEALTH_ENTITY_PATTERNS)
+        if entities:
+            previous_entities = entities
+        else:
+            entities = previous_entities
+        populations = _extract_tagged_groups(part, _POPULATION_PATTERNS)
+        if not entities and not populations:
+            return {}
+        key = (tuple(sorted(entities)), tuple(sorted(populations)))
+        if key in bindings:
+            return {}
+        bindings[key] = (tuple(quantities), tuple(_extract_ranges(part)), _has_negation(part))
+    return bindings
 
 
 def _evaluate_claim_against_sentence(
@@ -600,6 +639,21 @@ def _evaluate_claim_against_sentence(
     # Exact or whitespace-normalized quotation passes immediately.
     if norm_claim == norm_ev:
         return "supported", [], 1.0
+
+    # Only the explicit abbreviation reversal is treated as an equivalence.
+    abbreviation = re.fullmatch(r"(.+?) duoc viet tat la ([a-z][a-z0-9]*)", norm_claim.rstrip(" .!?"))
+    if abbreviation:
+        subject, short = abbreviation.groups()
+        if norm_ev.rstrip(".!?") == f"{short} la {subject}":
+            return "supported", [], 1.0
+
+    claim_bindings = _quantity_bindings(norm_claim)
+    evidence_bindings = _quantity_bindings(norm_ev)
+    if claim_bindings is not None or evidence_bindings is not None:
+        if not claim_bindings or not evidence_bindings:
+            return "inconclusive", ["quantity_binding_ambiguous"], 0.0
+        if claim_bindings != evidence_bindings:
+            return "unsupported", ["quantity_binding_mismatch"], 0.0
 
     reasons: List[str] = []
     for checker in (
@@ -662,7 +716,7 @@ def _is_safety_notice(
     safety = safety_result or {}
     for key in ("disclaimer", "recommended_action"):
         expected = _normalize_match_text(str(safety.get(key) or ""))
-        if expected and (expected in norm or norm in expected):
+        if expected and norm.rstrip(".!? ") == expected.rstrip(".!? "):
             return True
     if any(phrase in norm for phrase in _SAFETY_NOTICE_PHRASES):
         # Do not let a fabricated numeric clinical threshold hide inside a safety notice.
@@ -706,10 +760,24 @@ def _check_deterministic_tool_sentence(
     if not any(marker in norm for marker in metric_markers):
         return None
 
-    for val, _, _ in claim_qs:
-        if not any(abs(val - tool_val) <= 0.05 for tool_val in tool_numbers):
-            return "mismatch"
-    return "matched"
+    # A number found elsewhere in a tool payload is not proof that it belongs
+    # to this metric. Only the explicitly mapped BMI output is supported here.
+    entities = _extract_tagged_groups(norm, _HEALTH_ENTITY_PATTERNS)
+    if entities != {"bmi"} or len(claim_qs) != 1:
+        return None
+    value, comparator, unit = claim_qs[0]
+    if comparator is not None or unit is not None:
+        return "mismatch"
+    bmi_values = []
+    for entry in tool_results:
+        result = entry.get("result") if isinstance(entry, Mapping) else None
+        if isinstance(result, Mapping):
+            bmi = result.get("bmi")
+            if isinstance(bmi, (int, float)) and not isinstance(bmi, bool):
+                bmi_values.append(float(bmi))
+    if not bmi_values:
+        return None
+    return "matched" if any(abs(value - actual) <= 0.05 for actual in bmi_values) else "mismatch"
 
 
 def _sentence_in_child_excerpt(matched_sentence: str, child_excerpt: str) -> bool:

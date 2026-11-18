@@ -1,0 +1,222 @@
+{
+  "scope": "read_only_runtime_and_synthetic_in_process; no quality metrics",
+  "release": {
+    "physical_collection": "health_knowledge_e5_v1",
+    "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+    "qdrant": {
+      "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+      "total_chunks": 3846,
+      "unique_chunk_count": 3846,
+      "unique_document_count": 1008,
+      "duplicate_chunk_ids": 0
+    },
+    "bm25": {
+      "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+      "total_chunks": 3846,
+      "unique_chunk_count": 3846,
+      "unique_document_count": 1008,
+      "duplicate_chunk_ids": 0
+    },
+    "fingerprints_match_manifest": true,
+    "snapshot_sha_matches": true,
+    "source_sha_matches": true,
+    "chunk_content_hash_mismatches": 0,
+    "point_id_mismatches": 0,
+    "embedding_fingerprints": {
+      "2f4b5160f4d0e47bf741ad12f59d66cde1014c353d2123f3f2485c30b1ad0c97": 3846
+    },
+    "corpus_versions": {
+      "e5small-2026-11-18-v1": 3846
+    },
+    "release_ids": {
+      "rel-e5small-2026-11-18-v1-bcd3cb9369e0": 3846
+    },
+    "parent_content_present": 0,
+    "review_status_counts": {
+      "unreviewed": 3738,
+      "unverified_legacy": 108
+    },
+    "source_document_counts": {
+      "internal_seed": 24,
+      "inbody_official_metrics_guide": 8,
+      "who_asian_bmi_and_obesity_guidelines": 3,
+      "cleveland_mayo_visceral_fat_and_metabolic_syndrome": 3,
+      "cdc_and_clinical_bia_limitations": 2,
+      "espen_sarcopenia_and_body_recomposition": 3,
+      "medical_safety_and_emergency_red_flags": 3,
+      "inbody_segmental_analysis_and_body_control": 4,
+      "inbody_testing_protocols_and_absolute_contraindications": 3,
+      "moh_vietnam_obesity_diagnosis_and_treatment_guidelines": 3,
+      "vietnam_food_composition_2007": 554,
+      "fitness_training_document": 398
+    },
+    "source_document_count": 1008,
+    "prior_document_count": 1009,
+    "prior_chunks_count": 4405,
+    "retained_source_records_equal": true,
+    "excluded_document_ids": [
+      "fitness_training_document_page_0465"
+    ],
+    "missing_payload_metadata_counts": {
+      "source_url": 3745,
+      "publisher": 3762,
+      "published_at": 3762,
+      "reviewed_at": 3846,
+      "review_id": 3846,
+      "source_tier": 3846,
+      "document_content_hash": 0
+    }
+  },
+  "claims": [
+    {
+      "case": "swap_metric",
+      "expected": false,
+      "actual": true,
+      "reasons": []
+    },
+    {
+      "case": "swap_population",
+      "expected": false,
+      "actual": true,
+      "reasons": []
+    },
+    {
+      "case": "valid_paraphrase",
+      "expected": true,
+      "actual": false,
+      "reasons": [
+        "insufficient_grounded_support"
+      ]
+    },
+    {
+      "case": "valid_exact",
+      "expected": true,
+      "actual": true,
+      "reasons": []
+    }
+  ],
+  "forged_stamp_empty_registry": {
+    "admitted": 1,
+    "rejected": 0
+  },
+  "resume_missing_embedding_fingerprint": [
+    "match",
+    null
+  ],
+  "bm25_loaded": true,
+  "live_release_sync_no_alias": {
+    "synced": false,
+    "status": "unverified",
+    "alias_name": "nmk_chatbot_active",
+    "live_physical_collection": null,
+    "pinned_collection": "nmk_chatbot_active",
+    "bm25_physical_collection": "health_knowledge_e5_v1",
+    "bm25_release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+    "bm25_corpus_version": "e5small-2026-11-18-v1",
+    "bm25_chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+    "reasons": [
+      "Không thể xác minh BM25 và alias Qdrant cùng collection vật lý"
+    ]
+  },
+  "bm25_smoke_not_eval": [
+    {
+      "query": "BMI là gì?",
+      "filters": {
+        "content_type": "inbody_metric"
+      },
+      "top5": [
+        {
+          "document_id": "internal_inbody_bmi_001",
+          "chunk_id": "internal_inbody_bmi_001-1",
+          "content_type": "inbody_metric"
+        },
+        {
+          "document_id": "cdc_bmi_clinical_limitations_001",
+          "chunk_id": "cdc_bmi_clinical_limitations_001-2",
+          "content_type": "inbody_metric"
+        },
+        {
+          "document_id": "inbody_metric_pbf_ranges_001",
+          "chunk_id": "inbody_metric_pbf_ranges_001-2",
+          "content_type": "inbody_metric"
+        },
+        {
+          "document_id": "espen_sarcopenic_obesity_skinny_fat_001",
+          "chunk_id": "espen_sarcopenic_obesity_skinny_fat_001-1",
+          "content_type": "inbody_metric"
+        },
+        {
+          "document_id": "who_asian_bmi_cutoffs_001",
+          "chunk_id": "who_asian_bmi_cutoffs_001-2",
+          "content_type": "inbody_metric"
+        }
+      ]
+    },
+    {
+      "query": "Vai trò protein",
+      "filters": {
+        "content_type": "nutrition"
+      },
+      "top5": [
+        {
+          "document_id": "vietnam_food_composition_2007_page_0313",
+          "chunk_id": "vietnam_food_composition_2007_page_0313-2",
+          "content_type": "nutrition"
+        },
+        {
+          "document_id": "vietnam_food_composition_2007_page_0283",
+          "chunk_id": "vietnam_food_composition_2007_page_0283-2",
+          "content_type": "nutrition"
+        },
+        {
+          "document_id": "vietnam_food_composition_2007_page_0282",
+          "chunk_id": "vietnam_food_composition_2007_page_0282-2",
+          "content_type": "nutrition"
+        },
+        {
+          "document_id": "vietnam_food_composition_2007_page_0010",
+          "chunk_id": "vietnam_food_composition_2007_page_0010-1",
+          "content_type": "nutrition"
+        },
+        {
+          "document_id": "vietnam_food_composition_2007_page_0282",
+          "chunk_id": "vietnam_food_composition_2007_page_0282-1",
+          "content_type": "nutrition"
+        }
+      ]
+    },
+    {
+      "query": "đau ngực khó thở",
+      "filters": {
+        "content_type": "medical_safety"
+      },
+      "top5": [
+        {
+          "document_id": "internal_safety_red_flags_exercise_001",
+          "chunk_id": "internal_safety_red_flags_exercise_001-1",
+          "content_type": "medical_safety"
+        },
+        {
+          "document_id": "internal_medical_safety_001",
+          "chunk_id": "internal_medical_safety_001-1",
+          "content_type": "medical_safety"
+        },
+        {
+          "document_id": "medical_emergency_red_flags_001",
+          "chunk_id": "medical_emergency_red_flags_001-1",
+          "content_type": "medical_safety"
+        },
+        {
+          "document_id": "moh_weight_loss_realistic_targets_003",
+          "chunk_id": "moh_weight_loss_realistic_targets_003-1",
+          "content_type": "medical_safety"
+        },
+        {
+          "document_id": "medical_emergency_red_flags_001",
+          "chunk_id": "medical_emergency_red_flags_001-2",
+          "content_type": "medical_safety"
+        }
+      ]
+    }
+  ]
+}

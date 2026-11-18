@@ -19,7 +19,7 @@ class Settings(BaseModel):
     max_image_side: int = Field(default=1800, ge=512, le=4096)
 
     # PaddleOCR configuration
-    paddle_lang: str = "ch"
+    paddle_lang: str = "en"
     paddle_use_gpu: bool = False
     paddle_min_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     paddle_row_gap_px: int = Field(default=12, ge=2, le=100)
@@ -50,7 +50,7 @@ def get_settings() -> Settings:
         max_pdf_pages=int(os.getenv("MAX_PDF_PAGES", "2")),
         pdf_dpi=int(os.getenv("PDF_DPI", "180")),
         max_image_side=int(os.getenv("MAX_IMAGE_SIDE", "1800")),
-        paddle_lang=os.getenv("PADDLE_LANG", "ch"),
+        paddle_lang=os.getenv("PADDLE_LANG", "en"),
         paddle_use_gpu=os.getenv("PADDLE_USE_GPU", "false").lower() in {"1", "true", "yes"},
         paddle_min_confidence=float(os.getenv("PADDLE_MIN_CONFIDENCE", "0.5")),
         paddle_row_gap_px=int(os.getenv("PADDLE_ROW_GAP_PX", "12")),
