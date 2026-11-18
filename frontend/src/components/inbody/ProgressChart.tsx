@@ -56,7 +56,7 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
               <span>{entry.name}:</span>
             </span>
             <span className="font-bold text-slate-900 font-mono">
-              {entry.value} {entry.unit || ''}
+              {entry.value != null ? `${entry.value} ${entry.unit || ''}` : '--'}
             </span>
           </div>
         ))}
@@ -75,15 +75,19 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
     .map((m) => {
       const d = new Date(m.measured_at);
       const label = `${d.getDate()}/${d.getMonth() + 1}`;
+      const smm = m.smm_kg ?? m.skeletal_muscle_mass_kg;
+      const pbf = m.pbf_percent ?? m.percent_body_fat;
+      const bfm = m.bfm_kg ?? m.body_fat_mass_kg;
+
       return {
         date: label,
         fullDate: d.toLocaleDateString('vi-VN'),
-        weight: m.weight_kg,
-        smm: m.smm_kg ?? m.skeletal_muscle_mass_kg,
-        pbf: m.pbf_percent ?? m.percent_body_fat,
-        bfm: m.bfm_kg ?? m.body_fat_mass_kg,
-        visceral: m.visceral_fat_level,
-        bmi: m.bmi,
+        weight: m.weight_kg != null ? m.weight_kg : null,
+        smm: smm != null ? smm : null,
+        pbf: pbf != null ? pbf : null,
+        bfm: bfm != null ? bfm : null,
+        visceral: m.visceral_fat_level != null ? m.visceral_fat_level : null,
+        bmi: m.bmi != null ? m.bmi : null,
       };
     });
 
@@ -173,6 +177,7 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
                   fillOpacity={1}
                   fill="url(#weightGrad)"
                   unit="kg"
+                  connectNulls={false}
                 />
                 <Area
                   type="monotone"
@@ -183,6 +188,7 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
                   fillOpacity={1}
                   fill="url(#smmGrad)"
                   unit="kg"
+                  connectNulls={false}
                 />
               </AreaChart>
             ) : mode === 'fat' ? (
@@ -203,6 +209,7 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
                   strokeWidth={2.5}
                   dot={{ r: 4, fill: '#d97706' }}
                   unit="%"
+                  connectNulls={false}
                 />
                 <Line
                   type="monotone"
@@ -212,6 +219,7 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
                   strokeWidth={2}
                   dot={{ r: 4, fill: '#db2777' }}
                   unit="kg"
+                  connectNulls={false}
                 />
               </LineChart>
             ) : (
@@ -243,6 +251,7 @@ export default function ProgressChart({ measurements }: ProgressChartProps) {
                   strokeWidth={2.5}
                   dot={{ r: 4, fill: '#7c3aed' }}
                   unit="Cấp"
+                  connectNulls={false}
                 />
               </LineChart>
             )}

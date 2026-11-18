@@ -112,20 +112,23 @@ export default function Header({
             <div className="hidden lg:flex items-center gap-2 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs shadow-xs">
               <span className="text-slate-500 font-medium">Lần đo mới nhất:</span>
               <div className="flex items-center gap-2.5">
-                {weight !== undefined && (
+                {weight != null && (
                   <span className="text-slate-800 font-bold font-mono">{weight} kg</span>
                 )}
-                {pbf !== undefined && (
+                {pbf != null && (
                   <>
                     <span className="w-1 h-1 rounded-full bg-slate-300" />
                     <span className="text-amber-700 font-semibold font-mono">{pbf}% Mỡ</span>
                   </>
                 )}
-                {smm !== undefined && (
+                {smm != null && (
                   <>
                     <span className="w-1 h-1 rounded-full bg-slate-300" />
                     <span className="text-teal-700 font-semibold font-mono">{smm} kg Cơ</span>
                   </>
+                )}
+                {weight == null && pbf == null && smm == null && (
+                  <span className="text-slate-500 italic">Số đo một phần</span>
                 )}
               </div>
             </div>

@@ -9,7 +9,14 @@ interface SafetyBannerProps {
 }
 
 export default function SafetyBanner({ safety }: SafetyBannerProps) {
-  if (!safety || (!safety.is_urgent && !safety.is_caution && safety.risk_level === 'none')) {
+  if (
+    !safety ||
+    (!safety.is_urgent &&
+      !safety.is_caution &&
+      safety.risk_level !== 'urgent' &&
+      safety.risk_level !== 'medical_caution' &&
+      safety.risk_level !== 'moderate')
+  ) {
     return null;
   }
 
@@ -17,7 +24,11 @@ export default function SafetyBanner({ safety }: SafetyBannerProps) {
 
   if (isUrgent) {
     return (
-      <div className="mb-4 p-4 rounded-2xl bg-rose-50 border-2 border-rose-400 text-rose-950 shadow-sm animate-in fade-in zoom-in-95 duration-200">
+      <div
+        role="alert"
+        aria-live="assertive"
+        className="mb-4 p-4 rounded-2xl bg-rose-50 border-2 border-rose-400 text-rose-950 shadow-sm animate-in fade-in zoom-in-95 duration-200"
+      >
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 rounded-xl bg-rose-600 flex items-center justify-center flex-shrink-0 text-white shadow-md animate-pulse">
             <AlertTriangle className="w-6 h-6 stroke-[2.5]" />
@@ -32,7 +43,7 @@ export default function SafetyBanner({ safety }: SafetyBannerProps) {
               {safety.emergency_hotline && (
                 <a
                   href={`tel:${safety.emergency_hotline}`}
-                  className="inline-flex items-center gap-1 text-xs px-3 py-1 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold transition-transform active:scale-95 shadow-sm"
+                  className="inline-flex items-center gap-1 text-xs px-3 py-1 rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold transition-transform active:scale-95 shadow-sm focus:outline-none focus:ring-2 focus:ring-rose-500"
                 >
                   <PhoneCall className="w-3.5 h-3.5" />
                   <span>Gọi Cấp cứu {safety.emergency_hotline}</span>
@@ -59,7 +70,11 @@ export default function SafetyBanner({ safety }: SafetyBannerProps) {
 
   // Caution banner
   return (
-    <div className="mb-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 shadow-xs">
+    <div
+      role="status"
+      aria-live="polite"
+      className="mb-4 p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 shadow-xs"
+    >
       <div className="flex items-start gap-3">
         <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center flex-shrink-0 border border-amber-300">
           <AlertCircle className="w-5 h-5" />
@@ -71,6 +86,11 @@ export default function SafetyBanner({ safety }: SafetyBannerProps) {
           <p className="text-xs text-amber-900/90 mt-1 leading-relaxed">
             {safety.reason || safety.disclaimer || 'Vui lòng tham khảo ý kiến bác sĩ chuyên khoa trước khi áp dụng bất kỳ phác đồ dinh dưỡng hoặc bài tập nào.'}
           </p>
+          {safety.recommended_action && (
+            <div className="mt-2 text-[11px] text-amber-800 font-medium">
+              Khuyến nghị: {safety.recommended_action}
+            </div>
+          )}
         </div>
       </div>
     </div>

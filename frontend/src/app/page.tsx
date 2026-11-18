@@ -88,11 +88,15 @@ export default function Home() {
         fetchUserProfile(),
       ]);
 
-      if (measurements.status === 'fulfilled' && measurements.value.length > 0) {
-        const sorted = [...measurements.value].sort(
-          (a, b) => new Date(b.measured_at).getTime() - new Date(a.measured_at).getTime()
-        );
-        setLatestMeasurement(sorted[0]);
+      if (measurements.status === 'fulfilled') {
+        if (measurements.value.length > 0) {
+          const sorted = [...measurements.value].sort(
+            (a, b) => new Date(b.measured_at).getTime() - new Date(a.measured_at).getTime()
+          );
+          setLatestMeasurement(sorted[0]);
+        } else {
+          setLatestMeasurement(null);
+        }
       }
       if (profile.status === 'fulfilled') {
         setUserProfile(profile.value);
@@ -113,11 +117,15 @@ export default function Home() {
           fetchUserProfile(),
         ]);
         if (ignore) return;
-        if (measurements.status === 'fulfilled' && measurements.value.length > 0) {
-          const sorted = [...measurements.value].sort(
-            (a, b) => new Date(b.measured_at).getTime() - new Date(a.measured_at).getTime()
-          );
-          setLatestMeasurement(sorted[0]);
+        if (measurements.status === 'fulfilled') {
+          if (measurements.value.length > 0) {
+            const sorted = [...measurements.value].sort(
+              (a, b) => new Date(b.measured_at).getTime() - new Date(a.measured_at).getTime()
+            );
+            setLatestMeasurement(sorted[0]);
+          } else {
+            setLatestMeasurement(null);
+          }
         }
         if (profile.status === 'fulfilled') {
           setUserProfile(profile.value);
@@ -226,7 +234,11 @@ export default function Home() {
             />
           )}
           {activeTab === 'inbody' && (
-            <InBodyDashboard onMeasurementChange={refreshUserContext} />
+            <InBodyDashboard
+              onMeasurementChange={refreshUserContext}
+              profile={userProfile}
+              sexAtBirth={userProfile?.sex_at_birth || userProfile?.sex}
+            />
           )}
           {activeTab === 'profile' && (
             <ProfileAndGoals onProfileSaved={refreshUserContext} />

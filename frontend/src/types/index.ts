@@ -55,8 +55,8 @@ export interface InBodyMeasurement {
   id: string;
   user_id?: string;
   measured_at: string;
-  weight_kg: number;
-  height_cm: number;
+  weight_kg?: number;
+  height_cm?: number;
   // Field names from backend P1
   smm_kg?: number;
   bfm_kg?: number;
@@ -89,7 +89,7 @@ export interface ProgressSummary {
 export interface SafetyResult {
   is_urgent?: boolean;
   is_caution?: boolean;
-  risk_level?: 'none' | 'low' | 'moderate' | 'urgent';
+  risk_level?: 'none' | 'low' | 'moderate' | 'medical_caution' | 'urgent' | string;
   reason?: string;
   urgency_explanation?: string;
   disclaimer?: string;
@@ -108,13 +108,25 @@ export interface AgentTraceStep {
 }
 
 export interface Citation {
-  id?: string;
+  id?: string | number;
+  document_id?: string;
+  chunk_id?: string;
   title: string;
   source: string;
-  score?: number;
+  score?: number | null;
+  retrieval_score?: number | null;
+  rerank_score?: number | null;
   category?: string;
+  content_type?: string | null;
   content: string;
-  url?: string;
+  excerpt?: string;
+  url?: string | null;
+  source_url?: string | null;
+  publisher?: string | null;
+  source_tier?: string | null;
+  published_at?: string | null;
+  reviewed_at?: string | null;
+  source_version?: string | null;
 }
 
 export interface MemoryProposal {
@@ -156,16 +168,20 @@ export interface CheckInLog {
   id: string;
   date: string;
   checked_at?: string;
-  workout_completed: boolean;
-  workout_rating: number; // 1-5
-  energy_level: number; // 1-5
-  sleep_hours: number;
+  adherence?: number; // 0-100%
+  energy_level?: number; // 1-5
   sleep_quality?: number; // 1-5
   soreness?: number; // 1-5
-  unusual_symptoms?: string;
   symptoms?: string[];
-  notes?: string;
   note?: string;
+  safety_result?: SafetyResult | null;
+  created_at?: string;
+  // Backward compatibility fields (optional, never fabricated)
+  workout_completed?: boolean;
+  workout_rating?: number; // 1-5
+  sleep_hours?: number;
+  unusual_symptoms?: string;
+  notes?: string;
 }
 
 export interface BackendHealth {

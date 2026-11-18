@@ -1,28 +1,29 @@
 'use client';
 
 import React, { useState } from 'react';
-import { BookOpen, ChevronDown, ChevronUp, FileText } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronUp, FileText, ExternalLink } from 'lucide-react';
 import { Citation } from '@/types';
 
 interface CitationsViewProps {
   citations: Citation[];
+  defaultExpandedIdx?: number | null;
 }
 
-/**
- * Escape chuỗi để phòng ngừa XSS trong nội dung trích dẫn
- */
-function sanitizeText(text: string): string {
-  if (!text) return '';
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+function isValidHttpUrl(urlString?: string | null): boolean {
+  if (!urlString) return false;
+  try {
+    const url = new URL(urlString);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
-export default function CitationsView({ citations }: CitationsViewProps) {
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+export default function CitationsView({
+  citations,
+  defaultExpandedIdx = null,
+}: CitationsViewProps) {
+  const [expandedId, setExpandedId] = useState<number | null>(defaultExpandedIdx);
 
   if (!citations || citations.length === 0) return null;
 
@@ -36,11 +37,16 @@ export default function CitationsView({ citations }: CitationsViewProps) {
       <div className="space-y-1.5">
         {citations.map((cite, idx) => {
           const isExpanded = expandedId === idx;
-          // Điểm similarity là độ tương đồng vector/từ vựng của Qdrant/BM25, KHÔNG PHẢI độ chính xác y khoa
-          const scorePct = typeof cite.score === 'number' ? Math.round(cite.score * 100) : null;
-          const safeTitle = sanitizeText(cite.title || cite.source || `Tài liệu tham chiếu #${idx + 1}`);
-          const safeContent = sanitizeText(cite.content || '');
-          const safeSource = sanitizeText(cite.source || '');
+          const displayId = cite.id != null ? String(cite.id) : String(idx + 1);
+          const title = cite.title || cite.source || `Tài liệu tham chiếu [${displayId}]`;
+          const excerptText = cite.excerpt || cite.content || 'Chưa có đoạn trích nội dung.';
+          const sourceText = cite.source || 'Nguồn tài liệu y tế';
+          const validUrl = isValidHttpUrl(cite.source_url || cite.url) ? (cite.source_url || cite.url)! : null;
+          const score = typeof cite.retrieval_score === 'number'
+            ? cite.retrieval_score
+            : typeof cite.score === 'number'
+            ? cite.score
+            : null;
 
           return (
             <div
@@ -54,16 +60,18 @@ export default function CitationsView({ citations }: CitationsViewProps) {
               >
                 <div className="flex items-center gap-2 min-w-0">
                   <FileText className="w-3.5 h-3.5 text-slate-500 flex-shrink-0" />
-                  <span
-                    className="font-medium text-slate-800 truncate"
-                    dangerouslySetInnerHTML={{ __html: safeTitle }}
-                  />
-                  {scorePct !== null && (
+                  <span className="font-mono text-teal-700 font-bold flex-shrink-0">
+                    [{displayId}]
+                  </span>
+                  <span className="font-medium text-slate-800 truncate">
+                    {title}
+                  </span>
+                  {score !== null && (
                     <span
-                      title="Chỉ số tương đồng ngữ nghĩa đối chiếu vector/từ khóa (Không phải độ chính xác y khoa)"
+                      title="Điểm số truy xuất thông tin (retrieval score), không phải xác suất y khoa"
                       className="text-[10px] px-1.5 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200 font-mono font-semibold flex-shrink-0"
                     >
-                      Tương đồng {scorePct}%
+                      Điểm: {score.toFixed(2)}
                     </span>
                   )}
                 </div>
@@ -77,20 +85,45 @@ export default function CitationsView({ citations }: CitationsViewProps) {
 
               {isExpanded && (
                 <div className="p-3 bg-white border-t border-slate-200 text-xs text-slate-700 leading-relaxed space-y-2">
-                  <p
-                    className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 font-serif italic text-slate-800"
-                    dangerouslySetInnerHTML={{ __html: `&ldquo;${safeContent}&rdquo;` }}
-                  />
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
-                    <span
-                      className="truncate max-w-[280px] font-mono text-[10px]"
-                      dangerouslySetInnerHTML={{ __html: `Tệp nguồn: ${safeSource}` }}
-                    />
-                    {cite.category && (
-                      <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium uppercase text-[10px] border border-slate-200">
-                        {cite.category}
+                  <blockquote className="bg-slate-50 p-2.5 rounded-lg border border-slate-200 font-serif italic text-slate-800 whitespace-pre-wrap">
+                    &ldquo;{excerptText}&rdquo;
+                  </blockquote>
+
+                  <div className="flex flex-wrap items-center justify-between text-[11px] text-slate-500 gap-2 pt-1">
+                    <div className="flex items-center gap-1.5 truncate max-w-md">
+                      <span className="font-mono text-[10px] text-slate-600 truncate">
+                        Nguồn: {sourceText}
                       </span>
-                    )}
+                      {cite.source_version && (
+                        <span className="text-[10px] font-mono text-slate-400">
+                          (v{cite.source_version})
+                        </span>
+                      )}
+                      {validUrl && (
+                        <a
+                          href={validUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-0.5 text-teal-600 hover:text-teal-700 hover:underline font-medium text-[10px]"
+                        >
+                          <span>Liên kết gốc</span>
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {cite.source_tier && (
+                        <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-medium text-[10px] border border-blue-200">
+                          {cite.source_tier}
+                        </span>
+                      )}
+                      {(cite.category || cite.content_type) && (
+                        <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium uppercase text-[10px] border border-slate-200">
+                          {cite.category || cite.content_type}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

@@ -1,18 +1,20 @@
 'use client';
 
 import React, { useState } from 'react';
-import { InBodyMeasurement } from '@/types';
+import { InBodyMeasurement, SexAtBirthType, SexType } from '@/types';
 import { Trash2, Calendar, FileText, Smartphone, HardDrive, X } from 'lucide-react';
 import { classifyBmiAsian, classifyPbf, classifyVisceralFat } from '@/lib/classifiers';
 
 interface MeasurementHistoryTableProps {
   measurements: InBodyMeasurement[];
   onDelete: (id: string) => Promise<void>;
+  sexAtBirth?: SexAtBirthType | SexType | string | null;
 }
 
 export default function MeasurementHistoryTable({
   measurements,
   onDelete,
+  sexAtBirth,
 }: MeasurementHistoryTableProps) {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -98,9 +100,9 @@ export default function MeasurementHistoryTable({
               const smmVal = m.smm_kg ?? m.skeletal_muscle_mass_kg;
               const pbfVal = m.pbf_percent ?? m.percent_body_fat;
 
-              const bmiClass = classifyBmiAsian(m.bmi);
-              const pbfClass = classifyPbf(pbfVal, 'male');
-              const vflClass = classifyVisceralFat(m.visceral_fat_level);
+              const bmiClass = m.bmi != null ? classifyBmiAsian(m.bmi) : undefined;
+              const pbfClass = pbfVal != null ? classifyPbf(pbfVal, sexAtBirth) : undefined;
+              const vflClass = m.visceral_fat_level != null ? classifyVisceralFat(m.visceral_fat_level) : undefined;
 
               const isConfirming = deleteConfirmId === m.id;
 
@@ -111,10 +113,10 @@ export default function MeasurementHistoryTable({
                     {m.notes && <div className="text-[10px] text-slate-400 font-normal truncate max-w-[120px]">{m.notes}</div>}
                   </td>
                   <td className="py-3 px-3 font-bold text-slate-900 font-mono">
-                    {m.weight_kg} kg
+                    {m.weight_kg != null ? `${m.weight_kg} kg` : '-'}
                   </td>
                   <td className="py-3 px-3">
-                    {m.bmi ? (
+                    {m.bmi != null && bmiClass ? (
                       <div className="flex flex-col gap-0.5">
                         <span className="font-mono font-bold text-slate-800">{m.bmi}</span>
                         <span className={`text-[10px] px-1.5 py-0.2 rounded border w-fit font-bold ${bmiClass.badgeClass}`}>
@@ -126,10 +128,10 @@ export default function MeasurementHistoryTable({
                     )}
                   </td>
                   <td className="py-3 px-3 font-mono font-bold text-teal-700">
-                    {smmVal ? `${smmVal} kg` : '-'}
+                    {smmVal != null ? `${smmVal} kg` : '-'}
                   </td>
                   <td className="py-3 px-3">
-                    {pbfVal ? (
+                    {pbfVal != null && pbfClass ? (
                       <div className="flex flex-col gap-0.5">
                         <span className="font-mono font-bold text-amber-700">{pbfVal}%</span>
                         <span className={`text-[10px] px-1.5 py-0.2 rounded border w-fit font-bold ${pbfClass.badgeClass}`}>
@@ -141,7 +143,7 @@ export default function MeasurementHistoryTable({
                     )}
                   </td>
                   <td className="py-3 px-3">
-                    {m.visceral_fat_level ? (
+                    {m.visceral_fat_level != null && vflClass ? (
                       <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold border ${vflClass.badgeClass}`}>
                         Cấp {m.visceral_fat_level}
                       </span>

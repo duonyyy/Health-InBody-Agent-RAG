@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   User,
   Target,
@@ -10,13 +10,21 @@ import {
   Check,
   Trash2,
   ShieldCheck,
-  Star,
   Plus,
   Loader2,
   AlertCircle,
   RotateCw,
 } from 'lucide-react';
-import { UserProfile, UserGoal, CheckInLog, MemoryProposal, SexAtBirthType, ActivityLevelType } from '@/types';
+import {
+  UserProfile,
+  UserGoal,
+  CheckInLog,
+  MemoryProposal,
+  SexAtBirthType,
+  ActivityLevelType,
+  SafetyResult,
+} from '@/types';
+import SafetyBanner from '@/components/chat/SafetyBanner';
 import {
   fetchUserProfile,
   fetchCurrentGoal,
@@ -43,19 +51,26 @@ export default function ProfileAndGoals({ onProfileSaved }: ProfileAndGoalsProps
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [checkInError, setCheckInError] = useState<string | null>(null);
+  const [memoryError, setMemoryError] = useState<string | null>(null);
 
-  // New Check-in form state
-  const [rating, setRating] = useState(5);
+  // New Check-in form state conforming to backend contract
+  const [adherence, setAdherence] = useState(100);
   const [energy, setEnergy] = useState(4);
-  const [sleep, setSleep] = useState(7.5);
+  const [sleepQuality, setSleepQuality] = useState(4);
+  const [soreness, setSoreness] = useState(1);
   const [symptoms, setSymptoms] = useState('');
   const [checkInNotes, setCheckInNotes] = useState('');
   const [checkInSuccess, setCheckInSuccess] = useState(false);
   const [isSubmittingCheckIn, setIsSubmittingCheckIn] = useState(false);
+  const [latestCheckInSafety, setLatestCheckInSafety] = useState<SafetyResult | null>(null);
+  const checkInRequestSeqRef = useRef(0);
 
   const loadAllData = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage(null);
+    setCheckInError(null);
+    setMemoryError(null);
     try {
       const [p, chk, mem, currentGoal] = await Promise.allSettled([
         fetchUserProfile(),
@@ -72,11 +87,16 @@ export default function ProfileAndGoals({ onProfileSaved }: ProfileAndGoalsProps
 
       if (chk.status === 'fulfilled') {
         setCheckIns(chk.value);
+      } else {
+        setCheckInError(chk.reason instanceof Error ? chk.reason.message : 'Không thể tải lịch sử check-in.');
       }
 
       if (mem.status === 'fulfilled') {
         setMemoryFacts(mem.value);
+      } else {
+        setMemoryError(mem.reason instanceof Error ? mem.reason.message : 'Không thể tải ký ức cá nhân hóa.');
       }
+
       if (currentGoal.status === 'fulfilled') setGoal(currentGoal.value || {});
     } finally {
       setIsLoading(false);
@@ -88,6 +108,8 @@ export default function ProfileAndGoals({ onProfileSaved }: ProfileAndGoalsProps
     async function init() {
       setIsLoading(true);
       setErrorMessage(null);
+      setCheckInError(null);
+      setMemoryError(null);
       try {
         const [prof, chk, mem, currentGoal] = await Promise.allSettled([
           fetchUserProfile(),
@@ -110,11 +132,16 @@ export default function ProfileAndGoals({ onProfileSaved }: ProfileAndGoalsProps
 
         if (chk.status === 'fulfilled') {
           setCheckIns(chk.value);
+        } else {
+          setCheckInError(chk.reason instanceof Error ? chk.reason.message : 'Không thể tải lịch sử check-in.');
         }
 
         if (mem.status === 'fulfilled') {
           setMemoryFacts(mem.value);
+        } else {
+          setMemoryError(mem.reason instanceof Error ? mem.reason.message : 'Không thể tải ký ức cá nhân hóa.');
         }
+
         if (currentGoal.status === 'fulfilled') setGoal(currentGoal.value || {});
       } finally {
         if (!ignore) {
@@ -163,26 +190,44 @@ export default function ProfileAndGoals({ onProfileSaved }: ProfileAndGoalsProps
 
   const handleAddCheckIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    const requestSeq = ++checkInRequestSeqRef.current;
     setIsSubmittingCheckIn(true);
+    setCheckInError(null);
+    setCheckInSuccess(false);
     try {
+      const parsedSymptoms = symptoms
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
       const newLog = await saveCheckIn({
-        workout_completed: true,
-        workout_rating: rating,
+        adherence,
         energy_level: energy,
-        sleep_hours: sleep,
-        unusual_symptoms: symptoms.trim() || undefined,
-        notes: checkInNotes.trim() || undefined,
+        sleep_quality: sleepQuality,
+        soreness,
+        symptoms: parsedSymptoms.length > 0 ? parsedSymptoms : undefined,
+        note: checkInNotes.trim() || undefined,
       });
       setCheckIns((prev) => [newLog, ...prev]);
-      setSymptoms('');
-      setCheckInNotes('');
-      setCheckInSuccess(true);
-      setTimeout(() => setCheckInSuccess(false), 3000);
+      if (requestSeq === checkInRequestSeqRef.current) {
+        setLatestCheckInSafety(newLog.safety_result || null);
+        setSymptoms('');
+        setCheckInNotes('');
+        const isUrgent =
+          newLog.safety_result?.risk_level === 'urgent' || newLog.safety_result?.is_urgent;
+        if (!isUrgent) {
+          setCheckInSuccess(true);
+          setTimeout(() => setCheckInSuccess(false), 3000);
+        }
+      }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Không thể lưu check-in.';
-      alert(msg);
+      if (requestSeq === checkInRequestSeqRef.current) {
+        const msg = err instanceof Error ? err.message : 'Không thể lưu check-in.';
+        setCheckInError(msg);
+      }
     } finally {
-      setIsSubmittingCheckIn(false);
+      if (requestSeq === checkInRequestSeqRef.current) {
+        setIsSubmittingCheckIn(false);
+      }
     }
   };
 
@@ -493,53 +538,80 @@ export default function ProfileAndGoals({ onProfileSaved }: ProfileAndGoalsProps
             )}
           </div>
 
+          {/* Safety Warning from Latest Check-in */}
+          {latestCheckInSafety && (
+            <div className="pt-1">
+              <SafetyBanner safety={latestCheckInSafety} />
+            </div>
+          )}
+
+          {/* Check-in Error Alert */}
+          {checkInError && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <span className="font-medium">{checkInError}</span>
+            </div>
+          )}
+
           <form onSubmit={handleAddCheckIn} className="space-y-3 text-xs">
-            <div className="grid grid-cols-3 gap-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Mức hoàn thành tập</label>
-                <div className="flex items-center gap-1 bg-slate-50 p-2 rounded-xl border border-slate-300 justify-center">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setRating(star)}
-                      className="p-0.5"
-                    >
-                      <Star
-                        className={`w-3.5 h-3.5 ${
-                          star <= rating
-                            ? 'text-amber-500 fill-amber-500'
-                            : 'text-slate-300'
-                        }`}
-                      />
-                    </button>
-                  ))}
-                </div>
+                <label className="block text-slate-600 font-medium mb-1">Tuân thủ (%)</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value={adherence}
+                  onChange={(e) => setAdherence(Number(e.target.value))}
+                  className="w-full px-2.5 py-1.5 rounded-xl bg-slate-50 border border-slate-300 text-center font-bold text-teal-700 font-mono focus:bg-white focus:outline-none focus:border-teal-600"
+                  required
+                />
               </div>
 
               <div>
                 <label className="block text-slate-600 font-medium mb-1">Năng lượng (1-5)</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="5"
+                <select
                   value={energy}
                   onChange={(e) => setEnergy(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-center font-bold text-teal-700 font-mono focus:bg-white focus:outline-none focus:border-teal-600"
-                />
+                  className="w-full px-2 py-1.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-600"
+                >
+                  <option value={1}>1 - Rất thấp</option>
+                  <option value={2}>2 - Hơi mệt</option>
+                  <option value={3}>3 - Bình thường</option>
+                  <option value={4}>4 - Tốt</option>
+                  <option value={5}>5 - Rất sung mãn</option>
+                </select>
               </div>
 
               <div>
-                <label className="block text-slate-600 font-medium mb-1">Ngủ (tiếng/ngày)</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="3"
-                  max="14"
-                  value={sleep}
-                  onChange={(e) => setSleep(Number(e.target.value))}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-center font-bold text-sky-700 font-mono focus:bg-white focus:outline-none focus:border-teal-600"
-                />
+                <label className="block text-slate-600 font-medium mb-1">Giấc ngủ (1-5)</label>
+                <select
+                  value={sleepQuality}
+                  onChange={(e) => setSleepQuality(Number(e.target.value))}
+                  className="w-full px-2 py-1.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-600"
+                >
+                  <option value={1}>1 - Rất kém</option>
+                  <option value={2}>2 - Kém/Chập chờn</option>
+                  <option value={3}>3 - Tạm ổn</option>
+                  <option value={4}>4 - Ngủ ngon</option>
+                  <option value={5}>5 - Rất sâu giấc</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-slate-600 font-medium mb-1">Đau mỏi (1-5)</label>
+                <select
+                  value={soreness}
+                  onChange={(e) => setSoreness(Number(e.target.value))}
+                  className="w-full px-2 py-1.5 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-600"
+                >
+                  <option value={1}>1 - Không mỏi</option>
+                  <option value={2}>2 - Mỏi nhẹ</option>
+                  <option value={3}>3 - Mỏi vừa</option>
+                  <option value={4}>4 - Đau nhiều</option>
+                  <option value={5}>5 - Đau dữ dội</option>
+                </select>
               </div>
             </div>
 
@@ -549,7 +621,18 @@ export default function ProfileAndGoals({ onProfileSaved }: ProfileAndGoalsProps
                 type="text"
                 value={symptoms}
                 onChange={(e) => setSymptoms(e.target.value)}
-                placeholder="Ví dụ: Đau mỏi khớp vai, căng gân kheo..."
+                placeholder="Ví dụ: Đau thắt ngực, khó thở, chóng mặt, sưng khớp gối..."
+                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-600"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-600 font-medium mb-1">Ghi chú thêm</label>
+              <input
+                type="text"
+                value={checkInNotes}
+                onChange={(e) => setCheckInNotes(e.target.value)}
+                placeholder="Ví dụ: Cảm thấy cơ bắp phục hồi tốt, uống đủ 2L nước..."
                 className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-300 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-600"
               />
             </div>
@@ -572,25 +655,80 @@ export default function ProfileAndGoals({ onProfileSaved }: ProfileAndGoalsProps
               Lịch sử check-in gần nhất ({checkIns.length}):
             </span>
             {checkIns.length > 0 ? (
-              checkIns.slice(0, 5).map((chk) => (
-                <div
-                  key={chk.id}
-                  className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs flex items-center justify-between"
-                >
-                  <div>
-                    <div className="font-semibold text-slate-800 flex items-center gap-2">
-                      <span>{chk.date}</span>
-                      <span className="text-amber-600 font-medium">★ {chk.workout_rating}/5</span>
-                      <span className="text-sky-700 font-mono">{chk.sleep_hours}h ngủ</span>
+              checkIns.slice(0, 5).map((chk) => {
+                const isUrgent = chk.safety_result?.risk_level === 'urgent' || chk.safety_result?.is_urgent;
+                const isCaution = chk.safety_result?.risk_level === 'medical_caution' || chk.safety_result?.is_caution;
+                const symptomList = Array.isArray(chk.symptoms)
+                  ? chk.symptoms
+                  : chk.unusual_symptoms
+                  ? [chk.unusual_symptoms]
+                  : [];
+
+                return (
+                  <div
+                    key={chk.id}
+                    className={`p-3 rounded-xl border text-xs space-y-1.5 ${
+                      isUrgent
+                        ? 'bg-rose-50/60 border-rose-300'
+                        : isCaution
+                        ? 'bg-amber-50/60 border-amber-300'
+                        : 'bg-slate-50 border-slate-200'
+                    }`}
+                  >
+                    <div className="font-semibold text-slate-800 flex flex-wrap items-center gap-2">
+                      <span className="text-slate-600 font-mono">{chk.date || chk.checked_at?.slice(0, 10)}</span>
+                      {chk.adherence != null && (
+                        <span className="text-teal-700 font-medium bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200">
+                          Tuân thủ {chk.adherence}%
+                        </span>
+                      )}
+                      {chk.energy_level != null && (
+                        <span className="text-slate-700">⚡ Năng lượng: {chk.energy_level}/5</span>
+                      )}
+                      {chk.sleep_quality != null && (
+                        <span className="text-sky-700 font-medium">💤 Ngủ: {chk.sleep_quality}/5</span>
+                      )}
+                      {chk.soreness != null && (
+                        <span className="text-amber-800">💪 Đau mỏi: {chk.soreness}/5</span>
+                      )}
                     </div>
-                    {chk.unusual_symptoms && (
-                      <div className="text-[11px] text-rose-600 font-medium mt-0.5">
-                        ⚠️ {chk.unusual_symptoms}
+
+                    {symptomList.length > 0 && (
+                      <div className="text-[11px] text-rose-700 font-medium flex items-center gap-1">
+                        <span>⚠️ Triệu chứng: {symptomList.join(', ')}</span>
+                      </div>
+                    )}
+
+                    {(chk.note || chk.notes) && (
+                      <div className="text-[11px] text-slate-600 italic">
+                        &ldquo;{chk.note || chk.notes}&rdquo;
+                      </div>
+                    )}
+
+                    {isUrgent && (
+                      <div
+                        role="alert"
+                        className="text-[11px] p-2 rounded-lg bg-rose-100 border border-rose-400 text-rose-950 font-semibold"
+                      >
+                        🚨 Cảnh báo khẩn cấp: {chk.safety_result?.recommended_action || 'Cần can thiệp y tế ngay lập tức.'}
+                      </div>
+                    )}
+
+                    {!isUrgent && isCaution && (
+                      <div
+                        role="status"
+                        className="text-[11px] p-2 rounded-lg bg-amber-100 border border-amber-400 text-amber-950 font-medium"
+                      >
+                        ⚠️ Lưu ý an toàn: {chk.safety_result?.recommended_action || 'Theo dõi sát diễn biến thể trạng.'}
                       </div>
                     )}
                   </div>
-                </div>
-              ))
+                );
+              })
+            ) : checkInError ? (
+              <div className="text-xs text-amber-700 py-2">
+                Không thể hiển thị danh sách do lỗi tải dữ liệu.
+              </div>
             ) : (
               <div className="text-xs text-slate-500 py-3 text-center">
                 Chưa có bản ghi check-in nào. Hãy gửi bản check-in đầu tiên ở trên!
@@ -612,6 +750,14 @@ export default function ProfileAndGoals({ onProfileSaved }: ProfileAndGoalsProps
               </div>
             </div>
           </div>
+
+          {/* Memory Error Alert */}
+          {memoryError && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+              <span className="font-medium">{memoryError}</span>
+            </div>
+          )}
 
           <div className="space-y-2 text-xs">
             {memoryFacts.length > 0 ? (
@@ -659,6 +805,10 @@ export default function ProfileAndGoals({ onProfileSaved }: ProfileAndGoalsProps
                   </div>
                 </div>
               ))
+            ) : memoryError ? (
+              <div className="text-xs text-amber-700 py-2">
+                Không thể hiển thị ký ức do lỗi tải dữ liệu.
+              </div>
             ) : (
               <div className="p-6 text-center text-xs text-slate-500 rounded-xl bg-slate-50 border border-slate-200">
                 Chưa có sự thật nào được trích xuất. Khi bạn trò chuyện cùng Trợ lý AI (ví dụ: chia sẻ dị ứng thức ăn hoặc tiền sử vận động), các sự thật thể trạng sẽ tự động xuất hiện tại đây để bạn kiểm soát.

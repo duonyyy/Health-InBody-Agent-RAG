@@ -9,6 +9,7 @@ import {
   Citation,
   OcrResult,
   SourceType,
+  SafetyResult,
 } from '@/types';
 import {
   INITIAL_PROFILE,
@@ -40,6 +41,12 @@ export class ApiError extends Error {
       if (typeof window !== 'undefined') window.dispatchEvent(new Event('bodywise-auth-expired'));
     }
   }
+}
+
+export function parseOptionalNumeric(val: unknown): number | undefined {
+  if (val === null || val === undefined || val === '') return undefined;
+  const num = typeof val === 'number' ? val : Number(typeof val === 'string' ? val.trim() : val);
+  return Number.isFinite(num) ? num : undefined;
 }
 
 export function getApiBaseUrl(): string {
@@ -211,6 +218,60 @@ export async function sendChatMessageApi(
 
     if (res.ok) {
       const data = await res.json();
+      const rawCitations = Array.isArray(data.citations)
+        ? data.citations
+        : Array.isArray(data.evidence)
+        ? data.evidence
+        : [];
+      const mappedCitations: Citation[] = rawCitations.map(
+        (c: Record<string, unknown>, idx: number): Citation => {
+          const id = c.id != null ? (typeof c.id === 'number' || typeof c.id === 'string' ? c.id : idx + 1) : idx + 1;
+          const excerpt =
+            typeof c.excerpt === 'string'
+              ? c.excerpt
+              : typeof c.content === 'string'
+              ? c.content
+              : '';
+          const retrievalScore =
+            typeof c.retrieval_score === 'number'
+              ? c.retrieval_score
+              : typeof c.score === 'number'
+              ? c.score
+              : typeof c.similarity_score === 'number'
+              ? c.similarity_score
+              : undefined;
+          const rerankScore = typeof c.rerank_score === 'number' ? c.rerank_score : undefined;
+          const sourceUrl =
+            typeof c.source_url === 'string'
+              ? c.source_url
+              : typeof c.url === 'string'
+              ? c.url
+              : null;
+
+          return {
+            id,
+            document_id: c.document_id ? String(c.document_id) : undefined,
+            chunk_id: c.chunk_id ? String(c.chunk_id) : undefined,
+            title: (c.title as string) || (c.source as string) || `Tài liệu [${id}]`,
+            source: (c.source as string) || (c.source_file as string) || 'unknown',
+            source_url: sourceUrl,
+            url: sourceUrl,
+            publisher: typeof c.publisher === 'string' ? c.publisher : null,
+            source_tier: typeof c.source_tier === 'string' ? c.source_tier : null,
+            published_at: typeof c.published_at === 'string' ? c.published_at : null,
+            reviewed_at: typeof c.reviewed_at === 'string' ? c.reviewed_at : null,
+            content_type: typeof c.content_type === 'string' ? c.content_type : (c.category as string | undefined),
+            category: typeof c.category === 'string' ? c.category : (c.content_type as string | undefined),
+            excerpt,
+            content: excerpt,
+            retrieval_score: retrievalScore,
+            rerank_score: rerankScore,
+            score: retrievalScore,
+            source_version: typeof c.source_version === 'string' ? c.source_version : (c.corpus_version as string | undefined),
+          };
+        }
+      );
+
       return {
         id: `msg-${Date.now()}`,
         role: 'assistant',
@@ -221,7 +282,7 @@ export async function sendChatMessageApi(
         status: data.status || 'ok',
         selected_agents: data.selected_agents || [],
         agent_trace: data.agent_trace || [],
-        citations: data.citations || [],
+        citations: mappedCitations,
         safety_result: data.safety_result || {},
         personalization_used: data.personalization_used || {},
         errors: data.errors || [],
@@ -398,33 +459,52 @@ export async function fetchInBodyMeasurements(): Promise<InBodyMeasurement[]> {
 
       return rawItems.map((rawItem: unknown): InBodyMeasurement | null => {
         const item = (rawItem || {}) as Record<string, unknown>;
-        if (typeof item.id !== 'string' || typeof item.measured_at !== 'string' ||
-            item.weight_kg == null || item.height_cm == null ||
-            !Number.isFinite(Number(item.weight_kg)) || !Number.isFinite(Number(item.height_cm))) return null;
-        const smm = item.smm_kg !== undefined ? Number(item.smm_kg) : (item.skeletal_muscle_mass_kg as number | undefined);
-        const bfm = item.bfm_kg !== undefined ? Number(item.bfm_kg) : (item.body_fat_mass_kg as number | undefined);
-        const pbf = item.pbf_percent !== undefined ? Number(item.pbf_percent) : (item.percent_body_fat as number | undefined);
+        if (typeof item.id !== 'string' || typeof item.measured_at !== 'string') return null;
+
+        const weight = parseOptionalNumeric(item.weight_kg);
+        const height = parseOptionalNumeric(item.height_cm);
+        const smm = parseOptionalNumeric(item.smm_kg) ?? parseOptionalNumeric(item.skeletal_muscle_mass_kg);
+        const bfm = parseOptionalNumeric(item.bfm_kg) ?? parseOptionalNumeric(item.body_fat_mass_kg);
+        const pbf = parseOptionalNumeric(item.pbf_percent) ?? parseOptionalNumeric(item.percent_body_fat);
+        const visceral = parseOptionalNumeric(item.visceral_fat_level);
+        const water = parseOptionalNumeric(item.body_water_l);
+        const bmi = parseOptionalNumeric(item.bmi);
+        const bmr = parseOptionalNumeric(item.bmr_kcal);
+
+        // Record hợp lệ phải có ít nhất một metric
+        if (
+          weight === undefined &&
+          height === undefined &&
+          smm === undefined &&
+          bfm === undefined &&
+          pbf === undefined &&
+          visceral === undefined &&
+          water === undefined &&
+          bmi === undefined
+        ) {
+          return null;
+        }
 
         return {
           id: item.id,
           user_id: item.user_id as string | undefined,
           measured_at: item.measured_at,
-          weight_kg: Number(item.weight_kg),
-          height_cm: Number(item.height_cm),
+          weight_kg: weight,
+          height_cm: height,
           smm_kg: smm,
           bfm_kg: bfm,
           pbf_percent: pbf,
-          visceral_fat_level: item.visceral_fat_level !== undefined ? Number(item.visceral_fat_level) : undefined,
-          body_water_l: item.body_water_l !== undefined ? Number(item.body_water_l) : undefined,
+          visceral_fat_level: visceral,
+          body_water_l: water,
           source_type: item.source_type as SourceType | undefined,
           confirmed_by_user: item.confirmed_by_user as boolean | undefined,
-          confidence: item.confidence as number | undefined,
+          confidence: parseOptionalNumeric(item.confidence),
           // Backward compatibility mappings
           skeletal_muscle_mass_kg: smm,
           body_fat_mass_kg: bfm,
           percent_body_fat: pbf,
-          bmi: item.bmi ? Number(item.bmi) : undefined,
-          bmr_kcal: item.bmr_kcal ? Number(item.bmr_kcal) : undefined,
+          bmi,
+          bmr_kcal: bmr,
           notes: (item.notes as string) || '',
           source: item.source_type === 'ocr_confirmed' ? 'ocr' : 'manual',
         };
@@ -501,25 +581,32 @@ export async function saveInBodyMeasurement(
 
     if (res.ok) {
       const data = await res.json();
-      if (typeof data.id !== 'string' || typeof data.measured_at !== 'string' ||
-          data.weight_kg == null || data.height_cm == null) {
-        throw new ApiError('Máy chủ trả số đo chưa đầy đủ.', 502);
+      if (typeof data.id !== 'string' || typeof data.measured_at !== 'string') {
+        throw new ApiError('Máy chủ trả số đo không hợp lệ.', 502);
       }
+      const weight = parseOptionalNumeric(data.weight_kg);
+      const height = parseOptionalNumeric(data.height_cm);
+      const smm = parseOptionalNumeric(data.smm_kg) ?? parseOptionalNumeric(data.skeletal_muscle_mass_kg);
+      const bfm = parseOptionalNumeric(data.bfm_kg) ?? parseOptionalNumeric(data.body_fat_mass_kg);
+      const pbf = parseOptionalNumeric(data.pbf_percent) ?? parseOptionalNumeric(data.percent_body_fat);
+      const visceral = parseOptionalNumeric(data.visceral_fat_level);
+      const bmi = parseOptionalNumeric(data.bmi);
+
       return {
         id: data.id,
         measured_at: data.measured_at,
-        weight_kg: Number(data.weight_kg),
-        height_cm: Number(data.height_cm),
-        smm_kg: data.smm_kg,
-        bfm_kg: data.bfm_kg,
-        pbf_percent: data.pbf_percent,
-        visceral_fat_level: data.visceral_fat_level,
-        bmi: data.bmi,
+        weight_kg: weight,
+        height_cm: height,
+        smm_kg: smm,
+        bfm_kg: bfm,
+        pbf_percent: pbf,
+        visceral_fat_level: visceral,
+        bmi,
         source_type: data.source_type,
         confirmed_by_user: data.confirmed_by_user,
-        skeletal_muscle_mass_kg: data.smm_kg,
-        body_fat_mass_kg: data.bfm_kg,
-        percent_body_fat: data.pbf_percent,
+        skeletal_muscle_mass_kg: smm,
+        body_fat_mass_kg: bfm,
+        percent_body_fat: pbf,
       };
     }
 
@@ -677,30 +764,71 @@ export async function fetchCheckIns(): Promise<CheckInLog[]> {
 
     if (res.ok) {
       const data = await res.json();
-      const rawItems: unknown[] = Array.isArray(data) ? data : data.check_ins || [];
-      return rawItems.map((rawCheckIn: unknown, idx: number) => {
+      const rawItems: unknown[] | null = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.items)
+        ? data.items
+        : Array.isArray(data?.check_ins)
+        ? data.check_ins
+        : null;
+
+      if (rawItems === null) {
+        throw new ApiError('Máy chủ trả danh sách nhật ký không hợp lệ.', 502);
+      }
+
+      return rawItems.map((rawCheckIn: unknown, idx: number): CheckInLog => {
         const c = (rawCheckIn || {}) as Record<string, unknown>;
-        const symptomsArr = Array.isArray(c.symptoms) ? (c.symptoms as string[]) : [];
+        const symptomsArr = Array.isArray(c.symptoms)
+          ? (c.symptoms as string[])
+          : typeof c.symptoms === 'string' && c.symptoms
+          ? [c.symptoms]
+          : [];
+
+        const adherence = parseOptionalNumeric(c.adherence);
+        const energyLevel = parseOptionalNumeric(c.energy_level);
+        const sleepQuality = parseOptionalNumeric(c.sleep_quality);
+        const soreness = parseOptionalNumeric(c.soreness);
+        const note = typeof c.note === 'string' ? c.note : (typeof c.notes === 'string' ? c.notes : '');
+
         return {
           id: String(c.id || `chk-${idx}`),
           date: typeof c.checked_at === 'string' ? c.checked_at.split('T')[0] : new Date().toISOString().split('T')[0],
           checked_at: c.checked_at as string | undefined,
-          workout_completed: ((c.adherence as number) ?? 100) > 0,
-          workout_rating: (c.soreness as number) ?? 5,
-          energy_level: (c.energy_level as number) ?? 4,
-          sleep_hours: 7.5,
-          sleep_quality: (c.sleep_quality as number) ?? 4,
-          soreness: (c.soreness as number) ?? 3,
-          unusual_symptoms: symptomsArr.join(', '),
+          adherence,
+          energy_level: energyLevel,
+          sleep_quality: sleepQuality,
+          soreness,
           symptoms: symptomsArr,
-          notes: (c.note as string) || '',
-          note: (c.note as string) || '',
+          note,
+          notes: note,
+          safety_result: (c.safety_result as SafetyResult | null | undefined) ?? null,
+          created_at: c.created_at as string | undefined,
+          unusual_symptoms: symptomsArr.length > 0 ? symptomsArr.join(', ') : undefined,
         };
       });
     }
 
-    if (res.status === 404 || res.status === 401) return [];
-    throw new ApiError(`Không thể lấy nhật ký check-in (${res.status})`, res.status);
+    if (res.status === 404) return [];
+    if (res.status === 401) {
+      throw new ApiError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 401);
+    }
+    if (res.status === 403) {
+      throw new ApiError('Bạn không có quyền truy cập nhật ký thể trạng này.', 403);
+    }
+    if (res.status === 409) {
+      throw new ApiError('Cần đồng ý xử lý dữ liệu sức khỏe trước khi truy cập nhật ký.', 409);
+    }
+    if (res.status === 503) {
+      throw new ApiError('Dịch vụ lưu trữ tạm thời gián đoạn. Vui lòng thử lại sau.', 503);
+    }
+    let detail = `Không thể lấy nhật ký check-in (${res.status})`;
+    try {
+      const errJson = await res.json();
+      if (errJson.detail) detail = errJson.detail;
+    } catch {
+      // ignore
+    }
+    throw new ApiError(detail, res.status);
   } catch (err: unknown) {
     if (err instanceof ApiError) throw err;
     throw new ApiError('Lỗi kết nối khi tải nhật ký thể trạng.', 503);
@@ -712,28 +840,42 @@ export async function saveCheckIn(checkIn: Partial<CheckInLog>): Promise<CheckIn
     return {
       id: `chk-${Date.now()}`,
       date: checkIn.date || new Date().toISOString().split('T')[0],
+      checked_at: checkIn.checked_at || new Date().toISOString(),
+      adherence: checkIn.adherence ?? (checkIn.workout_completed ? 100 : 0),
+      energy_level: checkIn.energy_level ?? 4,
+      sleep_quality: checkIn.sleep_quality ?? 4,
+      soreness: checkIn.soreness ?? 3,
+      symptoms: checkIn.symptoms || (checkIn.unusual_symptoms ? checkIn.unusual_symptoms.split(',').map((s) => s.trim()).filter(Boolean) : []),
+      note: checkIn.note || checkIn.notes || '',
+      notes: checkIn.note || checkIn.notes || '',
+      safety_result: checkIn.safety_result ?? null,
       workout_completed: checkIn.workout_completed ?? true,
       workout_rating: checkIn.workout_rating || 5,
-      energy_level: checkIn.energy_level || 4,
       sleep_hours: checkIn.sleep_hours || 7.5,
       unusual_symptoms: checkIn.unusual_symptoms,
-      notes: checkIn.notes || checkIn.note,
     };
   }
 
   const baseUrl = getApiBaseUrl();
-  const symptomsList = checkIn.unusual_symptoms
+  const symptomsList = checkIn.symptoms && Array.isArray(checkIn.symptoms)
+    ? checkIn.symptoms
+    : checkIn.unusual_symptoms
     ? checkIn.unusual_symptoms.split(',').map((s) => s.trim()).filter(Boolean)
-    : checkIn.symptoms || [];
+    : [];
+
+  const adherenceVal = parseOptionalNumeric(checkIn.adherence) ?? (checkIn.workout_completed !== undefined ? (checkIn.workout_completed ? 100 : 0) : undefined);
+  const energyVal = parseOptionalNumeric(checkIn.energy_level);
+  const sleepVal = parseOptionalNumeric(checkIn.sleep_quality);
+  const sorenessVal = parseOptionalNumeric(checkIn.soreness);
 
   const payload = {
-    checked_at: new Date().toISOString(),
-    adherence: checkIn.workout_completed ? 100 : 0,
-    energy_level: checkIn.energy_level ? Math.max(1, Math.min(5, checkIn.energy_level)) : undefined,
-    sleep_quality: checkIn.sleep_quality ? Math.max(1, Math.min(5, checkIn.sleep_quality)) : 4,
-    soreness: checkIn.soreness ? Math.max(1, Math.min(5, checkIn.soreness)) : 3,
+    checked_at: checkIn.checked_at || new Date().toISOString(),
+    adherence: adherenceVal !== undefined ? Math.max(0, Math.min(100, adherenceVal)) : undefined,
+    energy_level: energyVal !== undefined ? Math.max(1, Math.min(5, energyVal)) : undefined,
+    sleep_quality: sleepVal !== undefined ? Math.max(1, Math.min(5, sleepVal)) : undefined,
+    soreness: sorenessVal !== undefined ? Math.max(1, Math.min(5, sorenessVal)) : undefined,
     symptoms: symptomsList,
-    note: checkIn.notes || checkIn.note || undefined,
+    note: checkIn.note || checkIn.notes || undefined,
   };
 
   try {
@@ -745,16 +887,38 @@ export async function saveCheckIn(checkIn: Partial<CheckInLog>): Promise<CheckIn
 
     if (res.ok) {
       const saved = await res.json();
+      const adherence = parseOptionalNumeric(saved.adherence);
+      const energyLevel = parseOptionalNumeric(saved.energy_level);
+      const sleepQuality = parseOptionalNumeric(saved.sleep_quality);
+      const soreness = parseOptionalNumeric(saved.soreness);
+      const symptomsArr = Array.isArray(saved.symptoms) ? saved.symptoms : [];
+      const note = typeof saved.note === 'string' ? saved.note : '';
+
       return {
         id: String(saved.id || `chk-${Date.now()}`),
-        date: new Date().toISOString().split('T')[0],
+        date: typeof saved.checked_at === 'string' ? saved.checked_at.split('T')[0] : new Date().toISOString().split('T')[0],
         checked_at: saved.checked_at,
-        workout_completed: (saved.adherence ?? 100) > 0,
-        workout_rating: saved.soreness ?? 5,
-        energy_level: saved.energy_level ?? 4,
-        sleep_hours: checkIn.sleep_hours || 7.5,
-        notes: saved.note || '',
+        adherence,
+        energy_level: energyLevel,
+        sleep_quality: sleepQuality,
+        soreness,
+        symptoms: symptomsArr,
+        note,
+        notes: note,
+        safety_result: (saved.safety_result as SafetyResult | null | undefined) ?? null,
+        created_at: saved.created_at,
+        unusual_symptoms: symptomsArr.length > 0 ? symptomsArr.join(', ') : undefined,
       };
+    }
+
+    if (res.status === 401) {
+      throw new ApiError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 401);
+    }
+    if (res.status === 403) {
+      throw new ApiError('Bạn không có quyền thực hiện check-in.', 403);
+    }
+    if (res.status === 409) {
+      throw new ApiError('Cần đồng ý xử lý dữ liệu sức khỏe trước khi lưu check-in.', 409);
     }
 
     let detail = `Không thể lưu check-in (${res.status})`;
@@ -785,8 +949,19 @@ export async function fetchMemoryFacts(): Promise<MemoryProposal[]> {
 
     if (res.ok) {
       const data = await res.json();
-      const facts: unknown[] = Array.isArray(data) ? data : data.facts || [];
-      return facts.map((rawFact: unknown, idx: number): MemoryProposal => {
+      const rawItems: unknown[] | null = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.items)
+        ? data.items
+        : Array.isArray(data?.facts)
+        ? data.facts
+        : null;
+
+      if (rawItems === null) {
+        throw new ApiError('Máy chủ trả danh sách ký ức không hợp lệ.', 502);
+      }
+
+      return rawItems.map((rawFact: unknown, idx: number): MemoryProposal => {
         const f = (rawFact || {}) as Record<string, unknown>;
         const statusStr = typeof f.status === 'string' ? f.status.toLowerCase() : '';
         const status: 'pending' | 'confirmed' | 'rejected' =
@@ -795,17 +970,35 @@ export async function fetchMemoryFacts(): Promise<MemoryProposal[]> {
           id: String(f.id || `fact-${idx}`),
           fact: (f.text as string) || (f.fact as string) || '',
           category: (f.kind as string) || (f.category as string) || 'personalization',
-          confidence: (f.confidence as number) || 0.95,
+          confidence: parseOptionalNumeric(f.confidence) ?? 0.95,
           status,
           created_at: f.created_at as string | undefined,
         };
       });
     }
 
-    if (res.status === 404 || res.status === 403 || res.status === 401) {
-      return [];
+    if (res.status === 404) return [];
+    if (res.status === 401) {
+      throw new ApiError('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.', 401);
     }
-    throw new ApiError(`Không thể tải ký ức (${res.status})`, res.status);
+    if (res.status === 403) {
+      throw new ApiError('Bạn không có quyền truy cập danh sách ký ức này.', 403);
+    }
+    if (res.status === 409) {
+      throw new ApiError('Cần đồng ý cá nhân hóa trước khi truy cập ký ức.', 409);
+    }
+    if (res.status === 503) {
+      throw new ApiError('Dịch vụ lưu trữ tạm thời gián đoạn. Vui lòng thử lại sau.', 503);
+    }
+
+    let detail = `Không thể tải ký ức (${res.status})`;
+    try {
+      const errJson = await res.json();
+      if (errJson.detail) detail = errJson.detail;
+    } catch {
+      // ignore
+    }
+    throw new ApiError(detail, res.status);
   } catch (err: unknown) {
     if (err instanceof ApiError) throw err;
     throw new ApiError('Lỗi kết nối khi tải danh sách ký ức cá nhân hóa.', 503);

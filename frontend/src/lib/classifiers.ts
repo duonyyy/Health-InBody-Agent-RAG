@@ -1,4 +1,4 @@
-import { SexType } from '@/types';
+import { SexAtBirthType, SexType } from '@/types';
 
 export interface ClassificationResult {
   label: string;
@@ -14,7 +14,7 @@ export interface ClassificationResult {
  * Phân loại chỉ số BMI theo chuẩn WHO Châu Á (WPRO)
  */
 export function classifyBmiAsian(bmi?: number | null): ClassificationResult {
-  if (bmi === undefined || bmi === null || bmi <= 0) {
+  if (bmi === undefined || bmi === null || !Number.isFinite(bmi) || bmi <= 0) {
     return {
       label: 'Chưa có số đo',
       color: '#64748b',
@@ -74,7 +74,7 @@ export function classifyBmiAsian(bmi?: number | null): ClassificationResult {
  * Phân loại cấp độ mỡ nội tạng (Visceral Fat Level)
  */
 export function classifyVisceralFat(level?: number | null): ClassificationResult {
-  if (level === undefined || level === null || level < 0) {
+  if (level === undefined || level === null || !Number.isFinite(level) || level < 0) {
     return {
       label: 'Chưa có số đo',
       color: '#64748b',
@@ -122,8 +122,11 @@ export function classifyVisceralFat(level?: number | null): ClassificationResult
 /**
  * Phân loại tỷ lệ mỡ cơ thể (PBF) theo giới tính
  */
-export function classifyPbf(pbf?: number | null, sex: SexType = 'male'): ClassificationResult {
-  if (pbf === undefined || pbf === null || pbf <= 0) {
+export function classifyPbf(
+  pbf?: number | null,
+  sex?: SexAtBirthType | SexType | string | null
+): ClassificationResult {
+  if (pbf === undefined || pbf === null || !Number.isFinite(pbf) || pbf <= 0) {
     return {
       label: 'Chưa có số đo',
       color: '#64748b',
@@ -135,7 +138,20 @@ export function classifyPbf(pbf?: number | null, sex: SexType = 'male'): Classif
     };
   }
 
-  const isFemale = (sex || '').toLowerCase() === 'female';
+  const normalizedSex = (sex || '').toLowerCase().trim();
+  if (normalizedSex !== 'female' && normalizedSex !== 'male') {
+    return {
+      label: 'Chưa xác định chuẩn giới tính',
+      color: '#64748b',
+      bgColor: '#f1f5f9',
+      borderColor: '#cbd5e1',
+      badgeClass: 'bg-slate-100 text-slate-600 border-slate-300 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
+      progressPercent: 0,
+      status: 'unknown',
+    };
+  }
+
+  const isFemale = normalizedSex === 'female';
 
   if (isFemale) {
     if (pbf < 18.0) {

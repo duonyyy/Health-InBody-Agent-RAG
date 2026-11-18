@@ -16,7 +16,7 @@ import {
   AlertCircle,
   RotateCw,
 } from 'lucide-react';
-import { InBodyMeasurement } from '@/types';
+import { InBodyMeasurement, UserProfile, SexAtBirthType, SexType } from '@/types';
 import KpiCard from './KpiCard';
 import ProgressChart from './ProgressChart';
 import MeasurementForm from './MeasurementForm';
@@ -31,9 +31,15 @@ import { classifyBmiAsian, classifyPbf, classifyVisceralFat } from '@/lib/classi
 
 interface InBodyDashboardProps {
   onMeasurementChange?: () => void;
+  profile?: UserProfile | null;
+  sexAtBirth?: SexAtBirthType | SexType | string | null;
 }
 
-export default function InBodyDashboard({ onMeasurementChange }: InBodyDashboardProps) {
+export default function InBodyDashboard({
+  onMeasurementChange,
+  profile,
+  sexAtBirth,
+}: InBodyDashboardProps) {
   const [measurements, setMeasurements] = useState<InBodyMeasurement[]>([]);
   const [subTab, setSubTab] = useState<'overview' | 'manual' | 'ocr' | 'history'>('overview');
   const [isLoading, setIsLoading] = useState(true);
@@ -116,32 +122,43 @@ export default function InBodyDashboard({ onMeasurementChange }: InBodyDashboard
   const latestPbf = latest?.pbf_percent ?? latest?.percent_body_fat;
   const baselinePbf = baseline?.pbf_percent ?? baseline?.percent_body_fat;
 
-  const weightDelta =
-    hasData && latest && baseline && latest.id !== baseline.id
-      ? Number((latest.weight_kg - baseline.weight_kg).toFixed(1))
-      : undefined;
+  const effectiveSex = sexAtBirth || profile?.sex_at_birth || profile?.sex || null;
 
-  const smmDelta =
-    hasData && latestSmm !== undefined && baselineSmm !== undefined && latest.id !== baseline.id
-      ? Number((latestSmm - baselineSmm).toFixed(1))
-      : undefined;
+  const hasValidWeightDelta =
+    latest?.weight_kg != null &&
+    baseline?.weight_kg != null &&
+    latest.id !== baseline.id;
+  const weightDelta = hasValidWeightDelta
+    ? Number((latest.weight_kg! - baseline.weight_kg!).toFixed(1))
+    : undefined;
 
-  const pbfDelta =
-    hasData && latestPbf !== undefined && baselinePbf !== undefined && latest.id !== baseline.id
-      ? Number((latestPbf - baselinePbf).toFixed(1))
-      : undefined;
+  const hasValidSmmDelta =
+    latestSmm != null &&
+    baselineSmm != null &&
+    latest?.id !== baseline?.id;
+  const smmDelta = hasValidSmmDelta
+    ? Number((latestSmm! - baselineSmm!).toFixed(1))
+    : undefined;
 
-  const vflDelta =
-    hasData &&
-    latest?.visceral_fat_level !== undefined &&
-    baseline?.visceral_fat_level !== undefined &&
-    latest.id !== baseline.id
-      ? latest.visceral_fat_level - baseline.visceral_fat_level
-      : undefined;
+  const hasValidPbfDelta =
+    latestPbf != null &&
+    baselinePbf != null &&
+    latest?.id !== baseline?.id;
+  const pbfDelta = hasValidPbfDelta
+    ? Number((latestPbf! - baselinePbf!).toFixed(1))
+    : undefined;
 
-  const bmiClass = latest?.bmi ? classifyBmiAsian(latest.bmi) : undefined;
-  const pbfClass = latestPbf !== undefined ? classifyPbf(latestPbf, 'male') : undefined;
-  const vflClass = latest?.visceral_fat_level !== undefined ? classifyVisceralFat(latest.visceral_fat_level) : undefined;
+  const hasValidVflDelta =
+    latest?.visceral_fat_level != null &&
+    baseline?.visceral_fat_level != null &&
+    latest.id !== baseline.id;
+  const vflDelta = hasValidVflDelta
+    ? latest.visceral_fat_level! - baseline.visceral_fat_level!
+    : undefined;
+
+  const bmiClass = latest?.bmi != null ? classifyBmiAsian(latest.bmi) : undefined;
+  const pbfClass = latestPbf != null ? classifyPbf(latestPbf, effectiveSex) : undefined;
+  const vflClass = latest?.visceral_fat_level != null ? classifyVisceralFat(latest.visceral_fat_level) : undefined;
 
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
@@ -174,59 +191,61 @@ export default function InBodyDashboard({ onMeasurementChange }: InBodyDashboard
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         <KpiCard
           title="Cân nặng"
-          value={hasData ? latest.weight_kg : '--'}
-          unit={hasData ? 'kg' : ''}
+          value={latest?.weight_kg != null ? latest.weight_kg : '--'}
+          unit={latest?.weight_kg != null ? 'kg' : ''}
           icon={Weight}
           delta={weightDelta}
           deltaUnit="kg"
-          subtitle={hasData ? 'Lần đo gần nhất' : 'Chưa có số đo'}
+          subtitle={latest?.weight_kg != null ? 'Lần đo gần nhất' : 'Chưa có số đo'}
         />
 
         <KpiCard
           title="Chỉ số BMI"
-          value={hasData && latest?.bmi ? latest.bmi : '--'}
-          unit={hasData && latest?.bmi ? 'kg/m²' : ''}
+          value={latest?.bmi != null ? latest.bmi : '--'}
+          unit={latest?.bmi != null ? 'kg/m²' : ''}
           icon={Activity}
           classification={bmiClass}
-          subtitle="Chuẩn WHO Châu Á"
+          subtitle={latest?.bmi != null ? 'Chuẩn WHO Châu Á' : 'Chưa có số đo'}
         />
 
         <KpiCard
           title="Tỷ lệ Mỡ (PBF)"
-          value={hasData && latestPbf !== undefined ? latestPbf : '--'}
-          unit={hasData && latestPbf !== undefined ? '%' : ''}
+          value={latestPbf != null ? latestPbf : '--'}
+          unit={latestPbf != null ? '%' : ''}
           icon={Flame}
           classification={pbfClass}
           delta={pbfDelta}
           deltaUnit="%"
+          subtitle={latestPbf != null ? undefined : 'Chưa có số đo'}
         />
 
         <KpiCard
           title="Cơ xương (SMM)"
-          value={hasData && latestSmm !== undefined ? latestSmm : '--'}
-          unit={hasData && latestSmm !== undefined ? 'kg' : ''}
+          value={latestSmm != null ? latestSmm : '--'}
+          unit={latestSmm != null ? 'kg' : ''}
           icon={Dumbbell}
           delta={smmDelta}
           deltaUnit="kg"
-          subtitle={hasData ? 'Khối lượng cơ nạc' : 'Chưa có số đo'}
+          subtitle={latestSmm != null ? 'Khối lượng cơ nạc' : 'Chưa có số đo'}
         />
 
         <KpiCard
           title="Mỡ Nội Tạng"
-          value={hasData && latest?.visceral_fat_level !== undefined ? `Cấp ${latest.visceral_fat_level}` : '--'}
+          value={latest?.visceral_fat_level != null ? `Cấp ${latest.visceral_fat_level}` : '--'}
           unit=""
           icon={ShieldCheck}
           classification={vflClass}
           delta={vflDelta}
           deltaUnit="cấp"
+          subtitle={latest?.visceral_fat_level != null ? undefined : 'Chưa có số đo'}
         />
 
         <KpiCard
           title="Khối lượng Mỡ"
-          value={hasData && latestBfm !== undefined ? latestBfm : '--'}
-          unit={hasData && latestBfm !== undefined ? 'kg' : ''}
+          value={latestBfm != null ? latestBfm : '--'}
+          unit={latestBfm != null ? 'kg' : ''}
           icon={TrendingDown}
-          subtitle={hasData ? 'Khối mỡ cơ thể (BFM)' : 'Chưa có số đo'}
+          subtitle={latestBfm != null ? 'Khối mỡ cơ thể (BFM)' : 'Chưa có số đo'}
         />
       </div>
 
@@ -314,7 +333,11 @@ export default function InBodyDashboard({ onMeasurementChange }: InBodyDashboard
           {hasData ? (
             <>
               <ProgressChart measurements={measurements} />
-              <MeasurementHistoryTable measurements={measurements} onDelete={handleDelete} />
+              <MeasurementHistoryTable
+                measurements={measurements}
+                onDelete={handleDelete}
+                sexAtBirth={effectiveSex}
+              />
             </>
           ) : (
             <div className="py-12 text-center text-xs text-slate-500 bg-white rounded-2xl border border-slate-200">
@@ -338,7 +361,11 @@ export default function InBodyDashboard({ onMeasurementChange }: InBodyDashboard
 
       {subTab === 'history' && (
         <div className="animate-in fade-in">
-          <MeasurementHistoryTable measurements={measurements} onDelete={handleDelete} />
+          <MeasurementHistoryTable
+            measurements={measurements}
+            onDelete={handleDelete}
+            sexAtBirth={effectiveSex}
+          />
         </div>
       )}
     </div>
