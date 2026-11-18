@@ -37,8 +37,13 @@ def public_specialists(capabilities):
             selected.append(specialist)
     return selected
 
-AGENT_REQUEST_TIMEOUT_SECONDS = float(
-    os.getenv("AGENT_REQUEST_TIMEOUT_SECONDS", "50")
+AGENT_MAX_REQUEST_TIMEOUT_SECONDS = max(
+    5.0,
+    min(55.0, float(os.getenv("AGENT_MAX_REQUEST_TIMEOUT_SECONDS", "55"))),
+)
+AGENT_REQUEST_TIMEOUT_SECONDS = min(
+    AGENT_MAX_REQUEST_TIMEOUT_SECONDS,
+    max(1.0, float(os.getenv("AGENT_REQUEST_TIMEOUT_SECONDS", "50"))),
 )
 AGENT_COMPOSER_RESERVE_SECONDS = float(
     os.getenv("AGENT_COMPOSER_RESERVE_SECONDS", "15")
@@ -48,6 +53,20 @@ RAG_EMBEDDING_TIMEOUT_SECONDS = float(
 )
 QDRANT_SEARCH_RESERVE_SECONDS = float(
     os.getenv("QDRANT_SEARCH_RESERVE_SECONDS", "5")
+)
+WEB_SEARCH_TIMEOUT_SECONDS = float(
+    os.getenv("WEB_SEARCH_TIMEOUT_SECONDS", "10")
+)
+RERANK_TIMEOUT_SECONDS = float(
+    os.getenv("RERANK_TIMEOUT_SECONDS", "5")
+)
+AGENT_MIN_CALL_TIMEOUT_SECONDS = max(
+    0.05,
+    float(os.getenv("AGENT_MIN_CALL_TIMEOUT_SECONDS", "0.25")),
+)
+AGENT_RETRY_BACKOFF_SECONDS = max(
+    0.0,
+    float(os.getenv("AGENT_RETRY_BACKOFF_SECONDS", "0.2")),
 )
 RAG_MAX_RETRIEVAL_QUERIES = max(
     1,

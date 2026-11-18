@@ -1,5 +1,7 @@
 """Các thao tác với vector database Qdrant."""
 import logging
+import math
+from typing import Optional
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -24,6 +26,11 @@ from core.config import (
     DEFAULT_QDRANT_URL,
     DEFAULT_VECTOR_SIZE,
 )
+from harness.budget import (
+    BudgetExhaustedError,
+    call_with_supported_kwargs,
+    remaining_for_call,
+)
 from rag.vector_metadata import (
     PAYLOAD_KEYWORD_INDEX_FIELDS,
     detect_content_type,
@@ -31,11 +38,23 @@ from rag.vector_metadata import (
 )
 
 logger = logging.getLogger(__name__)
-client = QdrantClient(
+
+
+def _create_qdrant_client(url: str, timeout: float) -> QdrantClient:
+    """Create a QdrantClient without triggering an unbudgeted startup version probe."""
+    return call_with_supported_kwargs(
+        QdrantClient,
+        url=url,
+        timeout=timeout,
+        check_compatibility=False,
+    )
+
+
+client = _create_qdrant_client(
     url=DEFAULT_QDRANT_URL,
     timeout=DEFAULT_QDRANT_TIMEOUT,
 )
-search_client = QdrantClient(
+search_client = _create_qdrant_client(
     url=DEFAULT_QDRANT_URL,
     timeout=DEFAULT_QDRANT_SEARCH_TIMEOUT,
 )
@@ -168,7 +187,16 @@ def add_vector(
     return results
 
 
-def search_vector(collection_name, vector, limit=4, filters=None, score_threshold=0.0):
+def search_vector(
+    collection_name,
+    vector,
+    limit=4,
+    filters=None,
+    score_threshold=0.0,
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
+    raise_on_timeout: bool = False,
+):
     """
     Tìm kiếm các tài liệu gần nhất với query vector trong Qdrant.
 
@@ -182,10 +210,27 @@ def search_vector(collection_name, vector, limit=4, filters=None, score_threshol
         limit: Số kết quả tối đa.
         filters: Bộ lọc tùy chọn dạng {"field": "value"} hoặc {"field": {"gte": value}}.
         score_threshold: Điểm tương đồng tối thiểu.
+        timeout: Giới hạn thời gian tìm kiếm (giây).
+        deadline_monotonic: Deadline monotonic dùng chung của request.
+        raise_on_timeout: Ném BudgetExhaustedError nếu hết budget hoặc timeout.
 
     Returns:
         Danh sách tài liệu đã được gắn score và metadata tìm kiếm.
     """
+    effective_timeout = remaining_for_call(
+        deadline_monotonic,
+        DEFAULT_QDRANT_SEARCH_TIMEOUT if timeout is None else timeout,
+        default_timeout=DEFAULT_QDRANT_SEARCH_TIMEOUT,
+        min_timeout=1.0,
+    )
+    if effective_timeout is None:
+        logger.warning("Qdrant search skipped because remaining budget < 1.0s")
+        if raise_on_timeout:
+            raise BudgetExhaustedError("Qdrant search budget exhausted")
+        return []
+    # Qdrant SDK accepts integer timeout seconds; floor so timeout never exceeds remaining budget.
+    qdrant_timeout = max(1, int(math.floor(effective_timeout)))
+
     try:
         # Xây dựng điều kiện filter của Qdrant từ dict filters truyền vào.
         filter_conditions = None
@@ -225,16 +270,32 @@ def search_vector(collection_name, vector, limit=4, filters=None, score_threshol
             if conditions:
                 filter_conditions = Filter(must=conditions)
 
-        # Thực hiện tìm kiếm vector trong Qdrant.
-        results = search_client.search(
-            collection_name=collection_name,
-            query_vector=vector,
-            limit=limit,
-            query_filter=filter_conditions,
-            score_threshold=score_threshold,
-            with_payload=True,
-            with_vectors=False,  # Không trả vector gốc để giảm dung lượng response.
-        )
+        # Thực hiện tìm kiếm vector trong Qdrant với timeout nằm trong budget.
+        if hasattr(search_client, "search"):
+            results = call_with_supported_kwargs(
+                search_client.search,
+                collection_name=collection_name,
+                query_vector=vector,
+                limit=limit,
+                query_filter=filter_conditions,
+                score_threshold=score_threshold,
+                with_payload=True,
+                with_vectors=False,
+                timeout=qdrant_timeout,
+            )
+        else:
+            response = call_with_supported_kwargs(
+                search_client.query_points,
+                collection_name=collection_name,
+                query=vector,
+                limit=limit,
+                query_filter=filter_conditions,
+                score_threshold=score_threshold,
+                with_payload=True,
+                with_vectors=False,
+                timeout=qdrant_timeout,
+            )
+            results = getattr(response, "points", response) or []
 
         # Chuẩn hóa kết quả để caller nhận payload kèm similarity_score và rank.
         processed_results = []
@@ -252,7 +313,10 @@ def search_vector(collection_name, vector, limit=4, filters=None, score_threshol
         return processed_results
 
     except Exception as e:
+        is_timeout = isinstance(e, (BudgetExhaustedError, TimeoutError)) or "timeout" in type(e).__name__.lower()
         logger.error(f"Vector search failed: {e}")
+        if raise_on_timeout and is_timeout:
+            raise BudgetExhaustedError("Qdrant vector search timed out") from e
         return []
 
 

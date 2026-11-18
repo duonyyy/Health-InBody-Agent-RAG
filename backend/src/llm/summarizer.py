@@ -1,11 +1,18 @@
 """Tom tat noi dung cho Health/InBody Agent RAG."""
 import logging
+import os
 import re
-from typing import List
+from typing import List, Optional
 
-from llm.client import openai_chat_complete
+from harness.budget import (
+    BudgetExhaustedError,
+    call_with_supported_kwargs,
+    remaining_for_call,
+)
+from llm.client import LLM_TIMEOUT, openai_chat_complete
 
 logger = logging.getLogger(__name__)
+SUMMARIZE_DEFAULT_TIMEOUT = float(os.getenv("SUMMARIZE_TIMEOUT_SECONDS", "25"))
 
 IMPORTANT_HEALTH_TERMS = [
     "inbody",
@@ -62,7 +69,14 @@ def _extractive_summary(text: str, max_sentences: int = 4, max_chars: int = 900)
     return summary
 
 
-def summarize_text(text, max_sentences: int = 4) -> str:
+def summarize_text(
+    text,
+    max_sentences: int = 4,
+    *,
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
+    raise_on_timeout: bool = False,
+) -> str:
     """
     Tom tat van ban tieng Viet theo domain Health/InBody.
 
@@ -71,6 +85,16 @@ def summarize_text(text, max_sentences: int = 4) -> str:
     """
     if not text or not str(text).strip():
         return ""
+
+    effective_timeout = remaining_for_call(
+        deadline_monotonic,
+        SUMMARIZE_DEFAULT_TIMEOUT if timeout is None else timeout,
+        default_timeout=min(SUMMARIZE_DEFAULT_TIMEOUT, float(LLM_TIMEOUT)),
+    )
+    if effective_timeout is None:
+        if raise_on_timeout:
+            raise BudgetExhaustedError("Summarization request budget exhausted")
+        return _extractive_summary(text, max_sentences=max_sentences)
 
     prompt = f"""Bạn là trợ lý tóm tắt cho hệ thống Health/InBody Agent RAG.
 Hãy tóm tắt nội dung sau bằng tiếng Việt, giữ các điểm quan trọng về chỉ số InBody,
@@ -100,15 +124,37 @@ Tóm tắt:"""
     ]
 
     try:
-        summary = openai_chat_complete(messages, temperature=0.0, max_tokens=300)
-        return summary.strip()
+        summary = call_with_supported_kwargs(
+            openai_chat_complete,
+            messages,
+            temperature=0.0,
+            max_tokens=300,
+            timeout=effective_timeout,
+            deadline_monotonic=deadline_monotonic,
+        )
+        return str(summary or "").strip()
     except Exception as e:
-        logger.warning("LLM summarization unavailable, using extractive fallback: %s", e)
+        is_timeout = isinstance(e, (BudgetExhaustedError, TimeoutError)) or "timeout" in type(e).__name__.lower()
+        if raise_on_timeout and is_timeout:
+            raise BudgetExhaustedError("Summarization timed out") from e
+        logger.warning("LLM summarization unavailable, using extractive fallback: %s", type(e).__name__)
         return _extractive_summary(text, max_sentences=max_sentences)
 
 
-def summarize_health_report(report_text: str) -> str:
+def summarize_health_report(
+    report_text: str,
+    *,
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
+    raise_on_timeout: bool = False,
+) -> str:
     """
     Tom tat rieng cho bao cao InBody/OCR.
     """
-    return summarize_text(report_text, max_sentences=5)
+    return summarize_text(
+        report_text,
+        max_sentences=5,
+        timeout=timeout,
+        deadline_monotonic=deadline_monotonic,
+        raise_on_timeout=raise_on_timeout,
+    )

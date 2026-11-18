@@ -16,6 +16,9 @@ trên Redis và API runtime.
 Tiến độ mới 2026-11-18: [Đợt 2 — Kiểm chứng câu trả lời & Provenance (R01, R07)](../reports/upgrade-2026/phase02-evidence-provenance-2026-11-18.md)
 đã triển khai kiểm chứng claim/citation câu-với-câu (phủ định hai chiều, số/khoảng/đơn vị, đối tượng, điều kiện, modality, parent expansion, nâng version cache key `v2`) và registry review y khoa (`backend/data/medical_review_registry.json`, bỏ tự gán `guideline`/`approved`/ngày review mặc định, hạ nhãn legacy chưa xác minh và chặn vượt gate ở nhánh `medical_caution`); **Đợt 2 source-ready, chưa deploy; chưa review lại hoặc phát hành corpus.**
 
+Tiến độ mới 2026-11-18: [Đợt 3 — Kiểm soát Thời gian Xử lý & Tải (R02, R03)](../reports/upgrade-2026/phase03-deadline-load-2026-11-18.md)
+đã thống nhất deadline monotonic end-to-end (`backend/src/harness/budget.py`, truyền xuống Ollama/OpenAI/custom/normalize/router/rewrite/embedding/Qdrant/rerank/Tavily/Zep/DB/Celery, tắt SDK auto-retry chồng lớp và loại bỏ network probe ngoài budget khi lazy init), tách làn thực thi có giới hạn concurrency/queue (`backend/src/core/execution.py`) khỏi AnyIO threadpool, bổ sung rate limiter tách biệt (`backend/src/core/rate_limit.py`, Valkey Lua atomic + fail-closed production) và giữ bất biến `urgent` fast-path; đã vượt qua 308 backend unit/fast-path tests và 6/6 ca kiểm chứng **HTTP backend thật, upstream giả để fault injection** (urgent N=25 dưới tải chậm đạt P95 = 2,01 ms, 0 upstream call). **Đợt 3 source-ready; HTTP fault-injection cô lập đã kiểm tra; chưa deploy hệ thống hiện hữu.**
+
 Kế hoạch thiết kế dữ liệu: [Database và data schema tổng thể](10-database-schema-master-plan.md)
 — **đề xuất chờ duyệt**, gồm hiện trạng, mô hình đích, privacy lifecycle, migration/rollback,
 kiểm thử và các hướng mở rộng tương lai; chưa thực hiện thay đổi database.

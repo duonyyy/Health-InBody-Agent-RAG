@@ -3,9 +3,15 @@ import logging
 import os
 from typing import Dict, List, Optional
 
+from harness.budget import call_with_supported_kwargs, remaining_for_call
+
 logger = logging.getLogger(__name__)
 
 TAVILY_API_KEY = os.environ.get("TAVILY_API_KEY")
+TAVILY_TIMEOUT_SECONDS = float(os.environ.get("TAVILY_TIMEOUT_SECONDS", "10"))
+TAVILY_MIN_TIMEOUT_SECONDS = max(
+    0.05, float(os.environ.get("TAVILY_MIN_TIMEOUT_SECONDS", "0.5"))
+)
 
 TRUSTED_HEALTH_DOMAINS = [
     "who.int",
@@ -29,6 +35,8 @@ def tavily_search_health(
     query: str,
     max_results: int = 5,
     prefer_trusted_sources: bool = True,
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
 ) -> str:
     """
     Mục đích:
@@ -44,6 +52,8 @@ def tavily_search_health(
         max_results=max_results,
         search_depth="advanced",
         include_domains=include_domains,
+        timeout=timeout,
+        deadline_monotonic=deadline_monotonic,
     )
 
     if "error" in results:
@@ -82,6 +92,8 @@ def tavily_search(
     max_results: int = 5,
     search_depth: str = "basic",
     include_domains: Optional[List[str]] = None,
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
 ) -> Dict:
     """
     Mục đích:
@@ -89,6 +101,22 @@ def tavily_search(
     """
     if not query or not query.strip():
         return {
+            "query": query,
+            "answer": "",
+            "results": [],
+            "num_results": 0,
+            "safety_note": HEALTH_SAFETY_NOTE,
+        }
+
+    effective_timeout = remaining_for_call(
+        deadline_monotonic,
+        TAVILY_TIMEOUT_SECONDS if timeout is None else timeout,
+        default_timeout=TAVILY_TIMEOUT_SECONDS,
+        min_timeout=TAVILY_MIN_TIMEOUT_SECONDS,
+    )
+    if effective_timeout is None:
+        return {
+            "error": "timeout: web search budget exhausted",
             "query": query,
             "answer": "",
             "results": [],
@@ -114,11 +142,12 @@ def tavily_search(
             "search_depth": search_depth,
             "include_answer": True,
             "include_raw_content": False,
+            "timeout": effective_timeout,
         }
         if include_domains:
             request_kwargs["include_domains"] = include_domains
 
-        response = client.search(**request_kwargs)
+        response = call_with_supported_kwargs(client.search, **request_kwargs)
         formatted_results = [
             _format_result(result) for result in response.get("results", [])
         ]

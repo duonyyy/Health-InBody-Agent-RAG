@@ -18,7 +18,15 @@ if not DATABASE_URL.startswith("sqlite"):
     _engine_options.update(
         pool_size=int(os.environ.get("DB_POOL_SIZE", "5")),
         max_overflow=int(os.environ.get("DB_MAX_OVERFLOW", "10")),
+        pool_timeout=float(os.environ.get("DB_POOL_TIMEOUT_SECONDS", "5")),
     )
+    if DATABASE_URL.startswith("postgresql"):
+        _connect_timeout = max(1, int(os.environ.get("DB_CONNECT_TIMEOUT_SECONDS", "5")))
+        _statement_timeout_ms = max(1000, int(os.environ.get("DB_STATEMENT_TIMEOUT_MS", "10000")))
+        _engine_options["connect_args"] = {
+            "connect_timeout": _connect_timeout,
+            "options": f"-c statement_timeout={_statement_timeout_ms}",
+        }
 
 engine = create_engine(DATABASE_URL, **_engine_options)
 

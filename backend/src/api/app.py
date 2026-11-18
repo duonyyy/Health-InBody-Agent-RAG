@@ -20,10 +20,27 @@ from sqlalchemy import text as sql_text
 from starlette.concurrency import run_in_threadpool
 
 from agents import get_multi_agent_summary, multi_agent_handle
+from agents.constants import AGENT_MAX_REQUEST_TIMEOUT_SECONDS, AGENT_REQUEST_TIMEOUT_SECONDS
 from llm.client import get_llm_runtime_config
 from core.cache import cache_health_check
 from core.cache import get_redis_client
 from core.config import DEFAULT_COLLECTION_NAME, DEFAULT_VECTOR_SIZE
+from core.execution import (
+    CapacityExceededError,
+    QueueTimeoutError,
+    get_lane,
+)
+from core.rate_limit import (
+    RateLimiterUnavailableError,
+    RateLimitExceededError,
+    enforce_rate_limit,
+)
+from harness.budget import (
+    BudgetExhaustedError,
+    RequestBudget,
+    call_with_supported_kwargs,
+    remaining_for_call,
+)
 from health.tools import (
     calculate_bmi,
     check_medical_safety,
@@ -55,8 +72,14 @@ from api.personalization import _execute
 from api.memory import router as memory_router
 from memory.chat import run_chat
 from memory import store as memory_store
-from auth.context import CurrentUser, get_current_user, require_legacy_user_match
-from auth.context import require_corpus_admin
+from auth.context import (
+    CurrentUser,
+    auth_mode,
+    get_current_user,
+    get_optional_current_user,
+    require_corpus_admin,
+    require_legacy_user_match,
+)
 from rag.corpus_policy import validate_shared_document, require_staging_collection
 from persistence.personalization_service import (
     redacted_context,
@@ -67,8 +90,139 @@ from persistence.database import engine as database_engine
 setup_logging()
 logger = logging.getLogger(__name__)
 
-TASK_TIMEOUT = 60
+TASK_TIMEOUT = 50
 POLLING_INTERVAL = 0.5
+DEFAULT_SEARCH_MAX_QUERY_CHARS = 500
+DEFAULT_SUMMARIZE_MAX_TEXT_CHARS = 12000
+DEFAULT_INDEX_MAX_BATCH_DOCS = 50
+DEFAULT_INDEX_MAX_BATCH_CHARS = 250000
+
+
+def _env_float(name: str, default: float, *, minimum: float, maximum: float) -> float:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return max(minimum, min(maximum, default))
+    try:
+        return max(minimum, min(maximum, float(raw)))
+    except ValueError:
+        return max(minimum, min(maximum, default))
+
+
+def _env_int(name: str, default: int, *, minimum: int, maximum: int) -> int:
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return max(minimum, min(maximum, default))
+    try:
+        return max(minimum, min(maximum, int(raw)))
+    except ValueError:
+        return max(minimum, min(maximum, default))
+
+
+def _chat_timeout_seconds() -> float:
+    return _env_float(
+        "AGENT_REQUEST_TIMEOUT_SECONDS",
+        AGENT_REQUEST_TIMEOUT_SECONDS,
+        minimum=0.2,
+        maximum=AGENT_MAX_REQUEST_TIMEOUT_SECONDS,
+    )
+
+
+def _search_timeout_seconds() -> float:
+    return _env_float("SEARCH_TIMEOUT_SECONDS", 15.0, minimum=0.1, maximum=30.0)
+
+
+def _summarize_timeout_seconds() -> float:
+    return _env_float("SUMMARIZE_TIMEOUT_SECONDS", 25.0, minimum=0.1, maximum=45.0)
+
+
+def _indexing_timeout_seconds() -> float:
+    return _env_float("INDEXING_TIMEOUT_SECONDS", 45.0, minimum=0.5, maximum=55.0)
+
+
+def _health_probe_timeout_seconds() -> float:
+    return _env_float("HEALTH_PROBE_TIMEOUT_SECONDS", 5.0, minimum=0.2, maximum=10.0)
+
+
+def _task_poll_timeout_seconds() -> float:
+    return _env_float("TASK_TIMEOUT_SECONDS", float(TASK_TIMEOUT), minimum=0.5, maximum=55.0)
+
+
+def _celery_queue_expires_seconds() -> int:
+    return _env_int("CELERY_QUEUE_EXPIRES_SECONDS", 55, minimum=5, maximum=60)
+
+
+def _allow_public_expensive_endpoints() -> bool:
+    return os.getenv("ALLOW_PUBLIC_EXPENSIVE_ENDPOINTS", "false").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def _resolve_expensive_caller(request: Request) -> tuple:
+    user = get_optional_current_user(request)
+    if user is None and auth_mode() == "production" and not _allow_public_expensive_endpoints():
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication is required",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    peer = request.client.host if request.client else "unknown"
+    if user is not None:
+        return user, f"user:{user.subject}"
+    return None, f"ip:{peer}"
+
+
+async def _check_rate_limit_async(bucket: str, identifier: str, limit: int, budget: RequestBudget) -> None:
+    limiter_budget = RequestBudget.from_deadline(
+        min(budget.deadline_monotonic, time.monotonic() + 2.0),
+    )
+    try:
+        await get_lane("probe").run(
+            enforce_rate_limit,
+            bucket=bucket,
+            identifier=identifier,
+            limit=limit,
+            window_seconds=60,
+            budget=limiter_budget,
+            pass_cancel_event=False,
+        )
+    except RateLimitExceededError as exc:
+        raise HTTPException(
+            status_code=429,
+            detail="Bạn gửi yêu cầu quá nhanh. Vui lòng chờ và thử lại.",
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        ) from exc
+    except RateLimiterUnavailableError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Hệ thống kiểm soát lưu lượng tạm thời không khả dụng. Vui lòng thử lại sau.",
+            headers={"Retry-After": "5"},
+        ) from exc
+    except (CapacityExceededError, QueueTimeoutError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Hệ thống đang bận xử lý nhiều yêu cầu. Vui lòng thử lại sau.",
+            headers={"Retry-After": "2"},
+        ) from exc
+    except BudgetExhaustedError as exc:
+        raise HTTPException(
+            status_code=504,
+            detail="Yêu cầu quá thời gian xử lý cho phép. Vui lòng thử lại.",
+        ) from exc
+
+
+def _raise_lane_http_error(exc: Exception) -> None:
+    if isinstance(exc, (CapacityExceededError, QueueTimeoutError)):
+        raise HTTPException(
+            status_code=503,
+            detail="Hệ thống đang bận xử lý nhiều yêu cầu. Vui lòng thử lại sau.",
+            headers={"Retry-After": "2"},
+        ) from exc
+    if isinstance(exc, BudgetExhaustedError):
+        raise HTTPException(
+            status_code=504,
+            detail="Yêu cầu quá thời gian xử lý cho phép. Vui lòng thử lại.",
+        ) from exc
+    raise exc
 
 app = FastAPI(
     title="Health/InBody Agent RAG Backend",
@@ -137,7 +291,7 @@ def _memory_identity_allowed(current_user: CurrentUser) -> bool:
 
 
 class SearchRequest(BaseModel):
-    query: str = Field(min_length=1)
+    query: str = Field(min_length=1, max_length=2000)
     limit: int = Field(default=5, ge=1, le=20)
     use_rerank: bool = True
 
@@ -148,8 +302,8 @@ class CollectionCreateRequest(BaseModel):
 
 
 class DocumentCreateRequest(BaseModel):
-    id: str
-    question: Optional[str] = ""
+    id: str = Field(min_length=1, max_length=256)
+    question: Optional[str] = Field(default="", max_length=2000)
     content: str = Field(min_length=1, max_length=100000)
     collection_name: str = DEFAULT_COLLECTION_NAME
     metadata: Optional[Dict[str, Any]] = None
@@ -161,7 +315,7 @@ class DocumentsIndexRequest(BaseModel):
 
 
 class SummaryRequest(BaseModel):
-    text: str
+    text: str = Field(min_length=1, max_length=50000)
     report_mode: bool = False
 
 
@@ -192,7 +346,7 @@ class TrainingRequest(BaseModel):
 
 
 class SafetyRequest(BaseModel):
-    question: str = Field(min_length=1)
+    question: str = Field(min_length=1, max_length=4000)
     conditions: Optional[List[str]] = None
 
 
@@ -231,8 +385,7 @@ async def root():
     }
 
 
-@app.get("/health")
-async def health():
+def _health_report() -> dict:
     return {
         "status": "healthy",
         "service": "Health/InBody Agent RAG Backend",
@@ -243,20 +396,47 @@ async def health():
     }
 
 
-def _readiness_report() -> dict:
+@app.get("/health")
+async def health():
+    budget = RequestBudget.start(_health_probe_timeout_seconds(), max_timeout_seconds=10.0)
+    try:
+        return await get_lane("probe").run(
+            _health_report,
+            budget=budget,
+            pass_cancel_event=False,
+        )
+    except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError):
+        return {
+            "status": "healthy",
+            "service": "Health/InBody Agent RAG Backend",
+            "cache": {"backend": "probe_skipped"},
+            "search": get_search_stats(),
+            "llm": get_llm_runtime_config(),
+            "agent": get_multi_agent_summary(),
+        }
+
+
+def _readiness_report(deadline_monotonic: Optional[float] = None) -> dict:
     """Probe core dependencies without returning credentials or health records."""
     import requests
 
+    effective_deadline = (
+        time.monotonic() + _health_probe_timeout_seconds()
+        if deadline_monotonic is None
+        else float(deadline_monotonic)
+    )
     dependencies = {"postgres": False, "qdrant": False, "valkey": False, "embedding_api": None}
     try:
-        with database_engine.connect() as connection:
-            connection.execute(sql_text("SELECT 1"))
-        dependencies["postgres"] = True
+        if remaining_for_call(effective_deadline, 2.0) is not None:
+            with database_engine.connect() as connection:
+                connection.execute(sql_text("SELECT 1"))
+            dependencies["postgres"] = True
     except Exception as exc:
         logger.warning("Readiness PostgreSQL probe failed (%s)", type(exc).__name__)
     try:
-        redis_client = get_redis_client()
-        dependencies["valkey"] = bool(redis_client and redis_client.ping())
+        if remaining_for_call(effective_deadline, 1.5) is not None:
+            redis_client = get_redis_client()
+            dependencies["valkey"] = bool(redis_client and redis_client.ping())
     except Exception as exc:
         logger.warning("Readiness Valkey probe failed (%s)", type(exc).__name__)
     with requests.Session() as session:
@@ -265,8 +445,12 @@ def _readiness_report() -> dict:
         if os.getenv("CUSTOM_EMBEDDING_ENABLED", "true").lower() == "true":
             probes.append(("embedding_api", os.getenv("CUSTOM_EMBEDDING_API_URL", "http://embedding-api:5000").rstrip("/") + "/health"))
         for name, url in probes:
+            probe_timeout = remaining_for_call(effective_deadline, 2.0, min_timeout=0.1)
+            if probe_timeout is None:
+                dependencies[name] = False
+                continue
             try:
-                dependencies[name] = session.get(url, timeout=2).status_code == 200
+                dependencies[name] = session.get(url, timeout=probe_timeout).status_code == 200
             except requests.RequestException as exc:
                 logger.warning("Readiness %s probe failed (%s)", name, type(exc).__name__)
                 dependencies[name] = False
@@ -277,15 +461,33 @@ def _readiness_report() -> dict:
 
 @app.get("/health/ready")
 async def readiness():
-    result = await run_in_threadpool(_readiness_report)
+    budget = RequestBudget.start(_health_probe_timeout_seconds(), max_timeout_seconds=10.0)
+    try:
+        result = await get_lane("probe").run(
+            _readiness_report,
+            deadline_monotonic=budget.deadline_monotonic,
+            budget=budget,
+            pass_cancel_event=False,
+        )
+    except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError):
+        result = {
+            "status": "degraded",
+            "dependencies": {"postgres": False, "qdrant": False, "valkey": False, "embedding_api": None},
+            "llm_provider": "not_checked",
+        }
     return JSONResponse(result, status_code=200 if result["status"] == "ready" else 503)
 
 
 @app.get("/users/{user_id}/profile")
 async def user_profile(user_id: str, current_user: CurrentUser = Depends(get_current_user)):
     require_legacy_user_match(user_id, current_user)
+    budget = RequestBudget.start(_health_probe_timeout_seconds(), max_timeout_seconds=10.0)
     try:
-        return get_user_profile(user_id, auto_create=True)
+        return await get_lane("probe").run(
+            get_user_profile, user_id, auto_create=True, budget=budget, pass_cancel_event=False
+        )
+    except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+        _raise_lane_http_error(exc)
     except Exception as e:
         logger.error("Get user profile failed: %s", e)
         raise HTTPException(status_code=500, detail="Unable to load user profile")
@@ -298,8 +500,17 @@ async def update_user_profile(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     require_legacy_user_match(user_id, current_user)
+    budget = RequestBudget.start(_health_probe_timeout_seconds(), max_timeout_seconds=10.0)
     try:
-        return upsert_user_profile(user_id, data.dict(exclude_unset=True))
+        return await get_lane("probe").run(
+            upsert_user_profile,
+            user_id,
+            data.dict(exclude_unset=True),
+            budget=budget,
+            pass_cancel_event=False,
+        )
+    except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+        _raise_lane_http_error(exc)
     except Exception as e:
         logger.error("Update user profile failed: %s", e)
         raise HTTPException(status_code=500, detail="Unable to update user profile")
@@ -312,8 +523,14 @@ async def user_measurements(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     require_legacy_user_match(user_id, current_user)
+    budget = RequestBudget.start(_health_probe_timeout_seconds(), max_timeout_seconds=10.0)
     try:
-        return {"measurements": list_inbody_measurements(user_id, limit=limit)}
+        items = await get_lane("probe").run(
+            list_inbody_measurements, user_id, limit=limit, budget=budget, pass_cancel_event=False
+        )
+        return {"measurements": items}
+    except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+        _raise_lane_http_error(exc)
     except Exception as e:
         logger.error("List user measurements failed: %s", e)
         raise HTTPException(status_code=500, detail="Unable to list user measurements")
@@ -326,8 +543,17 @@ async def create_user_measurement(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     require_legacy_user_match(user_id, current_user)
+    budget = RequestBudget.start(_health_probe_timeout_seconds(), max_timeout_seconds=10.0)
     try:
-        return add_inbody_measurement(user_id, data.dict(exclude_unset=True))
+        return await get_lane("probe").run(
+            add_inbody_measurement,
+            user_id,
+            data.dict(exclude_unset=True),
+            budget=budget,
+            pass_cancel_event=False,
+        )
+    except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+        _raise_lane_http_error(exc)
     except Exception as e:
         logger.error("Create user measurement failed: %s", e)
         raise HTTPException(status_code=500, detail="Unable to create user measurement")
@@ -339,7 +565,44 @@ async def user_personalization_context(
     current_user: CurrentUser = Depends(get_current_user),
 ):
     require_legacy_user_match(user_id, current_user)
-    return redacted_context(current_user.subject)
+    budget = RequestBudget.start(_health_probe_timeout_seconds(), max_timeout_seconds=10.0)
+    try:
+        return await get_lane("probe").run(
+            redacted_context, current_user.subject, budget=budget, pass_cancel_event=False
+        )
+    except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+        _raise_lane_http_error(exc)
+
+
+def _run_chat_in_lane(
+    question: str,
+    subject: str,
+    *,
+    bot_id: str = "health-inbody-agent",
+    use_zep_memory: bool = False,
+    conversation_id=None,
+    deadline_monotonic: Optional[float] = None,
+    cancel_event: Any = None,
+) -> dict:
+    return _execute(
+        call_with_supported_kwargs,
+        run_chat,
+        question,
+        subject,
+        bot_id=bot_id,
+        use_zep_memory=use_zep_memory,
+        conversation_id=conversation_id,
+        deadline_monotonic=deadline_monotonic,
+        cancel_event=cancel_event,
+    )
+
+
+def _poll_celery_task(task_id: str) -> tuple:
+    task_result = AsyncResult(task_id)
+    task_status = task_result.status
+    if task_status == "SUCCESS":
+        return task_status, task_result.result
+    return task_status, None
 
 
 @app.post("/chat/complete")
@@ -353,20 +616,41 @@ async def complete(data: CompleteRequest, current_user: CurrentUser = Depends(ge
         data.sync_request,
     )
 
-    # Emergency requests must never wait for Celery or task storage.
+    # Emergency requests must never wait for rate limits, expensive lanes, Celery, or storage.
+    request_started = time.perf_counter()
     urgent = check_medical_safety(data.user_message).get("risk_level") == "urgent"
-    if not urgent:
-        validate_health_input(data.user_message)
-    if data.sync_request or urgent:
+    if urgent:
+        response = _execute(
+            call_with_supported_kwargs,
+            run_chat,
+            data.user_message,
+            current_user.subject,
+            bot_id=data.bot_id,
+            use_zep_memory=False,
+            conversation_id=None,
+        )
+        response["latency_ms"] = round((time.perf_counter() - request_started) * 1000, 2)
+        return {"response": response}
+
+    validate_health_input(data.user_message)
+    budget = RequestBudget.start(
+        _chat_timeout_seconds(),
+        max_timeout_seconds=AGENT_MAX_REQUEST_TIMEOUT_SECONDS,
+    )
+    chat_limit = _env_int("CHAT_RATE_LIMIT_PER_MINUTE", 30, minimum=0, maximum=1000)
+    await _check_rate_limit_async("chat", f"user:{current_user.subject}", chat_limit, budget)
+
+    if data.sync_request:
         try:
-            request_started = time.perf_counter()
-            response = await run_in_threadpool(
-                _execute, run_chat,
+            response = await get_lane("chat").run(
+                _run_chat_in_lane,
                 data.user_message,
                 current_user.subject,
                 bot_id=data.bot_id,
                 use_zep_memory=_memory_identity_allowed(current_user),
                 conversation_id=data.conversation_id,
+                deadline_monotonic=budget.deadline_monotonic,
+                budget=budget,
             )
             response["latency_ms"] = round(
                 (time.perf_counter() - request_started) * 1000,
@@ -377,25 +661,61 @@ async def complete(data: CompleteRequest, current_user: CurrentUser = Depends(ge
             raise
         except InvalidHealthInput:
             raise
+        except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+            _raise_lane_http_error(exc)
         except Exception as e:
             logger.error("Chat sync failed (%s)", type(e).__name__)
-            raise HTTPException(status_code=500, detail="Unable to complete chat request")
+            raise HTTPException(status_code=500, detail="Không thể hoàn tất yêu cầu hội thoại.")
 
     if not hasattr(llm_handle_message, "apply_async"):
         raise HTTPException(
             status_code=503,
-            detail="Celery worker is not available; use sync_request=true",
+            detail="Hàng đợi hội thoại hiện không khả dụng; vui lòng dùng sync_request=true.",
         )
 
-    if data.conversation_id:
-        await run_in_threadpool(_execute, memory_store.load_history, current_user.subject, str(data.conversation_id))
-    task_id = await run_in_threadpool(_execute, memory_store.create_task, current_user.subject)
     try:
-        await run_in_threadpool(llm_handle_message.apply_async,
-            args=[data.bot_id, current_user.subject, data.user_message,
-                  str(data.conversation_id) if data.conversation_id else None],
-            task_id=task_id, kwargs={"task_id": task_id},
-            argsrepr="[redacted chat arguments]", kwargsrepr="{redacted task metadata}")
+        if data.conversation_id:
+            await get_lane("probe").run(
+                _execute,
+                memory_store.load_history,
+                current_user.subject,
+                str(data.conversation_id),
+                budget=budget,
+                pass_cancel_event=False,
+            )
+        task_id = await get_lane("probe").run(
+            _execute,
+            memory_store.create_task,
+            current_user.subject,
+            budget=budget,
+            pass_cancel_event=False,
+        )
+    except HTTPException:
+        raise
+    except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+        _raise_lane_http_error(exc)
+
+    queue_expires = _celery_queue_expires_seconds()
+    deadline_epoch = time.time() + float(queue_expires)
+    try:
+        await get_lane("probe").run(
+            llm_handle_message.apply_async,
+            args=[
+                data.bot_id,
+                current_user.subject,
+                data.user_message,
+                str(data.conversation_id) if data.conversation_id else None,
+            ],
+            task_id=task_id,
+            expires=queue_expires,
+            kwargs={"task_id": task_id, "deadline_epoch": deadline_epoch},
+            argsrepr="[redacted chat arguments]",
+            kwargsrepr="{redacted task metadata}",
+            budget=budget,
+            pass_cancel_event=False,
+        )
+    except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+        _raise_lane_http_error(exc)
     except Exception as exc:
         logger.warning("Chat dispatch failed (%s)", type(exc).__name__)
         raise HTTPException(status_code=503, detail="Hàng đợi hội thoại tạm thời không khả dụng") from exc
@@ -405,27 +725,53 @@ async def complete(data: CompleteRequest, current_user: CurrentUser = Depends(ge
 @app.get("/chat/complete/{task_id}")
 async def get_response(task_id: UUID, current_user: CurrentUser = Depends(get_current_user)):
     task_id = str(task_id)
-    await run_in_threadpool(_execute, memory_store.require_task_owner, current_user.subject, task_id)
+    budget = RequestBudget.start(_task_poll_timeout_seconds(), max_timeout_seconds=55.0)
+    try:
+        await get_lane("probe").run(
+            _execute,
+            memory_store.require_task_owner,
+            current_user.subject,
+            task_id,
+            budget=budget,
+            pass_cancel_event=False,
+        )
+    except HTTPException:
+        raise
+    except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+        _raise_lane_http_error(exc)
+
     if AsyncResult is None:
         raise HTTPException(status_code=503, detail="Celery result backend unavailable")
 
-    start_time = time.time()
     while True:
-        task_result = AsyncResult(task_id)
-        task_status = task_result.status
+        if budget.exhausted():
+            raise HTTPException(status_code=504, detail="Yêu cầu chờ kết quả quá thời gian cho phép. Vui lòng thử lại.")
+        try:
+            task_status, task_result_value = await get_lane("probe").run(
+                _poll_celery_task,
+                task_id,
+                budget=budget,
+                pass_cancel_event=False,
+            )
+        except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+            _raise_lane_http_error(exc)
+        except Exception as exc:
+            logger.warning("Celery result lookup failed (%s)", type(exc).__name__)
+            raise HTTPException(status_code=503, detail="Không thể kiểm tra trạng thái yêu cầu hội thoại.") from exc
 
         if task_status in {"PENDING", "STARTED", "RETRY"}:
-            if time.time() - start_time > TASK_TIMEOUT:
-                raise HTTPException(status_code=504, detail="Task result timed out; please retry")
-            await asyncio.sleep(POLLING_INTERVAL)
+            remaining = budget.remaining_seconds()
+            if remaining <= 0.0:
+                raise HTTPException(status_code=504, detail="Yêu cầu chờ kết quả quá thời gian cho phép. Vui lòng thử lại.")
+            await asyncio.sleep(min(POLLING_INTERVAL, remaining))
             continue
 
         if task_status != "SUCCESS":
             raise HTTPException(status_code=502, detail="Không thể hoàn thành yêu cầu hội thoại")
         return {
             "task_id": task_id,
-            "task_status": task_result.status,
-            "task_result": task_result.result,
+            "task_status": task_status,
+            "task_result": task_result_value,
         }
 
 
@@ -433,14 +779,44 @@ async def get_response(task_id: UUID, current_user: CurrentUser = Depends(get_cu
 async def agent_answer(data: AgentRequest, current_user: CurrentUser = Depends(get_current_user)):
     if data.user_id is not None and data.user_id != current_user.subject:
         raise HTTPException(status_code=403, detail="Forbidden")
+
     request_started = time.perf_counter()
-    response = await run_in_threadpool(
-        _execute, run_chat,
-        data.question,
-        current_user.subject,
-        use_zep_memory=_memory_identity_allowed(current_user),
-        conversation_id=data.conversation_id,
-    )
+    # Deterministic urgent pre-check runs BEFORE rate limits, expensive lanes, DB, or LLM/RAG.
+    urgent = check_medical_safety(data.question).get("risk_level") == "urgent"
+    if urgent:
+        response = _execute(
+            call_with_supported_kwargs,
+            run_chat,
+            data.question,
+            current_user.subject,
+            use_zep_memory=False,
+            conversation_id=None,
+        )
+    else:
+        validate_health_input(data.question)
+        budget = RequestBudget.start(
+            _chat_timeout_seconds(),
+            max_timeout_seconds=AGENT_MAX_REQUEST_TIMEOUT_SECONDS,
+        )
+        chat_limit = _env_int("CHAT_RATE_LIMIT_PER_MINUTE", 30, minimum=0, maximum=1000)
+        await _check_rate_limit_async("chat", f"user:{current_user.subject}", chat_limit, budget)
+        try:
+            response = await get_lane("chat").run(
+                _run_chat_in_lane,
+                data.question,
+                current_user.subject,
+                use_zep_memory=_memory_identity_allowed(current_user),
+                conversation_id=data.conversation_id,
+                deadline_monotonic=budget.deadline_monotonic,
+                budget=budget,
+            )
+        except HTTPException:
+            raise
+        except InvalidHealthInput:
+            raise
+        except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+            _raise_lane_http_error(exc)
+
     return {
         "answer": response["content"],
         "request_id": response.get("request_id"),
@@ -472,59 +848,166 @@ async def agent_tools():
 
 
 @app.post("/search")
-async def search_endpoint(data: SearchRequest):
-    return {
-        "query": data.query,
-        "results": hybrid_search(data.query, limit=data.limit, use_rerank=data.use_rerank),
-    }
+async def search_endpoint(data: SearchRequest, request: Request):
+    query = data.query.strip()
+    max_query_chars = _env_int("SEARCH_MAX_QUERY_CHARS", DEFAULT_SEARCH_MAX_QUERY_CHARS, minimum=1, maximum=2000)
+    if not query or len(query) > max_query_chars:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Truy vấn tìm kiếm không hợp lệ (tối đa {max_query_chars} ký tự).",
+        )
+    user, caller_id = _resolve_expensive_caller(request)
+    budget = RequestBudget.start(_search_timeout_seconds(), max_timeout_seconds=30.0)
+    default_limit = 30 if user is not None else 60
+    rate_limit = _env_int("SEARCH_RATE_LIMIT_PER_MINUTE", default_limit, minimum=0, maximum=1000)
+    await _check_rate_limit_async("search", caller_id, rate_limit, budget)
+    try:
+        results = await get_lane("search").run(
+            hybrid_search,
+            query,
+            limit=data.limit,
+            use_rerank=data.use_rerank,
+            timeout=budget.remaining_seconds(),
+            deadline_monotonic=budget.deadline_monotonic,
+            raise_on_timeout=True,
+            budget=budget,
+            pass_cancel_event=False,
+        )
+        return {
+            "query": query,
+            "results": results,
+        }
+    except HTTPException:
+        raise
+    except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+        _raise_lane_http_error(exc)
+    except Exception as exc:
+        logger.warning("Search endpoint failed (%s)", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="Dịch vụ tìm kiếm tạm thời không khả dụng. Vui lòng thử lại sau.",
+        ) from exc
 
 
 @app.post("/collection/create")
 async def create_vector_collection(data: CollectionCreateRequest, admin: CurrentUser = Depends(require_corpus_admin)):
     _validate_corpus_admission(data.collection_name, [])
+    budget = RequestBudget.start(_indexing_timeout_seconds(), max_timeout_seconds=55.0)
+    index_limit = _env_int("INDEXING_RATE_LIMIT_PER_MINUTE", 10, minimum=0, maximum=200)
+    await _check_rate_limit_async("indexing", f"admin:{admin.subject}", index_limit, budget)
     try:
         from rag.qdrant.client import create_collection
 
-        create_status = create_collection(data.collection_name, data.vector_size)
+        create_status = await get_lane("indexing").run(
+            create_collection,
+            data.collection_name,
+            data.vector_size,
+            budget=budget,
+            pass_cancel_event=False,
+        )
         return {"status": create_status is not None, "result": str(create_status)}
+    except HTTPException:
+        raise
+    except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+        _raise_lane_http_error(exc)
     except Exception as e:
-        logger.error("Create collection failed: %s", e)
-        raise HTTPException(status_code=500, detail="Unable to create collection")
+        logger.error("Create collection failed (%s)", type(e).__name__)
+        raise HTTPException(status_code=503, detail="Không thể tạo collection lúc này.")
 
 
 @app.post("/document/create")
 async def create_document(data: DocumentCreateRequest, admin: CurrentUser = Depends(require_corpus_admin)):
     _validate_corpus_admission(data.collection_name, [data.model_dump()])
+    budget = RequestBudget.start(_indexing_timeout_seconds(), max_timeout_seconds=55.0)
+    index_limit = _env_int("INDEXING_RATE_LIMIT_PER_MINUTE", 10, minimum=0, maximum=200)
+    await _check_rate_limit_async("indexing", f"admin:{admin.subject}", index_limit, budget)
     try:
-        index_status = index_document_v2(
+        index_status = await get_lane("indexing").run(
+            index_document_v2,
             data.id,
             data.question,
             data.content,
             collection_name=data.collection_name,
             metadata=data.metadata,
+            budget=budget,
+            pass_cancel_event=False,
         )
         return {"status": True, "index_status": index_status}
+    except HTTPException:
+        raise
+    except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+        _raise_lane_http_error(exc)
     except Exception as e:
-        logger.error("Create/index document failed: %s", e)
-        raise HTTPException(status_code=500, detail="Unable to create or index document")
+        logger.error("Create/index document failed (%s)", type(e).__name__)
+        raise HTTPException(status_code=503, detail="Không thể lập chỉ mục tài liệu lúc này.")
 
 
 @app.post("/documents/index")
 async def index_documents(data: DocumentsIndexRequest, admin: CurrentUser = Depends(require_corpus_admin)):
+    _validate_index_batch_limits(data.documents)
     _validate_corpus_admission(data.collection_name, data.documents)
+    budget = RequestBudget.start(_indexing_timeout_seconds(), max_timeout_seconds=55.0)
+    index_limit = _env_int("INDEXING_RATE_LIMIT_PER_MINUTE", 10, minimum=0, maximum=200)
+    await _check_rate_limit_async("indexing", f"admin:{admin.subject}", index_limit, budget)
     try:
-        result = index_health_documents(data.documents, collection_name=data.collection_name)
+        result = await get_lane("indexing").run(
+            index_health_documents,
+            data.documents,
+            collection_name=data.collection_name,
+            budget=budget,
+            pass_cancel_event=False,
+        )
         return {"status": True, "result": result}
+    except HTTPException:
+        raise
+    except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+        _raise_lane_http_error(exc)
     except Exception as e:
-        logger.error("Batch index failed: %s", e)
-        raise HTTPException(status_code=500, detail="Unable to index documents")
+        logger.error("Batch index failed (%s)", type(e).__name__)
+        raise HTTPException(status_code=503, detail="Không thể lập chỉ mục lô tài liệu lúc này.")
 
 
 @app.post("/summarize")
-async def summarize_endpoint(data: SummaryRequest):
-    if data.report_mode:
-        return {"summary": summarize_health_report(data.text)}
-    return {"summary": summarize_text(data.text)}
+async def summarize_endpoint(data: SummaryRequest, request: Request):
+    text = data.text.strip()
+    max_text_chars = _env_int(
+        "SUMMARIZE_MAX_TEXT_CHARS",
+        DEFAULT_SUMMARIZE_MAX_TEXT_CHARS,
+        minimum=1,
+        maximum=50000,
+    )
+    if not text or len(text) > max_text_chars:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Nội dung cần tóm tắt không hợp lệ (tối đa {max_text_chars} ký tự).",
+        )
+    user, caller_id = _resolve_expensive_caller(request)
+    budget = RequestBudget.start(_summarize_timeout_seconds(), max_timeout_seconds=45.0)
+    default_limit = 10 if user is not None else 20
+    rate_limit = _env_int("SUMMARIZE_RATE_LIMIT_PER_MINUTE", default_limit, minimum=0, maximum=1000)
+    await _check_rate_limit_async("summarize", caller_id, rate_limit, budget)
+    target_fn = summarize_health_report if data.report_mode else summarize_text
+    try:
+        summary = await get_lane("summarize").run(
+            target_fn,
+            text,
+            timeout=budget.remaining_seconds(),
+            deadline_monotonic=budget.deadline_monotonic,
+            raise_on_timeout=True,
+            budget=budget,
+            pass_cancel_event=False,
+        )
+        return {"summary": summary}
+    except HTTPException:
+        raise
+    except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+        _raise_lane_http_error(exc)
+    except Exception as exc:
+        logger.warning("Summarize endpoint failed (%s)", type(exc).__name__)
+        raise HTTPException(
+            status_code=503,
+            detail="Dịch vụ tóm tắt tạm thời không khả dụng. Vui lòng thử lại sau.",
+        ) from exc
 
 
 @app.post("/tools/bmi")
@@ -559,9 +1042,48 @@ async def safety_endpoint(data: SafetyRequest):
 
 @app.post("/data/import")
 async def import_data_endpoint(data: DocumentsIndexRequest, admin: CurrentUser = Depends(require_corpus_admin)):
+    _validate_index_batch_limits(data.documents)
     _validate_corpus_admission(data.collection_name, data.documents)
-    result = index_health_documents(data.documents, collection_name=data.collection_name)
-    return {"success": True, "result": result}
+    budget = RequestBudget.start(_indexing_timeout_seconds(), max_timeout_seconds=55.0)
+    index_limit = _env_int("INDEXING_RATE_LIMIT_PER_MINUTE", 10, minimum=0, maximum=200)
+    await _check_rate_limit_async("indexing", f"admin:{admin.subject}", index_limit, budget)
+    try:
+        result = await get_lane("indexing").run(
+            index_health_documents,
+            data.documents,
+            collection_name=data.collection_name,
+            budget=budget,
+            pass_cancel_event=False,
+        )
+        return {"success": True, "result": result}
+    except HTTPException:
+        raise
+    except (CapacityExceededError, QueueTimeoutError, BudgetExhaustedError) as exc:
+        _raise_lane_http_error(exc)
+    except Exception as exc:
+        logger.error("Data import failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Không thể nhập dữ liệu lúc này.") from exc
+
+
+def _validate_index_batch_limits(documents: list) -> None:
+    max_docs = _env_int("INDEX_MAX_BATCH_DOCS", DEFAULT_INDEX_MAX_BATCH_DOCS, minimum=1, maximum=100)
+    if len(documents) > max_docs:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Số tài liệu trong một lô vượt quá giới hạn ({max_docs}).",
+        )
+    max_chars = _env_int("INDEX_MAX_BATCH_CHARS", DEFAULT_INDEX_MAX_BATCH_CHARS, minimum=1000, maximum=2000000)
+    total_chars = sum(
+        len(str(doc.get("content") or doc.get("page_content") or ""))
+        + len(str(doc.get("question") or doc.get("title") or ""))
+        for doc in documents
+        if isinstance(doc, dict)
+    )
+    if total_chars > max_chars:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Tổng dung lượng văn bản trong lô vượt quá giới hạn ({max_chars} ký tự).",
+        )
 
 
 def _validate_corpus_admission(collection_name: str, documents: list) -> None:

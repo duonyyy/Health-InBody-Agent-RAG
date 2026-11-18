@@ -1,5 +1,7 @@
 """Celery/background tasks cho Health/InBody Agent RAG."""
 import logging
+import os
+import time
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -333,20 +335,53 @@ def bot_route_answer_message(history, question):
     return vietnamese_llm_chat_complete(messages)
 
 
-@shared_task()
-def llm_handle_message(bot_id, user_id, question, conversation_id=None, task_id=None):
+CELERY_TASK_SOFT_TIME_LIMIT = max(
+    5, min(55, int(os.getenv("CELERY_TASK_SOFT_TIME_LIMIT_SECONDS", "50")))
+)
+CELERY_TASK_TIME_LIMIT = max(
+    CELERY_TASK_SOFT_TIME_LIMIT + 5,
+    min(60, int(os.getenv("CELERY_TASK_TIME_LIMIT_SECONDS", "60"))),
+)
+
+
+@shared_task(
+    soft_time_limit=CELERY_TASK_SOFT_TIME_LIMIT,
+    time_limit=CELERY_TASK_TIME_LIMIT,
+)
+def llm_handle_message(
+    bot_id,
+    user_id,
+    question,
+    conversation_id=None,
+    task_id=None,
+    deadline_epoch: Optional[float] = None,
+):
     """
     Main handler cho Health/InBody Multi-Agent RAG chat.
 
     Recheck persisted task ownership and use bounded PostgreSQL history.
     Cloud memory is disabled on this asynchronous path.
+    Honors shared queue+worker deadline when deadline_epoch is provided.
     """
     logger.info("Start Health/InBody message handling bot_id=%s", bot_id)
+    from agents.constants import AGENT_MAX_REQUEST_TIMEOUT_SECONDS, AGENT_REQUEST_TIMEOUT_SECONDS
     from memory.chat import run_chat
     from memory.store import require_task_owner
     if task_id:
         require_task_owner(user_id, task_id)
-    return run_chat(question, user_id, conversation_id, bot_id=bot_id, use_zep_memory=False)
+    worker_budget = min(AGENT_REQUEST_TIMEOUT_SECONDS, AGENT_MAX_REQUEST_TIMEOUT_SECONDS, float(CELERY_TASK_SOFT_TIME_LIMIT))
+    if deadline_epoch is not None:
+        remaining = max(0.0, float(deadline_epoch) - time.time())
+        worker_budget = min(worker_budget, remaining)
+    deadline_monotonic = time.monotonic() + worker_budget
+    return run_chat(
+        question,
+        user_id,
+        conversation_id,
+        bot_id=bot_id,
+        use_zep_memory=False,
+        deadline_monotonic=deadline_monotonic,
+    )
 
 
 @shared_task()

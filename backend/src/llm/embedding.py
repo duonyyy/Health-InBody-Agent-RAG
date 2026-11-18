@@ -4,10 +4,12 @@ Custom Embedding Service - Sử dụng model riêng thay vì OpenAI
 
 import logging
 import os
-from functools import lru_cache
-from typing import List, Union
+import threading
+from typing import List, Optional, Union
 
 import requests
+
+from harness.budget import BudgetExhaustedError, remaining_for_call
 
 logger = logging.getLogger(__name__)
 
@@ -26,19 +28,25 @@ USE_OPENAI_FALLBACK = os.environ.get("USE_OPENAI_FALLBACK", "true").lower() == "
 class CustomEmbeddingService:
     """Service để generate embeddings từ custom model"""
 
-    def __init__(self, api_url: str = CUSTOM_EMBEDDING_API_URL):
+    def __init__(
+        self,
+        api_url: str = CUSTOM_EMBEDDING_API_URL,
+        *,
+        check_health_on_init: bool = False,
+    ):
         self.api_url = api_url.rstrip("/")
         self.embedding_endpoint = f"{self.api_url}/embed"
         self.health_endpoint = f"{self.api_url}/health"
-        self.timeout = 30  # seconds
+        self.timeout = float(os.environ.get("CUSTOM_EMBEDDING_TIMEOUT_SECONDS", "30"))
 
-        # Check service health on init
-        self._check_health()
+        # Lazy init must not issue an unbudgeted network health probe on request path.
+        if check_health_on_init:
+            self._check_health()
 
-    def _check_health(self):
+    def _check_health(self, timeout: float = 5.0):
         """Check if custom embedding service is healthy"""
         try:
-            response = requests.get(self.health_endpoint, timeout=5)
+            response = requests.get(self.health_endpoint, timeout=timeout)
             if response.status_code == 200:
                 data = response.json()
                 logger.info(
@@ -62,7 +70,8 @@ class CustomEmbeddingService:
         self,
         text: Union[str, List[str]],
         batch_size: int = 32,
-        timeout: float | None = None,
+        timeout: Optional[float] = None,
+        deadline_monotonic: Optional[float] = None,
     ) -> Union[List[float], List[List[float]]]:
         """
         Generate embeddings for text(s)
@@ -81,6 +90,14 @@ class CustomEmbeddingService:
         if not texts:
             raise ValueError("Input text cannot be empty")
 
+        effective_timeout = remaining_for_call(
+            deadline_monotonic,
+            self.timeout if timeout is None else timeout,
+            default_timeout=self.timeout,
+        )
+        if effective_timeout is None:
+            raise BudgetExhaustedError("Embedding request budget exhausted")
+
         # Clean texts
         texts = [t.replace("\n", " ").strip() for t in texts]
 
@@ -89,7 +106,7 @@ class CustomEmbeddingService:
             response = requests.post(
                 self.embedding_endpoint,
                 json={"texts": texts, "batch_size": batch_size},
-                timeout=timeout or self.timeout,
+                timeout=effective_timeout,
             )
 
             if response.status_code != 200:
@@ -116,7 +133,13 @@ class CustomEmbeddingService:
             logger.error(f"❌ Error getting embedding from custom service: {e}")
             raise
 
-    def get_similarity(self, texts1: List[str], texts2: List[str]) -> List[List[float]]:
+    def get_similarity(
+        self,
+        texts1: List[str],
+        texts2: List[str],
+        timeout: Optional[float] = None,
+        deadline_monotonic: Optional[float] = None,
+    ) -> List[List[float]]:
         """
         Calculate similarity between two sets of texts
 
@@ -127,11 +150,18 @@ class CustomEmbeddingService:
         Returns:
             Similarity matrix [len(texts1), len(texts2)]
         """
+        effective_timeout = remaining_for_call(
+            deadline_monotonic,
+            self.timeout if timeout is None else timeout,
+            default_timeout=self.timeout,
+        )
+        if effective_timeout is None:
+            raise BudgetExhaustedError("Similarity request budget exhausted")
         try:
             response = requests.post(
                 f"{self.api_url}/similarity",
                 json={"texts1": texts1, "texts2": texts2},
-                timeout=self.timeout,
+                timeout=effective_timeout,
             )
 
             if response.status_code != 200:
@@ -157,20 +187,24 @@ class CustomEmbeddingService:
 
 # Global instance
 _embedding_service = None
+_embedding_service_lock = threading.Lock()
 
 
 def get_embedding_service() -> CustomEmbeddingService:
-    """Get singleton instance of embedding service"""
+    """Get thread-safe singleton instance of embedding service without blocking probe."""
     global _embedding_service
     if _embedding_service is None:
-        _embedding_service = CustomEmbeddingService()
+        with _embedding_service_lock:
+            if _embedding_service is None:
+                _embedding_service = CustomEmbeddingService(check_health_on_init=False)
     return _embedding_service
 
 
 def get_custom_embedding(
     text: Union[str, List[str]],
     batch_size: int = 32,
-    timeout: float | None = None,
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
 ) -> Union[List[float], List[List[float]]]:
     """
     Convenience function to get embeddings from custom model
@@ -183,10 +217,20 @@ def get_custom_embedding(
         Embedding vector(s)
     """
     service = get_embedding_service()
-    return service.get_embedding(text, batch_size, timeout=timeout)
+    return service.get_embedding(
+        text,
+        batch_size,
+        timeout=timeout,
+        deadline_monotonic=deadline_monotonic,
+    )
 
 
-def get_custom_similarity(texts1: List[str], texts2: List[str]) -> List[List[float]]:
+def get_custom_similarity(
+    texts1: List[str],
+    texts2: List[str],
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
+) -> List[List[float]]:
     """
     Convenience function to calculate similarity
 
@@ -198,7 +242,12 @@ def get_custom_similarity(texts1: List[str], texts2: List[str]) -> List[List[flo
         Similarity matrix
     """
     service = get_embedding_service()
-    return service.get_similarity(texts1, texts2)
+    return service.get_similarity(
+        texts1,
+        texts2,
+        timeout=timeout,
+        deadline_monotonic=deadline_monotonic,
+    )
 
 
 # For backward compatibility and easy switching

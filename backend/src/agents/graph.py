@@ -10,6 +10,7 @@ except Exception:  # pragma: no cover - fallback keeps local dev usable without 
     END = "__end__"
     StateGraph = None
 
+from harness.budget import RequestBudget, call_with_supported_kwargs
 from health.tools import check_medical_safety
 from health.validation import validate_health_input
 from integrations.tavily import tavily_search_health as _default_tavily_search_health
@@ -38,6 +39,7 @@ from .composer import (
 from .constants import (
     AGENT_COMPOSER_RESERVE_SECONDS,
     AGENT_MAX_COMPOSER_CALLS,
+    AGENT_MAX_REQUEST_TIMEOUT_SECONDS,
     AGENT_MAX_RETRIEVAL_CALLS,
     AGENT_REQUEST_TIMEOUT_SECONDS,
     GENERAL_CHAT_AGENT,
@@ -196,9 +198,21 @@ def multi_agent_handle(
     user_profile: Optional[Dict[str, Any]] = None,
     use_zep_memory: bool = False,
     conversation_id: str = "main",
+    deadline_monotonic: Optional[float] = None,
+    cancel_event: Any = None,
 ) -> Dict[str, Any]:
     """Run the Health/InBody Multi-Agent RAG graph and return answer plus trace."""
     global _COMPILED_GRAPH
+    if deadline_monotonic is None:
+        budget = RequestBudget.start(
+            AGENT_REQUEST_TIMEOUT_SECONDS,
+            max_timeout_seconds=AGENT_MAX_REQUEST_TIMEOUT_SECONDS,
+        )
+    else:
+        budget = RequestBudget.from_deadline(
+            deadline_monotonic,
+            max_timeout_seconds=AGENT_MAX_REQUEST_TIMEOUT_SECONDS,
+        )
     personalization_context = user_profile or {}
     initial_state: AgentState = {
         "user_id": user_id,
@@ -217,9 +231,8 @@ def multi_agent_handle(
         "agent_trace": [],
         "errors": [],
         "selected_capabilities": [],
-        "deadline_monotonic": (
-            time.monotonic() + AGENT_REQUEST_TIMEOUT_SECONDS
-        ),
+        "deadline_monotonic": budget.deadline_monotonic,
+        "cancel_event": cancel_event,
     }
 
     if not personalization_context.get("available") and personalization_context.get("reason"):
@@ -272,13 +285,31 @@ def multi_agent_handle(
     )
     if memory_allowed and _remaining_seconds(initial_state) > AGENT_COMPOSER_RESERVE_SECONDS + 3:
         started = time.monotonic()
-        try:
-            from memory import sync as memory_sync
-            initial_state["memory_context"] = memory_sync.recall_confirmed(user_id, question)
-            _trace_call(initial_state, "ZepMemory", "recall", started, "success")
-        except Exception as exc:
-            _trace_call(initial_state, "ZepMemory", "recall", started, "warning",
-                        error_code=type(exc).__name__)
+        zep_timeout = _bounded_timeout(
+            initial_state,
+            zep_memory.timeout_seconds(),
+            reserve_seconds=AGENT_COMPOSER_RESERVE_SECONDS + 2,
+        )
+        if zep_timeout > 0:
+            try:
+                from memory import sync as memory_sync
+                initial_state["memory_context"] = call_with_supported_kwargs(
+                    memory_sync.recall_confirmed,
+                    user_id,
+                    question,
+                    timeout=zep_timeout,
+                    deadline_monotonic=initial_state["deadline_monotonic"],
+                )
+                _trace_call(initial_state, "ZepMemory", "recall", started, "success")
+            except Exception as exc:
+                _trace_call(initial_state, "ZepMemory", "recall", started, "warning",
+                            error_code=type(exc).__name__)
+
+    if _remaining_seconds(initial_state) <= 0:
+        append_error(initial_state, "Request deadline exhausted before multi-agent graph execution")
+        initial_state["safety_result"] = safety
+        initial_state["final_answer"] = _fallback_answer(initial_state)
+        return _response_from_state(initial_state)
 
     try:
         if StateGraph is not None:

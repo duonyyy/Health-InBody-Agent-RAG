@@ -11,7 +11,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.config import DEFAULT_COLLECTION_NAME
+from core.config import DEFAULT_COLLECTION_NAME, DEFAULT_QDRANT_SEARCH_TIMEOUT
+from harness.budget import (
+    BudgetExhaustedError,
+    call_with_supported_kwargs,
+    remaining_for_call,
+    resolve_deadline,
+)
 from rag.provenance import PROVENANCE_METADATA_FIELDS
 from rag.query_rewriter import expand_health_query
 from rag.rerank import rerank_documents
@@ -379,7 +385,12 @@ def bm25_search(
     return [doc for doc, _ in scored_docs[:limit]]
 
 
-def _get_embedding(query: str, timeout: float | None = None):
+def _get_embedding(
+    query: str,
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
+    raise_on_timeout: bool = False,
+):
     """
     Lay embedding neu backend da implement.
 
@@ -389,9 +400,17 @@ def _get_embedding(query: str, timeout: float | None = None):
     try:
         from llm.client import get_embedding
 
-        return get_embedding(query, timeout=timeout)
+        return call_with_supported_kwargs(
+            get_embedding,
+            query,
+            timeout=timeout,
+            deadline_monotonic=deadline_monotonic,
+        )
     except Exception as e:
+        is_timeout = isinstance(e, (BudgetExhaustedError, TimeoutError)) or "timeout" in type(e).__name__.lower()
         logger.warning("Embedding is not available, vector search skipped: %s", e)
+        if raise_on_timeout and is_timeout:
+            raise BudgetExhaustedError("Embedding timed out") from e
         return None
 
 
@@ -399,24 +418,69 @@ def vector_search_fallback(
     query: str,
     limit: int = DEFAULT_TOP_K,
     filters: Optional[Dict[str, Any]] = None,
-    embedding_timeout: float | None = None,
+    embedding_timeout: Optional[float] = None,
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
+    raise_on_timeout: bool = False,
 ) -> List[Dict]:
     """
     Tim kiem vector trong Qdrant neu embedding service va vector store san sang.
     """
-    vector = _get_embedding(query, timeout=embedding_timeout)
+    effective_deadline = None
+    if deadline_monotonic is not None or timeout is not None:
+        effective_deadline = resolve_deadline(
+            timeout=timeout,
+            deadline_monotonic=deadline_monotonic,
+            default_timeout=max(float(DEFAULT_QDRANT_SEARCH_TIMEOUT), float(embedding_timeout or 15.0)),
+        )
+
+    effective_embed_timeout = remaining_for_call(
+        effective_deadline,
+        embedding_timeout,
+        default_timeout=15.0,
+    )
+    if effective_deadline is not None and effective_embed_timeout is None:
+        if raise_on_timeout:
+            raise BudgetExhaustedError("Vector search budget exhausted before embedding")
+        return []
+
+    vector = _get_embedding(
+        query,
+        timeout=effective_embed_timeout,
+        deadline_monotonic=effective_deadline,
+        raise_on_timeout=raise_on_timeout,
+    )
     if vector is None:
+        return []
+
+    qdrant_timeout = remaining_for_call(
+        effective_deadline,
+        DEFAULT_QDRANT_SEARCH_TIMEOUT,
+        default_timeout=DEFAULT_QDRANT_SEARCH_TIMEOUT,
+        min_timeout=1.0,
+    )
+    if effective_deadline is not None and qdrant_timeout is None:
+        if raise_on_timeout:
+            raise BudgetExhaustedError("Vector search budget exhausted before Qdrant query")
         return []
 
     try:
         from rag.qdrant.client import search_vector
 
-        results = search_vector(
+        results = call_with_supported_kwargs(
+            search_vector,
             DEFAULT_COLLECTION_NAME,
             vector,
             limit=limit,
             filters=filters,
+            timeout=qdrant_timeout,
+            deadline_monotonic=effective_deadline,
+            raise_on_timeout=raise_on_timeout,
         )
+    except BudgetExhaustedError:
+        if raise_on_timeout:
+            raise
+        return []
     except Exception as e:
         logger.error("Vector search failed: %s", e)
         return []
@@ -599,8 +663,11 @@ def hybrid_search(
     limit: int = DEFAULT_TOP_K,
     filters: Optional[Dict[str, Any]] = None,
     use_rerank: bool = True,
-    embedding_timeout: float | None = None,
+    embedding_timeout: Optional[float] = None,
     expand_parents: Optional[bool] = None,
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
+    raise_on_timeout: bool = False,
 ) -> List[Dict]:
     """
     Tim kiem hybrid cho Health/InBody RAG.
@@ -608,12 +675,24 @@ def hybrid_search(
     Luong chay:
     1. Mo rong query theo thuat ngu Health/InBody.
     2. Chay BM25 neu index da duoc khoi tao.
-    3. Chay vector search neu embedding/Qdrant san sang.
-    4. Gop diem hybrid va rerank ket qua cuoi.
+    3. Chay vector search neu embedding/Qdrant san sang (cung chia se deadline).
+    4. Gop diem hybrid va rerank ket qua cuoi trong deadline con lai.
     5. Expand Child chunk thanh Parent document va deduplicate (Small-to-Big Retrieval).
     """
     if not query or not query.strip():
         return []
+
+    effective_deadline = None
+    if deadline_monotonic is not None or timeout is not None:
+        effective_deadline = resolve_deadline(
+            timeout=timeout,
+            deadline_monotonic=deadline_monotonic,
+            default_timeout=15.0,
+        )
+        if remaining_for_call(effective_deadline, timeout, default_timeout=15.0) is None:
+            if raise_on_timeout:
+                raise BudgetExhaustedError("Hybrid search budget exhausted")
+            return []
 
     should_expand = ENABLE_PARENT_RETRIEVAL if expand_parents is None else expand_parents
     candidate_limit = limit * 3 if should_expand else limit * 2
@@ -634,11 +713,15 @@ def hybrid_search(
         )
         vector_results = []
     else:
-        vector_results = vector_search_fallback(
+        vector_results = call_with_supported_kwargs(
+            vector_search_fallback,
             expanded_query,
             limit=candidate_limit,
             filters=filters,
             embedding_timeout=embedding_timeout,
+            timeout=timeout,
+            deadline_monotonic=effective_deadline,
+            raise_on_timeout=raise_on_timeout,
         )
 
     # Qdrant applies its filter server-side, but BM25 is process-local. Apply the
@@ -655,7 +738,13 @@ def hybrid_search(
 
     if use_rerank and combined:
         rerank_pool = combined[:candidate_limit]
-        reranked = rerank_documents(rerank_pool, query, top_n=candidate_limit)
+        reranked = call_with_supported_kwargs(
+            rerank_documents,
+            rerank_pool,
+            query,
+            top_n=candidate_limit,
+            deadline_monotonic=effective_deadline,
+        )
         if should_expand:
             return expand_parent_documents(reranked, max_parents=limit)
         return reranked[:limit]

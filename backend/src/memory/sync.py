@@ -6,12 +6,20 @@ read, and revocation waits for any in-flight external operation to finish.
 from memory import store, zep_memory
 from persistence import personalization_service as profiles
 from persistence.models import User
+from harness.budget import call_with_supported_kwargs
 import logging
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
-def recall_confirmed(subject: str, query: str) -> str:
+def recall_confirmed(
+    subject: str,
+    query: str,
+    *,
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
+) -> str:
     if not zep_memory.available():
         return ""
     with store.session_scope() as db:
@@ -32,7 +40,15 @@ def recall_confirmed(subject: str, query: str) -> str:
             category = "dietary_preference"
         elif any(word in lowered for word in ("tập", "đi bộ", "bơi")):
             category = "exercise_preference"
-        return zep_memory.recall(subject, category, consent=True, facts=facts)
+        return call_with_supported_kwargs(
+            zep_memory.recall,
+            subject,
+            category,
+            consent=True,
+            facts=facts,
+            timeout=timeout,
+            deadline_monotonic=deadline_monotonic,
+        )
 
 
 def sync_confirmed(subject: str) -> dict:

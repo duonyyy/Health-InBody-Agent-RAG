@@ -3,14 +3,19 @@
 import logging
 from typing import List
 
+from harness.budget import call_with_supported_kwargs
 from llm.client import (
     AGENT_TOOLS_ROUTE,
     GENERAL_CHAT_ROUTE,
     HEALTH_RAG_ROUTE,
+    LLM_ROUTER_TIMEOUT,
     WEB_SEARCH_ROUTE,
+    _keyword_route,
     detect_route,
 )
 from ..constants import (
+    AGENT_COMPOSER_RESERVE_SECONDS,
+    AGENT_MIN_CALL_TIMEOUT_SECONDS,
     GENERAL_CHAT_AGENT,
     INBODY_AGENT,
     NUTRITION_AGENT,
@@ -21,7 +26,13 @@ from ..constants import (
     WEB_SEARCH_AGENT,
     public_specialists,
 )
-from ..context import _has_any, _question
+from ..context import (
+    _bounded_timeout,
+    _deadline_monotonic,
+    _has_any,
+    _is_cancelled,
+    _question,
+)
 from ..parsing import (
     extract_height_cm,
     extract_pbf,
@@ -138,12 +149,34 @@ def supervisor_agent(state: AgentState) -> AgentState:
         selected.append(RAG_AGENT)
 
     if not selected:
-        try:
-            route = detect_route(state.get("history") or [], question)
-        except Exception as exc:
-            logger.warning("Route detection failed: %s", exc)
-            route = GENERAL_CHAT_ROUTE
-            append_error(state, "Route detection is temporarily unavailable")
+        router_timeout = _bounded_timeout(
+            state,
+            LLM_ROUTER_TIMEOUT,
+            reserve_seconds=AGENT_COMPOSER_RESERVE_SECONDS,
+            min_timeout=AGENT_MIN_CALL_TIMEOUT_SECONDS,
+        )
+        if _is_cancelled(state) or router_timeout <= 0:
+            route = _keyword_route(question)
+            append_trace(
+                state,
+                SUPERVISOR_AGENT,
+                "route_budget_fallback",
+                "warning",
+                "Used deterministic keyword route because request budget was low.",
+            )
+        else:
+            try:
+                route = call_with_supported_kwargs(
+                    detect_route,
+                    state.get("history") or [],
+                    question,
+                    timeout=router_timeout,
+                    deadline_monotonic=_deadline_monotonic(state),
+                )
+            except Exception as exc:
+                logger.warning("Route detection failed: %s", exc)
+                route = GENERAL_CHAT_ROUTE
+                append_error(state, "Route detection is temporarily unavailable")
         state["route"] = route
         if route == HEALTH_RAG_ROUTE:
             selected.append(RAG_AGENT)

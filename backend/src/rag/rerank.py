@@ -2,12 +2,18 @@
 import logging
 import os
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+from harness.budget import call_with_supported_kwargs, remaining_for_call
 
 logger = logging.getLogger(__name__)
 
 COHERE_API_KEY = os.environ.get("COHERE_API_KEY")
 DEFAULT_RANK_MODEL = os.environ.get("COHERE_RERANK_MODEL", "rerank-multilingual-v3.0")
+COHERE_RERANK_TIMEOUT_SECONDS = float(os.environ.get("COHERE_RERANK_TIMEOUT_SECONDS", "5"))
+COHERE_RERANK_MIN_TIMEOUT_SECONDS = max(
+    0.05, float(os.environ.get("COHERE_RERANK_MIN_TIMEOUT_SECONDS", "0.5"))
+)
 
 HEALTH_KEYWORDS = {
     "inbody_metric": [
@@ -53,7 +59,7 @@ HEALTH_KEYWORDS = {
 }
 
 
-def _get_cohere_client():
+def _get_cohere_client(timeout: Optional[float] = None):
     """Khoi tao Cohere client khi thuc su can, tranh loi import khi khong dung."""
     if not COHERE_API_KEY:
         return None
@@ -61,6 +67,12 @@ def _get_cohere_client():
     try:
         import cohere
 
+        if timeout is not None:
+            return call_with_supported_kwargs(
+                cohere.Client,
+                COHERE_API_KEY,
+                timeout=float(timeout),
+            )
         return cohere.Client(COHERE_API_KEY)
     except Exception as e:
         logger.warning("Cohere reranker is not available: %s", e)
@@ -149,8 +161,21 @@ def _rerank_with_cohere(
     query: str,
     top_n: int,
     rank_model: str,
+    *,
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
 ) -> Tuple[List[Any], bool]:
-    client = _get_cohere_client()
+    effective_timeout = remaining_for_call(
+        deadline_monotonic,
+        COHERE_RERANK_TIMEOUT_SECONDS if timeout is None else timeout,
+        default_timeout=COHERE_RERANK_TIMEOUT_SECONDS,
+        min_timeout=COHERE_RERANK_MIN_TIMEOUT_SECONDS,
+    )
+    if effective_timeout is None:
+        logger.warning("Skipping Cohere rerank because remaining budget is insufficient")
+        return [], False
+
+    client = call_with_supported_kwargs(_get_cohere_client, timeout=effective_timeout)
     if client is None:
         return [], False
 
@@ -171,11 +196,16 @@ def _rerank_with_cohere(
             len(process_docs),
             rank_model,
         )
-        results = client.rerank(
+        results = call_with_supported_kwargs(
+            client.rerank,
             query=query,
             documents=process_docs,
             top_n=min(top_n, len(process_docs)),
             model=rank_model,
+            request_options={
+                "timeout_in_seconds": effective_timeout,
+                "max_retries": 0,
+            },
         )
 
         ranked_docs = []
@@ -206,22 +236,20 @@ def _rerank_with_health_heuristic(docs: List[Any], query: str, top_n: int) -> Li
     return scored_docs[:top_n]
 
 
-def rerank_documents(docs, query, top_n=5, rank_model=DEFAULT_RANK_MODEL):
+def rerank_documents(
+    docs,
+    query,
+    top_n=5,
+    rank_model=DEFAULT_RANK_MODEL,
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
+):
     """
     Sap xep lai tai lieu truy xuat theo do phu hop voi cau hoi Health/InBody.
 
-    Uu tien Cohere multilingual rerank neu co COHERE_API_KEY. Neu khong co API
-    key hoac request loi, ham se fallback sang scoring cuc bo dua tren keyword
-    overlap, similarity_score va metadata content_type/domain.
-
-    Args:
-        docs: Danh sach document dang dict hoac LangChain Document.
-        query: Cau hoi/truy van cua nguoi dung.
-        top_n: So tai lieu cuoi cung can lay.
-        rank_model: Ten model rerank cua Cohere.
-
-    Returns:
-        Danh sach document da duoc gan relevance_score va sap xep giam dan.
+    Uu tien Cohere multilingual rerank neu co COHERE_API_KEY va con du budget.
+    Neu khong co API key, het budget hoac request loi, ham se fallback sang
+    scoring cuc bo dua tren keyword overlap, similarity_score va metadata.
     """
     if not docs:
         logger.info("Docs list is empty, skipping rerank")
@@ -236,6 +264,8 @@ def rerank_documents(docs, query, top_n=5, rank_model=DEFAULT_RANK_MODEL):
         query=query,
         top_n=top_n,
         rank_model=rank_model,
+        timeout=timeout,
+        deadline_monotonic=deadline_monotonic,
     )
     if used_external_reranker:
         return ranked_docs

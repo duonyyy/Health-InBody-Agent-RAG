@@ -8,6 +8,12 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from harness.budget import (
+    BudgetExhaustedError,
+    call_with_supported_kwargs,
+    remaining_for_call,
+    resolve_deadline,
+)
 from llm.embedding import get_custom_embedding
 
 logger = logging.getLogger(__name__)
@@ -56,6 +62,9 @@ LLM_REWRITE_MAX_TOKENS = int(os.environ.get("LLM_REWRITE_MAX_TOKENS", "128"))
 LLM_REWRITE_TIMEOUT = int(os.environ.get("LLM_REWRITE_TIMEOUT", "15"))
 LLM_COMPOSER_MAX_TOKENS = int(os.environ.get("LLM_COMPOSER_MAX_TOKENS", "96"))
 LLM_COMPOSER_TIMEOUT = int(os.environ.get("LLM_COMPOSER_TIMEOUT", "35"))
+LLM_FALLBACK_MIN_TIMEOUT_SECONDS = max(
+    0.01, float(os.environ.get("LLM_FALLBACK_MIN_TIMEOUT_SECONDS", "0.05"))
+)
 
 VIETNAMESE_LLM_API_URL = os.environ.get("VIETNAMESE_LLM_API_URL")
 
@@ -106,13 +115,19 @@ def get_llm_runtime_config() -> Dict[str, Any]:
     }
 
 
-def get_openai_client():
-    """Khoi tao OpenAI client neu co API key."""
+def get_openai_client(timeout: Optional[float] = None, max_retries: int = 0):
+    """Khoi tao OpenAI client neu co API key (tat SDK auto-retry de tranh chong retry)."""
     if not OPENAI_API_KEY:
         return None
     from openai import OpenAI
 
-    return OpenAI(api_key=OPENAI_API_KEY)
+    kwargs: Dict[str, Any] = {
+        "api_key": OPENAI_API_KEY,
+        "max_retries": max(0, int(max_retries)),
+    }
+    if timeout is not None:
+        kwargs["timeout"] = float(timeout)
+    return OpenAI(**kwargs)
 
 
 def _normalize_messages(messages=()) -> List[Dict[str, str]]:
@@ -138,11 +153,20 @@ def _chat_with_ollama(
     temperature: float = LLM_TEMPERATURE,
     max_tokens: int = LLM_MAX_TOKENS,
     think: Optional[bool] = OLLAMA_THINK,
-    timeout: int = LLM_TIMEOUT,
+    timeout: float = LLM_TIMEOUT,
+    deadline_monotonic: Optional[float] = None,
 ) -> str:
     selected_model = (model or OLLAMA_MODEL).strip()
     if not selected_model:
         raise RuntimeError("OLLAMA_MODEL is not configured")
+
+    effective_timeout = remaining_for_call(
+        deadline_monotonic,
+        timeout,
+        default_timeout=LLM_TIMEOUT,
+    )
+    if effective_timeout is None:
+        raise BudgetExhaustedError("Ollama request budget exhausted")
 
     payload = {
         "model": selected_model,
@@ -159,7 +183,7 @@ def _chat_with_ollama(
     response = requests.post(
         f"{OLLAMA_BASE_URL.rstrip('/')}/api/chat",
         json=payload,
-        timeout=timeout,
+        timeout=effective_timeout,
     )
     response.raise_for_status()
     data = response.json()
@@ -181,19 +205,37 @@ def _chat_with_openai(
     temperature: float = LLM_TEMPERATURE,
     max_tokens: int = LLM_MAX_TOKENS,
     raw: bool = False,
+    timeout: float = LLM_TIMEOUT,
+    deadline_monotonic: Optional[float] = None,
 ):
-    client = get_openai_client()
+    effective_timeout = remaining_for_call(
+        deadline_monotonic,
+        timeout,
+        default_timeout=LLM_TIMEOUT,
+    )
+    if effective_timeout is None:
+        raise BudgetExhaustedError("OpenAI request budget exhausted")
+
+    client = call_with_supported_kwargs(
+        get_openai_client,
+        timeout=effective_timeout,
+        max_retries=0,
+    )
     if client is None:
         raise RuntimeError("OPENAI_API_KEY is not configured")
     selected_model = (model or OPENAI_MODEL).strip()
     if not selected_model:
         raise RuntimeError("OPENAI_MODEL is not configured")
 
+    if hasattr(client, "with_options"):
+        client = client.with_options(max_retries=0, timeout=effective_timeout)
+
     response = client.chat.completions.create(
         model=selected_model,
         messages=_normalize_messages(messages),
         temperature=temperature,
         max_tokens=max_tokens,
+        timeout=effective_timeout,
     )
     if raw:
         return response.choices[0].message
@@ -204,9 +246,19 @@ def _chat_with_custom_api(
     messages=(),
     temperature: float = LLM_TEMPERATURE,
     max_tokens: int = LLM_MAX_TOKENS,
+    timeout: float = LLM_TIMEOUT,
+    deadline_monotonic: Optional[float] = None,
 ) -> str:
     if not VIETNAMESE_LLM_API_URL:
         raise RuntimeError("VIETNAMESE_LLM_API_URL is not configured")
+
+    effective_timeout = remaining_for_call(
+        deadline_monotonic,
+        timeout,
+        default_timeout=LLM_TIMEOUT,
+    )
+    if effective_timeout is None:
+        raise BudgetExhaustedError("Custom LLM request budget exhausted")
 
     response = requests.post(
         VIETNAMESE_LLM_API_URL,
@@ -216,7 +268,7 @@ def _chat_with_custom_api(
             "temperature": temperature,
             "max_tokens": max_tokens,
         },
-        timeout=LLM_TIMEOUT,
+        timeout=effective_timeout,
     )
     response.raise_for_status()
     result = response.json()
@@ -230,17 +282,31 @@ def openai_chat_complete(
     temperature: float = LLM_TEMPERATURE,
     max_tokens: int = LLM_MAX_TOKENS,
     think: Optional[bool] = OLLAMA_THINK,
-    timeout: int = LLM_TIMEOUT,
+    timeout: float = LLM_TIMEOUT,
+    deadline_monotonic: Optional[float] = None,
 ):
     """
     Ham chat completion dung chung cho cac module cu.
 
     Ten ham duoc giu lai de tuong thich, nhung provider mac dinh cua project la
     Ollama theo config hien tai. Neu Ollama/custom API loi, ham se fallback sang
-    OpenAI khi co OPENAI_API_KEY.
+    OpenAI khi co OPENAI_API_KEY va con du deadline chung.
     """
     provider = LLM_PROVIDER
     logger.info("Chat completion provider=%s model=%s", provider, model)
+
+    effective_deadline = resolve_deadline(
+        timeout=timeout,
+        deadline_monotonic=deadline_monotonic,
+        default_timeout=LLM_TIMEOUT,
+    )
+    primary_timeout = remaining_for_call(
+        effective_deadline,
+        timeout,
+        default_timeout=LLM_TIMEOUT,
+    )
+    if primary_timeout is None:
+        raise BudgetExhaustedError("LLM request budget exhausted before primary call")
 
     try:
         if provider in {"none", "offline", "disabled"}:
@@ -252,11 +318,19 @@ def openai_chat_complete(
                 temperature=temperature,
                 max_tokens=max_tokens,
                 raw=raw,
+                timeout=primary_timeout,
+                deadline_monotonic=effective_deadline,
             )
         if provider in {"custom", "vietnamese_llm"}:
             if raw:
                 raise ValueError("raw=True is not supported for custom API provider")
-            return _chat_with_custom_api(messages, temperature, max_tokens)
+            return _chat_with_custom_api(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=primary_timeout,
+                deadline_monotonic=effective_deadline,
+            )
 
         if raw:
             raise ValueError("raw=True is only supported for OpenAI provider")
@@ -266,17 +340,32 @@ def openai_chat_complete(
             temperature=temperature,
             max_tokens=max_tokens,
             think=think,
-            timeout=timeout,
+            timeout=primary_timeout,
+            deadline_monotonic=effective_deadline,
         )
     except Exception as e:
         logger.warning("Primary LLM provider failed: %s", e)
+        if isinstance(e, (BudgetExhaustedError, ValueError)):
+            raise
         if provider != "openai" and OPENAI_API_KEY:
+            fallback_timeout = remaining_for_call(
+                effective_deadline,
+                timeout,
+                default_timeout=LLM_TIMEOUT,
+                min_timeout=LLM_FALLBACK_MIN_TIMEOUT_SECONDS,
+            )
+            if fallback_timeout is None:
+                raise BudgetExhaustedError(
+                    "LLM request budget exhausted before OpenAI fallback"
+                ) from e
             return _chat_with_openai(
                 messages,
                 model=OPENAI_MODEL,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 raw=raw,
+                timeout=fallback_timeout,
+                deadline_monotonic=effective_deadline,
             )
         raise
 
@@ -286,7 +375,8 @@ def vietnamese_llm_chat_complete(
     temperature=0.2,
     max_tokens=LLM_MAX_TOKENS,
     think: Optional[bool] = OLLAMA_THINK,
-    timeout: int = LLM_TIMEOUT,
+    timeout: float = LLM_TIMEOUT,
+    deadline_monotonic: Optional[float] = None,
 ):
     """
     Goi LLM tieng Viet cho Health/InBody chatbot.
@@ -299,10 +389,11 @@ def vietnamese_llm_chat_complete(
         max_tokens=max_tokens,
         think=think,
         timeout=timeout,
+        deadline_monotonic=deadline_monotonic,
     )
 
 
-def get_embedding(text, model=None, timeout=None):
+def get_embedding(text, model=None, timeout=None, deadline_monotonic=None):
     """
     Lay embedding cho truy xuat tai lieu Health/InBody.
 
@@ -316,7 +407,12 @@ def get_embedding(text, model=None, timeout=None):
         cleaned = text.replace("\n", " ").strip()
 
     logger.info("Generating embedding for Health/InBody text")
-    return get_custom_embedding(cleaned, timeout=timeout)
+    return call_with_supported_kwargs(
+        get_custom_embedding,
+        cleaned,
+        timeout=timeout,
+        deadline_monotonic=deadline_monotonic,
+    )
 
 
 def gen_doc_prompt(docs):
@@ -366,11 +462,25 @@ def _is_follow_up_question(message: str) -> bool:
     return any(indicator in message_lower for indicator in follow_up_indicators)
 
 
-def detect_user_intent(history, message):
+def detect_user_intent(
+    history,
+    message,
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
+):
     """
     Viet lai cau hoi follow-up thanh cau hoi doc lap cho Health/InBody RAG.
     """
     if not history or (len(history) <= 1 and not _is_follow_up_question(message)):
+        return message
+
+    effective_timeout = remaining_for_call(
+        deadline_monotonic,
+        LLM_NORMALIZE_TIMEOUT if timeout is None else timeout,
+        default_timeout=LLM_NORMALIZE_TIMEOUT,
+    )
+    if effective_timeout is None:
+        logger.warning("Skipping follow-up normalization because request budget is exhausted")
         return message
 
     history_messages = generate_conversation_text(history)
@@ -403,11 +513,17 @@ Câu hỏi đã viết lại:"""
     ]
 
     try:
-        rephrased = openai_chat_complete(
+        call_kwargs: Dict[str, Any] = {
+            "temperature": 0.0,
+            "max_tokens": LLM_NORMALIZE_MAX_TOKENS,
+            "timeout": effective_timeout,
+        }
+        if deadline_monotonic is not None:
+            call_kwargs["deadline_monotonic"] = deadline_monotonic
+        rephrased = call_with_supported_kwargs(
+            openai_chat_complete,
             messages,
-            temperature=0.0,
-            max_tokens=LLM_NORMALIZE_MAX_TOKENS,
-            timeout=LLM_NORMALIZE_TIMEOUT,
+            **call_kwargs,
         ).strip()
         return rephrased or message
     except Exception as e:
@@ -473,7 +589,12 @@ def _keyword_route(message: str) -> str:
     return GENERAL_CHAT_ROUTE
 
 
-def detect_route(history, message):
+def detect_route(
+    history,
+    message,
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
+):
     """
     Chon route xu ly cho Health/InBody chatbot.
 
@@ -483,6 +604,15 @@ def detect_route(history, message):
     - web_search: thong tin moi can tra cuu web.
     - general_chat: chao hoi hoac ngoai pham vi.
     """
+    effective_timeout = remaining_for_call(
+        deadline_monotonic,
+        LLM_ROUTER_TIMEOUT if timeout is None else timeout,
+        default_timeout=LLM_ROUTER_TIMEOUT,
+    )
+    if effective_timeout is None:
+        logger.warning("Skipping LLM route detection because request budget is exhausted")
+        return _keyword_route(message)
+
     history_text = ""
     for msg in (history or [])[-4:]:
         role = msg.get("role", "user")
@@ -521,11 +651,17 @@ Route:"""
     ]
 
     try:
-        route = openai_chat_complete(
+        call_kwargs: Dict[str, Any] = {
+            "temperature": 0.0,
+            "max_tokens": LLM_ROUTER_MAX_TOKENS,
+            "timeout": effective_timeout,
+        }
+        if deadline_monotonic is not None:
+            call_kwargs["deadline_monotonic"] = deadline_monotonic
+        route = call_with_supported_kwargs(
+            openai_chat_complete,
             messages,
-            temperature=0.0,
-            max_tokens=LLM_ROUTER_MAX_TOKENS,
-            timeout=LLM_ROUTER_TIMEOUT,
+            **call_kwargs,
         ).strip().lower()
         for valid_route in VALID_ROUTES:
             if valid_route in route:

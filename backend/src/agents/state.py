@@ -29,6 +29,7 @@ class AgentState(TypedDict, total=False):
     route: str
     errors: List[str]
     deadline_monotonic: float
+    cancel_event: Any
 
 
 def append_trace(

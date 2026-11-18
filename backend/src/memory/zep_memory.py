@@ -10,8 +10,9 @@ import json
 import os
 import re
 from functools import lru_cache
-from typing import Any
+from typing import Any, Optional
 
+from harness.budget import remaining_for_call
 from harness.guards import has_untrusted_instruction
 
 
@@ -31,8 +32,11 @@ def timeout_seconds() -> float:
     return min(5.0, max(0.5, float(os.getenv("ZEP_HTTP_TIMEOUT_SECONDS", "2"))))
 
 
-def _request_options() -> dict:
-    return {"max_retries": 0}
+def _request_options(timeout: Optional[float] = None) -> dict:
+    options: dict = {"max_retries": 0}
+    if timeout is not None:
+        options["timeout_in_seconds"] = float(timeout)
+    return options
 
 
 def user_id_for(subject: str) -> str:
@@ -87,14 +91,31 @@ def _ensure_exists(get, create, identifier: dict, create_args: dict) -> None:
             raise
 
 
-def recall(subject: str, query: str, *, consent: bool, facts: list[dict]) -> str:
+def recall(
+    subject: str,
+    query: str,
+    *,
+    consent: bool,
+    facts: list[dict],
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
+) -> str:
     """Search only this user's graph; never promote results to trusted policy."""
     if not consent or not available() or not subject or not query.strip():
         return ""
+    effective_timeout = remaining_for_call(
+        deadline_monotonic,
+        timeout_seconds() if timeout is None else timeout,
+        default_timeout=timeout_seconds(),
+        min_timeout=0.1,
+    )
+    if effective_timeout is None:
+        return ""
+    req_opts = _request_options(timeout=effective_timeout if (timeout is not None or deadline_monotonic is not None) else None)
     try:
         results = _client().graph.search(
             user_id=user_id_for(subject), query=query.strip()[:400], scope="episodes", limit=3,
-            request_options=_request_options(),
+            request_options=req_opts,
         )
     except Exception as exc:
         if _status_code(exc) == 404:

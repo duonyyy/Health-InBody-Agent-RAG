@@ -5,6 +5,7 @@ import re
 import time
 from typing import Any, Dict, List, Optional
 
+from harness.budget import RequestBudget
 from harness.layers.budget_policy import reserve_allows_call
 from .constants import AGENT_REQUEST_TIMEOUT_SECONDS
 from .parsing import infer_goal, normalize_match_text
@@ -59,24 +60,63 @@ def _question(state: AgentState) -> str:
     return state.get("standalone_question") or state.get("question") or ""
 
 
-def _remaining_seconds(state: AgentState) -> float:
+def _deadline_monotonic(state: AgentState) -> Optional[float]:
     deadline = state.get("deadline_monotonic")
     if deadline is None:
+        deadline = state.get("deadline_at")
+    return float(deadline) if deadline is not None else None
+
+
+def _is_cancelled(state: AgentState) -> bool:
+    cancel_event = state.get("cancel_event")
+    return bool(cancel_event is not None and cancel_event.is_set())
+
+
+def _request_budget(state: AgentState) -> RequestBudget:
+    deadline = _deadline_monotonic(state)
+    if deadline is None:
+        return RequestBudget.start(AGENT_REQUEST_TIMEOUT_SECONDS)
+    return RequestBudget.from_deadline(deadline)
+
+
+def _remaining_seconds(state: AgentState) -> float:
+    if _is_cancelled(state):
+        return 0.0
+    deadline = _deadline_monotonic(state)
+    if deadline is None:
         return AGENT_REQUEST_TIMEOUT_SECONDS
-    return max(0.0, float(deadline) - time.monotonic())
+    return max(0.0, deadline - time.monotonic())
 
 
 def _bounded_timeout(
     state: AgentState,
     configured_timeout: float,
     reserve_seconds: float = 0.0,
+    min_timeout: float = 0.0,
 ) -> float:
-    return max(
-        0.0,
-        min(
-            float(configured_timeout),
-            _remaining_seconds(state) - float(reserve_seconds),
-        ),
+    if _is_cancelled(state):
+        return 0.0
+    bounded = _request_budget(state).bounded_timeout(
+        configured_timeout,
+        reserve_seconds=reserve_seconds,
+        min_timeout=min_timeout,
+    )
+    return 0.0 if bounded is None else bounded
+
+
+def _backoff_seconds(
+    state: AgentState,
+    base_delay: float,
+    *,
+    reserve_seconds: float = 0.0,
+    min_after_sleep: float = 0.25,
+) -> Optional[float]:
+    if _is_cancelled(state):
+        return None
+    return _request_budget(state).backoff_seconds(
+        base_delay,
+        reserve_seconds=reserve_seconds,
+        min_after_sleep=min_after_sleep,
     )
 
 

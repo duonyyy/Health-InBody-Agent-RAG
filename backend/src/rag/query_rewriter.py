@@ -1,7 +1,13 @@
 """Viet lai cau hoi cho Health/InBody Agent RAG."""
 import logging
 import re
-from typing import List
+from typing import List, Optional
+
+from harness.budget import (
+    BudgetExhaustedError,
+    call_with_supported_kwargs,
+    remaining_for_call,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +99,11 @@ def _clean_query_line(line: str) -> str:
     return line.strip()
 
 
-def _chat_complete(messages: List[dict], timeout: float | None = None) -> str:
+def _chat_complete(
+    messages: List[dict],
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
+) -> str:
     """
     Goi ham chat completion cua backend neu da duoc implement.
 
@@ -107,11 +117,21 @@ def _chat_complete(messages: List[dict], timeout: float | None = None) -> str:
             openai_chat_complete,
         )
 
-        return openai_chat_complete(
+        effective_timeout = remaining_for_call(
+            deadline_monotonic,
+            LLM_REWRITE_TIMEOUT if timeout is None else timeout,
+            default_timeout=LLM_REWRITE_TIMEOUT,
+        )
+        if effective_timeout is None:
+            raise BudgetExhaustedError("Query rewrite budget exhausted")
+
+        return call_with_supported_kwargs(
+            openai_chat_complete,
             messages,
             temperature=0.0,
             max_tokens=LLM_REWRITE_MAX_TOKENS,
-            timeout=timeout or LLM_REWRITE_TIMEOUT,
+            timeout=effective_timeout,
+            deadline_monotonic=deadline_monotonic,
         )
     except Exception as e:
         logger.warning("Chat completion is not available for query rewriting: %s", e)
@@ -163,7 +183,8 @@ def rewrite_query_to_multi_queries(
     original_query: str,
     num_queries: int = 3,
     use_expansion: bool = True,
-    timeout: float | None = None,
+    timeout: Optional[float] = None,
+    deadline_monotonic: Optional[float] = None,
 ) -> List[str]:
     """
     Viet lai mot cau hoi suc khoe/InBody thanh nhieu truy van retrieval.
@@ -220,7 +241,11 @@ Bây giờ hãy tạo {num_queries} câu truy vấn cho câu hỏi gốc trên:"
     logger.info("Rewriting health query: %s", original_query)
 
     try:
-        response = _chat_complete(messages, timeout=timeout)
+        response = _chat_complete(
+            messages,
+            timeout=timeout,
+            deadline_monotonic=deadline_monotonic,
+        )
         queries = []
 
         for line in response.strip().split("\n"):

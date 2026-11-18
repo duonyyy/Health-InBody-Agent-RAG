@@ -4,6 +4,7 @@ import logging
 import os
 import time
 from collections import OrderedDict
+import threading
 from threading import RLock
 from typing import Any, Optional
 
@@ -16,13 +17,21 @@ REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
 REDIS_DB = int(os.environ.get("REDIS_DB", "0"))
 CACHE_NAMESPACE = os.environ.get("CACHE_NAMESPACE", "health_inbody")
 CACHE_MEMORY_MAX_ENTRIES = max(1, int(os.environ.get("CACHE_MEMORY_MAX_ENTRIES", "256")))
-CACHE_REDIS_RETRY_SECONDS = max(1.0, float(os.environ.get("CACHE_REDIS_RETRY_SECONDS", "5")))
+CACHE_REDIS_RETRY_SECONDS = max(1.0, float(os.environ.get("CACHE_REDIS_RETRY_SECONDS", "15")))
+CACHE_REDIS_CONNECT_TIMEOUT_SECONDS = max(
+    0.1, float(os.environ.get("CACHE_REDIS_CONNECT_TIMEOUT_SECONDS", "1.0"))
+)
+CACHE_REDIS_SOCKET_TIMEOUT_SECONDS = max(
+    0.1, float(os.environ.get("CACHE_REDIS_SOCKET_TIMEOUT_SECONDS", "1.0"))
+)
 LLM_RESPONSE_CACHE_TTL_SECONDS = max(
     1, int(os.environ.get("LLM_RESPONSE_CACHE_TTL_SECONDS", "300"))
 )
 
 _redis_client = None
 _redis_last_attempt = 0.0
+_redis_probe_lock = threading.Lock()
+_redis_probe_in_flight = False
 _memory_cache = OrderedDict()
 _cache_lock = RLock()
 _llm_response_cache_stats = {"hits": 0, "misses": 0, "writes": 0, "invalidations": 0, "errors": 0}
@@ -37,36 +46,70 @@ def _namespaced_key(*parts) -> str:
     return ":".join([CACHE_NAMESPACE] + clean_parts)
 
 
-def get_redis_client():
+def get_redis_client(timeout: Optional[float] = None):
     """
     Lay Redis client neu Redis va package redis san sang.
 
-    Ham lazy-load de module van import duoc trong moi truong dev chua cai Redis.
+    Bao ve bang single-flight daemon probe de DNS lookup (socket.getaddrinfo)
+    cham khong bao gio chan request thread qua connect timeout.
     """
-    global _redis_client, _redis_last_attempt
+    global _redis_client, _redis_last_attempt, _redis_probe_in_flight
 
     if _redis_client is not None:
         return _redis_client
-    now = time.monotonic()
-    if now - _redis_last_attempt < CACHE_REDIS_RETRY_SECONDS:
-        return None
-    _redis_last_attempt = now
-    try:
-        import redis
 
-        client = redis.StrictRedis(
-            host=REDIS_HOST,
-            port=REDIS_PORT,
-            db=REDIS_DB,
-            socket_connect_timeout=2,
-            socket_timeout=2,
+    wait_budget = CACHE_REDIS_CONNECT_TIMEOUT_SECONDS
+    if timeout is not None:
+        wait_budget = min(wait_budget, max(0.0, float(timeout)))
+    if wait_budget <= 0.0:
+        return None
+
+    done_event = threading.Event()
+    with _redis_probe_lock:
+        if _redis_client is not None:
+            return _redis_client
+        now = time.monotonic()
+        if _redis_probe_in_flight or (
+            _redis_last_attempt > 0.0 and (now - _redis_last_attempt) < CACHE_REDIS_RETRY_SECONDS
+        ):
+            return None
+        _redis_probe_in_flight = True
+        _redis_last_attempt = now
+
+    def _probe() -> None:
+        global _redis_client, _redis_last_attempt, _redis_probe_in_flight
+        try:
+            import redis
+
+            client = redis.StrictRedis(
+                host=REDIS_HOST,
+                port=REDIS_PORT,
+                db=REDIS_DB,
+                socket_connect_timeout=CACHE_REDIS_CONNECT_TIMEOUT_SECONDS,
+                socket_timeout=CACHE_REDIS_SOCKET_TIMEOUT_SECONDS,
+            )
+            client.ping()
+            with _redis_probe_lock:
+                _redis_client = client
+            logger.info("Redis cache connected at %s:%s/%s", REDIS_HOST, REDIS_PORT, REDIS_DB)
+        except Exception as e:
+            logger.warning("Redis cache unavailable, using in-memory fallback: %s", type(e).__name__)
+            with _redis_probe_lock:
+                _redis_client = None
+        finally:
+            with _redis_probe_lock:
+                _redis_last_attempt = time.monotonic()
+                _redis_probe_in_flight = False
+            done_event.set()
+
+    thread = threading.Thread(target=_probe, name="redis-connect-probe", daemon=True)
+    thread.start()
+    if not done_event.wait(timeout=wait_budget):
+        logger.warning(
+            "Redis cache connect probe timed out after %.2fs; using fallback",
+            wait_budget,
         )
-        client.ping()
-        _redis_client = client
-        logger.info("Redis cache connected at %s:%s/%s", REDIS_HOST, REDIS_PORT, REDIS_DB)
-    except Exception as e:
-        logger.warning("Redis cache unavailable, using in-memory fallback: %s", e)
-        _redis_client = None
+        return None
 
     return _redis_client
 
