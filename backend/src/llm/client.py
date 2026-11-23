@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from core.http_client import get_shared_llm_session
 from harness.budget import (
     BudgetExhaustedError,
     call_with_supported_kwargs,
@@ -48,6 +49,21 @@ OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "").strip()
 
 LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "none").lower()
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
+
+_ORIGINAL_REQUESTS_POST = requests.post
+
+
+def get_llm_http_session() -> requests.Session:
+    """Tra ve HTTP Session co connection pool duoc tai su dung cho LLM."""
+    return get_shared_llm_session()
+
+
+def _post_llm_request(url: str, **kwargs) -> requests.Response:
+    """Thuc hien HTTP POST toi LLM qua Connection Pool session, fallback sang requests.post neu duoc monkeypatch trong test."""
+    if requests.post is not _ORIGINAL_REQUESTS_POST:
+        return requests.post(url, **kwargs)
+    session = get_llm_http_session()
+    return session.post(url, **kwargs)
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "").strip()
 OLLAMA_THINK = _env_optional_bool("OLLAMA_THINK", None)
 OLLAMA_NUM_CTX = int(os.environ.get("OLLAMA_NUM_CTX", "2048"))
@@ -180,7 +196,7 @@ def _chat_with_ollama(
     }
     if think is not None:
         payload["think"] = think
-    response = requests.post(
+    response = _post_llm_request(
         f"{OLLAMA_BASE_URL.rstrip('/')}/api/chat",
         json=payload,
         timeout=effective_timeout,
@@ -260,7 +276,7 @@ def _chat_with_custom_api(
     if effective_timeout is None:
         raise BudgetExhaustedError("Custom LLM request budget exhausted")
 
-    response = requests.post(
+    response = _post_llm_request(
         VIETNAMESE_LLM_API_URL,
         headers={"Content-Type": "application/json"},
         json={

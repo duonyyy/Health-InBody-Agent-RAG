@@ -1,0 +1,1 @@
+"""FastAPI common-patterns example."""

@@ -102,6 +102,7 @@ data_pipeline/logs/
 # Local test/runtime reports
 test-results/
 coverage.xml
+*.zip
 
 # Node/frontend dependencies if added later
 node_modules/

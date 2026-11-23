@@ -2,14 +2,15 @@
 
 import logging
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from starlette.concurrency import run_in_threadpool
 
 from inbody_ocr.api.dependencies import get_inbody_service, get_ollama_client, get_paddle_reader
-from inbody_ocr.clients.ollama import OllamaError, OllamaModelNotFoundError, OllamaTimeoutError
-from inbody_ocr.clients.paddle import PaddleOcrError
-from inbody_ocr.config import get_settings
+from inbody_ocr.clients.ollama import OllamaClient, OllamaError, OllamaModelNotFoundError, OllamaTimeoutError
+from inbody_ocr.clients.paddle import PaddleOcrReader, PaddleOcrError
+from inbody_ocr.config import Settings, get_settings
 from inbody_ocr.imaging.preprocess import FileValidationError, PdfConversionError, prepare_upload_images
+from inbody_ocr.inbody.extractor import InBodyOcrService
 from inbody_ocr.inbody.schemas import InBodyResponse
 
 logger = logging.getLogger(__name__)
@@ -17,9 +18,12 @@ app = FastAPI(title="InBody OCR Paddle Service", version="1.0.0")
 
 
 @app.get("/health")
-def health() -> dict:
-    reachable, available, _ = get_ollama_client().health()
-    paddle_ok = get_paddle_reader().is_available()
+def health(
+    ollama_client: OllamaClient = Depends(get_ollama_client),
+    paddle_reader: PaddleOcrReader = Depends(get_paddle_reader),
+) -> dict:
+    reachable, available, _ = ollama_client.health()
+    paddle_ok = paddle_reader.is_available()
     ok = reachable and available and paddle_ok
     return {
         "status": "ok" if ok else "degraded",
@@ -29,8 +33,11 @@ def health() -> dict:
 
 
 @app.post("/ocr/inbody", response_model=InBodyResponse)
-async def ocr_inbody(file: UploadFile = File(...)) -> InBodyResponse:
-    settings = get_settings()
+async def ocr_inbody(
+    file: UploadFile = File(...),
+    settings: Settings = Depends(get_settings),
+    inbody_service: InBodyOcrService = Depends(get_inbody_service),
+) -> InBodyResponse:
     try:
         content = await file.read(settings.max_upload_bytes + 1)
         if not content or len(content) > settings.max_upload_bytes:
@@ -38,7 +45,7 @@ async def ocr_inbody(file: UploadFile = File(...)) -> InBodyResponse:
         images = await run_in_threadpool(prepare_upload_images, content, file.filename, settings)
         if not settings.ollama_model:
             raise OllamaModelNotFoundError("Chưa cấu hình model LLM bóc tách văn bản.")
-        return await run_in_threadpool(get_inbody_service().extract, images)
+        return await run_in_threadpool(inbody_service.extract, images)
     except FileValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except PdfConversionError as exc:

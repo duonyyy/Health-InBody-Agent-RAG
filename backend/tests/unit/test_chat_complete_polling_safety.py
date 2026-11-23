@@ -22,7 +22,16 @@ from fastapi.testclient import TestClient
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 from persistence.database import Base
 from persistence.models import User
+from api.dependencies import get_async_result_cls
 from memory import store
+
+
+@pytest.fixture(autouse=True)
+def clean_overrides():
+    import api.app as api_app
+    api_app.app.dependency_overrides.clear()
+    yield
+    api_app.app.dependency_overrides.clear()
 
 
 @compiles(JSONB, "sqlite")
@@ -68,7 +77,7 @@ def test_instant_poll_returns_pending_immediately_without_blocking(memory_db, mo
         def __init__(self, tid):
             pass
 
-    monkeypatch.setattr(api_app, "AsyncResult", FakeAsyncResult)
+    api_app.app.dependency_overrides[get_async_result_cls] = lambda: FakeAsyncResult
     client = TestClient(api_app.app)
 
     response = client.get(
@@ -96,7 +105,7 @@ def test_wait_poll_timeout_returns_current_status_instead_of_504(memory_db, monk
         def __init__(self, tid):
             pass
 
-    monkeypatch.setattr(api_app, "AsyncResult", FakeAsyncResult)
+    api_app.app.dependency_overrides[get_async_result_cls] = lambda: FakeAsyncResult
     client = TestClient(api_app.app)
 
     response = client.get(
@@ -123,7 +132,7 @@ def test_completed_task_returns_success_result(memory_db, monkeypatch):
         def __init__(self, tid):
             pass
 
-    monkeypatch.setattr(api_app, "AsyncResult", FakeAsyncResult)
+    api_app.app.dependency_overrides[get_async_result_cls] = lambda: FakeAsyncResult
     client = TestClient(api_app.app)
 
     response = client.get(

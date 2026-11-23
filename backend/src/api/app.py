@@ -3,14 +3,15 @@
 import logging
 import os
 import time
-from typing import Optional
+from typing import Any, Callable, Optional
 
 try:
     from celery.result import AsyncResult
 except Exception:
     AsyncResult = None
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
+from fastapi.params import Depends as DependsClass
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text as sql_text
@@ -46,6 +47,7 @@ from api.common import (
     _task_poll_timeout_seconds,
     get_app_dep,
 )
+from api.dependencies import get_readiness_reporter
 from api.corpus import (
     create_document,
     create_vector_collection,
@@ -172,6 +174,14 @@ def load_bm25_snapshot_on_startup():
         logger.warning("BM25 snapshot unavailable or invalid; see /health/ready for corpus_release_sync")
 
 
+@app.on_event("shutdown")
+def shutdown_http_clients_on_shutdown():
+    """Close shared pooled HTTP client sessions on shutdown."""
+    from core.http_client import close_http_sessions
+
+    close_http_sessions()
+
+
 @app.get("/")
 async def root():
     return {
@@ -275,9 +285,10 @@ def _readiness_report(deadline_monotonic: Optional[float] = None) -> dict:
 
 
 @app.get("/health/ready")
-async def readiness():
+async def readiness(report_fn: Any = Depends(get_readiness_reporter)):
+    if isinstance(report_fn, DependsClass):
+        report_fn = get_readiness_reporter()
     budget = RequestBudget.start(_health_probe_timeout_seconds(), max_timeout_seconds=10.0)
-    report_fn = get_app_dep("_readiness_report", _readiness_report)
     try:
         result = await get_lane("probe").run(
             report_fn,
