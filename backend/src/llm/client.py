@@ -4,7 +4,7 @@ import logging
 import os
 import re
 import unicodedata
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
 
 import requests
 
@@ -163,6 +163,208 @@ def _normalize_messages(messages=()) -> List[Dict[str, str]]:
     return normalized
 
 
+@runtime_checkable
+class LLMAdapter(Protocol):
+    """Protocol for LLM Provider Strategy / Adapter."""
+
+    def chat(
+        self,
+        messages=(),
+        *,
+        model: Optional[str] = None,
+        temperature: float = LLM_TEMPERATURE,
+        max_tokens: int = LLM_MAX_TOKENS,
+        think: Optional[bool] = None,
+        raw: bool = False,
+        timeout: float = LLM_TIMEOUT,
+        deadline_monotonic: Optional[float] = None,
+    ) -> Any:
+        ...
+
+
+class OllamaAdapter:
+    """Strategy adapter for Ollama chat completions."""
+
+    def chat(
+        self,
+        messages=(),
+        *,
+        model: Optional[str] = None,
+        temperature: float = LLM_TEMPERATURE,
+        max_tokens: int = LLM_MAX_TOKENS,
+        think: Optional[bool] = None,
+        raw: bool = False,
+        timeout: float = LLM_TIMEOUT,
+        deadline_monotonic: Optional[float] = None,
+    ) -> str:
+        if raw:
+            raise ValueError("raw=True is only supported for OpenAI provider")
+        selected_model = (model or OLLAMA_MODEL).strip()
+        if not selected_model:
+            raise RuntimeError("OLLAMA_MODEL is not configured")
+
+        effective_timeout = remaining_for_call(
+            deadline_monotonic,
+            timeout,
+            default_timeout=LLM_TIMEOUT,
+        )
+        if effective_timeout is None:
+            raise BudgetExhaustedError("Ollama request budget exhausted")
+
+        payload = {
+            "model": selected_model,
+            "messages": _normalize_messages(messages),
+            "stream": False,
+            "options": {
+                "temperature": temperature,
+                "num_predict": max_tokens,
+                "num_ctx": OLLAMA_NUM_CTX,
+            },
+        }
+        effective_think = think if think is not None else OLLAMA_THINK
+        if effective_think is not None:
+            payload["think"] = effective_think
+
+        response = _post_llm_request(
+            f"{OLLAMA_BASE_URL.rstrip('/')}/api/chat",
+            json=payload,
+            timeout=effective_timeout,
+        )
+        response.raise_for_status()
+        data = response.json()
+        message = data.get("message", {})
+        content = str(message.get("content") or "").strip()
+        if not content:
+            if message.get("thinking"):
+                raise RuntimeError(
+                    "LLM returned thinking output without final content; adjust "
+                    "OLLAMA_THINK or the task token budget for the configured model"
+                )
+            raise RuntimeError("LLM returned an empty response")
+        return content
+
+
+class OpenAIAdapter:
+    """Strategy adapter for OpenAI client completions."""
+
+    def chat(
+        self,
+        messages=(),
+        *,
+        model: Optional[str] = None,
+        temperature: float = LLM_TEMPERATURE,
+        max_tokens: int = LLM_MAX_TOKENS,
+        think: Optional[bool] = None,
+        raw: bool = False,
+        timeout: float = LLM_TIMEOUT,
+        deadline_monotonic: Optional[float] = None,
+    ) -> Any:
+        effective_timeout = remaining_for_call(
+            deadline_monotonic,
+            timeout,
+            default_timeout=LLM_TIMEOUT,
+        )
+        if effective_timeout is None:
+            raise BudgetExhaustedError("OpenAI request budget exhausted")
+
+        client = call_with_supported_kwargs(
+            get_openai_client,
+            timeout=effective_timeout,
+            max_retries=0,
+        )
+        if client is None:
+            raise RuntimeError("OPENAI_API_KEY is not configured")
+        selected_model = (model or OPENAI_MODEL).strip()
+        if not selected_model:
+            raise RuntimeError("OPENAI_MODEL is not configured")
+
+        if hasattr(client, "with_options"):
+            client = client.with_options(max_retries=0, timeout=effective_timeout)
+
+        response = client.chat.completions.create(
+            model=selected_model,
+            messages=_normalize_messages(messages),
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=effective_timeout,
+        )
+        if raw:
+            return response.choices[0].message
+        return response.choices[0].message.content
+
+
+class CustomApiAdapter:
+    """Strategy adapter for Custom Vietnamese LLM HTTP endpoint."""
+
+    def chat(
+        self,
+        messages=(),
+        *,
+        model: Optional[str] = None,
+        temperature: float = LLM_TEMPERATURE,
+        max_tokens: int = LLM_MAX_TOKENS,
+        think: Optional[bool] = None,
+        raw: bool = False,
+        timeout: float = LLM_TIMEOUT,
+        deadline_monotonic: Optional[float] = None,
+    ) -> str:
+        if raw:
+            raise ValueError("raw=True is not supported for custom API provider")
+        if not VIETNAMESE_LLM_API_URL:
+            raise RuntimeError("VIETNAMESE_LLM_API_URL is not configured")
+
+        effective_timeout = remaining_for_call(
+            deadline_monotonic,
+            timeout,
+            default_timeout=LLM_TIMEOUT,
+        )
+        if effective_timeout is None:
+            raise BudgetExhaustedError("Custom LLM request budget exhausted")
+
+        response = _post_llm_request(
+            VIETNAMESE_LLM_API_URL,
+            headers={"Content-Type": "application/json"},
+            json={
+                "messages": _normalize_messages(messages),
+                "temperature": temperature,
+                "max_tokens": max_tokens,
+            },
+            timeout=effective_timeout,
+        )
+        response.raise_for_status()
+        result = response.json()
+        return result["choices"][0]["message"]["content"]
+
+
+class DisabledAdapter:
+    """Strategy adapter for disabled/offline LLM providers."""
+
+    def chat(self, *args, **kwargs) -> Any:
+        raise RuntimeError("LLM provider is disabled")
+
+
+ADAPTERS: dict[str, LLMAdapter] = {
+    "ollama": OllamaAdapter(),
+    "openai": OpenAIAdapter(),
+    "custom": CustomApiAdapter(),
+    "vietnamese_llm": CustomApiAdapter(),
+    "none": DisabledAdapter(),
+    "offline": DisabledAdapter(),
+    "disabled": DisabledAdapter(),
+}
+
+
+def register_llm_adapter(name: str, adapter: LLMAdapter) -> None:
+    """Register or replace an LLM adapter strategy for runtime extension."""
+    ADAPTERS[name.lower().strip()] = adapter
+
+
+def get_llm_adapter(provider: Optional[str] = None) -> LLMAdapter:
+    """Factory returning the appropriate LLMAdapter strategy for provider or LLM_PROVIDER."""
+    name = (provider if provider is not None else LLM_PROVIDER or "ollama").strip().lower()
+    return ADAPTERS.get(name, ADAPTERS["ollama"])
+
+
 def _chat_with_ollama(
     messages=(),
     model: Optional[str] = None,
@@ -172,47 +374,15 @@ def _chat_with_ollama(
     timeout: float = LLM_TIMEOUT,
     deadline_monotonic: Optional[float] = None,
 ) -> str:
-    selected_model = (model or OLLAMA_MODEL).strip()
-    if not selected_model:
-        raise RuntimeError("OLLAMA_MODEL is not configured")
-
-    effective_timeout = remaining_for_call(
-        deadline_monotonic,
-        timeout,
-        default_timeout=LLM_TIMEOUT,
+    return OllamaAdapter().chat(
+        messages=messages,
+        model=model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        think=think,
+        timeout=timeout,
+        deadline_monotonic=deadline_monotonic,
     )
-    if effective_timeout is None:
-        raise BudgetExhaustedError("Ollama request budget exhausted")
-
-    payload = {
-        "model": selected_model,
-        "messages": _normalize_messages(messages),
-        "stream": False,
-        "options": {
-            "temperature": temperature,
-            "num_predict": max_tokens,
-            "num_ctx": OLLAMA_NUM_CTX,
-        },
-    }
-    if think is not None:
-        payload["think"] = think
-    response = _post_llm_request(
-        f"{OLLAMA_BASE_URL.rstrip('/')}/api/chat",
-        json=payload,
-        timeout=effective_timeout,
-    )
-    response.raise_for_status()
-    data = response.json()
-    message = data.get("message", {})
-    content = str(message.get("content") or "").strip()
-    if not content:
-        if message.get("thinking"):
-            raise RuntimeError(
-                "LLM returned thinking output without final content; adjust "
-                "OLLAMA_THINK or the task token budget for the configured model"
-            )
-        raise RuntimeError("LLM returned an empty response")
-    return content
 
 
 def _chat_with_openai(
@@ -224,38 +394,15 @@ def _chat_with_openai(
     timeout: float = LLM_TIMEOUT,
     deadline_monotonic: Optional[float] = None,
 ):
-    effective_timeout = remaining_for_call(
-        deadline_monotonic,
-        timeout,
-        default_timeout=LLM_TIMEOUT,
-    )
-    if effective_timeout is None:
-        raise BudgetExhaustedError("OpenAI request budget exhausted")
-
-    client = call_with_supported_kwargs(
-        get_openai_client,
-        timeout=effective_timeout,
-        max_retries=0,
-    )
-    if client is None:
-        raise RuntimeError("OPENAI_API_KEY is not configured")
-    selected_model = (model or OPENAI_MODEL).strip()
-    if not selected_model:
-        raise RuntimeError("OPENAI_MODEL is not configured")
-
-    if hasattr(client, "with_options"):
-        client = client.with_options(max_retries=0, timeout=effective_timeout)
-
-    response = client.chat.completions.create(
-        model=selected_model,
-        messages=_normalize_messages(messages),
+    return OpenAIAdapter().chat(
+        messages=messages,
+        model=model,
         temperature=temperature,
         max_tokens=max_tokens,
-        timeout=effective_timeout,
+        raw=raw,
+        timeout=timeout,
+        deadline_monotonic=deadline_monotonic,
     )
-    if raw:
-        return response.choices[0].message
-    return response.choices[0].message.content
 
 
 def _chat_with_custom_api(
@@ -265,30 +412,13 @@ def _chat_with_custom_api(
     timeout: float = LLM_TIMEOUT,
     deadline_monotonic: Optional[float] = None,
 ) -> str:
-    if not VIETNAMESE_LLM_API_URL:
-        raise RuntimeError("VIETNAMESE_LLM_API_URL is not configured")
-
-    effective_timeout = remaining_for_call(
-        deadline_monotonic,
-        timeout,
-        default_timeout=LLM_TIMEOUT,
+    return CustomApiAdapter().chat(
+        messages=messages,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        timeout=timeout,
+        deadline_monotonic=deadline_monotonic,
     )
-    if effective_timeout is None:
-        raise BudgetExhaustedError("Custom LLM request budget exhausted")
-
-    response = _post_llm_request(
-        VIETNAMESE_LLM_API_URL,
-        headers={"Content-Type": "application/json"},
-        json={
-            "messages": _normalize_messages(messages),
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        },
-        timeout=effective_timeout,
-    )
-    response.raise_for_status()
-    result = response.json()
-    return result["choices"][0]["message"]["content"]
 
 
 def openai_chat_complete(
@@ -305,8 +435,9 @@ def openai_chat_complete(
     Ham chat completion dung chung cho cac module cu.
 
     Ten ham duoc giu lai de tuong thich, nhung provider mac dinh cua project la
-    Ollama theo config hien tai. Neu Ollama/custom API loi, ham se fallback sang
-    OpenAI khi co OPENAI_API_KEY va con du deadline chung.
+    Ollama theo config hien tai. Provider duoc dispatch toi Strategy/Adapter
+    tuong ung qua get_llm_adapter(LLM_PROVIDER).
+    Neu primary provider loi va co OPENAI_API_KEY, ham fallback sang OpenAIAdapter.
     """
     provider = LLM_PROVIDER
     logger.info("Chat completion provider=%s model=%s", provider, model)
@@ -325,37 +456,14 @@ def openai_chat_complete(
         raise BudgetExhaustedError("LLM request budget exhausted before primary call")
 
     try:
-        if provider in {"none", "offline", "disabled"}:
-            raise RuntimeError("LLM provider is disabled")
-        if provider == "openai":
-            return _chat_with_openai(
-                messages,
-                model=model or OPENAI_MODEL,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                raw=raw,
-                timeout=primary_timeout,
-                deadline_monotonic=effective_deadline,
-            )
-        if provider in {"custom", "vietnamese_llm"}:
-            if raw:
-                raise ValueError("raw=True is not supported for custom API provider")
-            return _chat_with_custom_api(
-                messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                timeout=primary_timeout,
-                deadline_monotonic=effective_deadline,
-            )
-
-        if raw:
-            raise ValueError("raw=True is only supported for OpenAI provider")
-        return _chat_with_ollama(
-            messages,
-            model=model or OLLAMA_MODEL,
+        adapter = get_llm_adapter(provider)
+        return adapter.chat(
+            messages=messages,
+            model=model,
             temperature=temperature,
             max_tokens=max_tokens,
             think=think,
+            raw=raw,
             timeout=primary_timeout,
             deadline_monotonic=effective_deadline,
         )
@@ -374,8 +482,8 @@ def openai_chat_complete(
                 raise BudgetExhaustedError(
                     "LLM request budget exhausted before OpenAI fallback"
                 ) from e
-            return _chat_with_openai(
-                messages,
+            return get_llm_adapter("openai").chat(
+                messages=messages,
                 model=OPENAI_MODEL,
                 temperature=temperature,
                 max_tokens=max_tokens,
