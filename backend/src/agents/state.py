@@ -30,6 +30,7 @@ class AgentState(TypedDict, total=False):
     errors: List[str]
     deadline_monotonic: float
     cancel_event: Any
+    dependencies: Optional[Any]
 
 
 def append_trace(

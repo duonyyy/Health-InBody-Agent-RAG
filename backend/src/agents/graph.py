@@ -26,6 +26,11 @@ from rag.query_rewriter import (
 from rag.rerank import rerank_documents as _default_rerank_documents
 from rag.search import hybrid_search as _default_hybrid_search
 
+from .dependencies import (
+    AgentDependencies,
+    resolve_agent_dependencies,
+)
+
 from .composer import (
     _build_evidence,
     _fallback_answer,
@@ -199,6 +204,7 @@ def multi_agent_handle(
     conversation_id: str = "main",
     deadline_monotonic: Optional[float] = None,
     cancel_event: Any = None,
+    dependencies: Optional[AgentDependencies] = None,
 ) -> Dict[str, Any]:
     """Run the Health/InBody Multi-Agent RAG graph and return answer plus trace."""
     global _COMPILED_GRAPH
@@ -231,7 +237,10 @@ def multi_agent_handle(
         "selected_capabilities": [],
         "deadline_monotonic": budget.deadline_monotonic,
         "cancel_event": cancel_event,
+        "dependencies": dependencies,
     }
+
+    deps = resolve_agent_dependencies(initial_state)
 
     if not personalization_context.get("available") and personalization_context.get("reason"):
         append_trace(
@@ -250,7 +259,7 @@ def multi_agent_handle(
             "Loaded saved user profile and/or latest InBody measurement.",
         )
 
-    safety = check_medical_safety(question, _medical_conditions(initial_state))
+    safety = deps.medical_safety_fn(question, _medical_conditions(initial_state))
     initial_state["safety_result"] = safety
     append_trace(initial_state, SAFETY_AGENT, "precheck_medical_safety", "success",
                  f"Safety risk level: {safety.get('risk_level', 'unknown')}.")
@@ -267,7 +276,7 @@ def multi_agent_handle(
     if fast_path_state is not None:
         return _response_from_state(fast_path_state)
 
-    memory_answer = answer_memory_question(question, personalization_context)
+    memory_answer = deps.answer_memory_fn(question, personalization_context)
     if memory_answer is not None and safety.get("risk_level") == "low":
         initial_state["final_answer"] = memory_answer
         initial_state["fast_path"] = "personal_memory"

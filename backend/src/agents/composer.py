@@ -309,10 +309,11 @@ def _insufficient_evidence_answer(state: AgentState) -> str:
 
 
 def response_composer_agent(state: AgentState) -> AgentState:
-    from . import graph as graph_mod
+    from .dependencies import resolve_agent_dependencies
 
-    openai_chat_fn = getattr(graph_mod, "openai_chat_complete", _default_openai_chat_complete)
-    vietnamese_llm_fn = getattr(graph_mod, "vietnamese_llm_chat_complete", _default_vietnamese_llm_chat_complete)
+    deps = resolve_agent_dependencies(state)
+    openai_chat_fn = deps.openai_chat_fn
+    vietnamese_llm_fn = deps.vietnamese_llm_fn
 
     question = _question(state)
     selected = state.get("selected_capabilities") or state.get("selected_agents") or []

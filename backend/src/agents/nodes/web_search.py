@@ -6,6 +6,7 @@ import time
 from harness.budget import call_with_supported_kwargs
 from harness.layers.injection_guard import clean_web_result
 from integrations.tavily import tavily_search_health
+from ..dependencies import resolve_agent_dependencies
 from ..constants import (
     AGENT_COMPOSER_RESERVE_SECONDS,
     AGENT_MIN_CALL_TIMEOUT_SECONDS,
@@ -26,12 +27,11 @@ logger = logging.getLogger(__name__)
 
 
 def web_search_agent(state: AgentState) -> AgentState:
-    from .. import graph as graph_mod
-
     if WEB_SEARCH_AGENT not in state.get("selected_agents", []):
         return state
 
-    tavily_fn = getattr(graph_mod, "tavily_search_health", tavily_search_health)
+    deps = resolve_agent_dependencies(state)
+    tavily_fn = deps.tavily_fn
 
     question = _question(state)
     if _is_cancelled(state):

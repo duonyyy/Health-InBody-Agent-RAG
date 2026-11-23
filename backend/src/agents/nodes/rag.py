@@ -16,6 +16,7 @@ from rag.query_rewriter import rewrite_query_to_multi_queries
 from rag.rerank import rerank_documents
 from rag.retrieval_errors import RetrievalDependencyError
 from rag.search import hybrid_search, _content_key, _check_same_chunk
+from ..dependencies import resolve_agent_dependencies
 from ..composer import _set_evidence_state
 from ..constants import (
     AGENT_COMPOSER_RESERVE_SECONDS,
@@ -70,15 +71,16 @@ def _retrieval_filters(state: AgentState) -> Optional[Dict[str, Any]]:
 
 
 def rag_agent(state: AgentState) -> AgentState:
-    from .. import graph as graph_mod
-
     if RAG_AGENT not in state.get("selected_agents", []):
         return state
 
+    deps = resolve_agent_dependencies(state)
+    import sys
+    graph_mod = sys.modules.get("agents.graph")
     max_queries = getattr(graph_mod, "RAG_MAX_RETRIEVAL_QUERIES", RAG_MAX_RETRIEVAL_QUERIES)
-    rewrite_fn = getattr(graph_mod, "rewrite_query_to_multi_queries", rewrite_query_to_multi_queries)
-    search_fn = getattr(graph_mod, "hybrid_search", hybrid_search)
-    rerank_fn = getattr(graph_mod, "rerank_documents", rerank_documents)
+    rewrite_fn = deps.rewrite_fn
+    search_fn = deps.search_fn
+    rerank_fn = deps.rerank_fn
 
     question = _question(state)
     deadline_monotonic = _deadline_monotonic(state)
