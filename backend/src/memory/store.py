@@ -1,6 +1,8 @@
 """Bounded chat history and explicit fact confirmation, always owner-scoped."""
+import json
 import os
 import re
+from typing import Optional
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -215,10 +217,101 @@ def propose_from_turn(subject: str, message_id: str, question: str) -> list[dict
 def create_task(subject: str) -> str:
     with session_scope() as db:
         user = profiles._get_user(db, subject, create=True)
-        row = ChatTask(user_id=user.id, expires_at=now() + timedelta(hours=1))
+        stamp = now()
+        row = ChatTask(
+            user_id=user.id,
+            status="pending",
+            created_at=stamp,
+            updated_at=stamp,
+            expires_at=stamp + timedelta(hours=1),
+        )
         db.add(row)
         db.flush()
         return str(row.id)
+
+
+def delete_task(subject: str, task_id: str) -> bool:
+    """Delete a task by ID and owner subject, e.g. for cleanup after failed dispatch."""
+    with session_scope() as db:
+        row = db.query(ChatTask).join(User).filter(
+            ChatTask.id == _uuid(task_id),
+            User.external_id == subject,
+            User.deleted_at.is_(None),
+        ).first()
+        if row is not None:
+            db.delete(row)
+            return True
+        return False
+
+
+def get_task_if_completed(subject: str, task_id: str) -> Optional[dict]:
+    """Return completed result payload if task has already run to completion (idempotency guard)."""
+    with session_scope() as db:
+        row = db.query(ChatTask).join(User).filter(
+            ChatTask.id == _uuid(task_id),
+            User.external_id == subject,
+            User.deleted_at.is_(None),
+            ChatTask.expires_at > now(),
+        ).first()
+        if row is None:
+            raise profiles.PersonalizationNotFound()
+        if getattr(row, "status", None) == "completed" and getattr(row, "result_payload", None):
+            try:
+                return json.loads(row.result_payload)
+            except Exception:
+                return None
+        return None
+
+
+def mark_task_processing(subject: str, task_id: str) -> None:
+    """Update task status to processing before running LLM/agent pipeline."""
+    with session_scope() as db:
+        row = db.query(ChatTask).join(User).filter(
+            ChatTask.id == _uuid(task_id),
+            User.external_id == subject,
+            User.deleted_at.is_(None),
+            ChatTask.expires_at > now(),
+        ).first()
+        if row is not None and hasattr(row, "status"):
+            row.status = "processing"
+            if hasattr(row, "updated_at"):
+                row.updated_at = now()
+
+
+def mark_task_completed(subject: str, task_id: str, result: dict) -> None:
+    """Mark task as completed and persist result payload for idempotency."""
+    with session_scope() as db:
+        row = db.query(ChatTask).join(User).filter(
+            ChatTask.id == _uuid(task_id),
+            User.external_id == subject,
+            User.deleted_at.is_(None),
+            ChatTask.expires_at > now(),
+        ).first()
+        if row is not None:
+            if hasattr(row, "status"):
+                row.status = "completed"
+            if hasattr(row, "result_payload"):
+                row.result_payload = json.dumps(result, ensure_ascii=False)
+            if hasattr(row, "updated_at"):
+                row.updated_at = now()
+
+
+def mark_task_failed(subject: str, task_id: str, error_message: str) -> None:
+    """Mark task as failed on unhandled execution error."""
+    with session_scope() as db:
+        row = db.query(ChatTask).join(User).filter(
+            ChatTask.id == _uuid(task_id),
+            User.external_id == subject,
+            User.deleted_at.is_(None),
+            ChatTask.expires_at > now(),
+        ).first()
+        if row is not None:
+            if hasattr(row, "status"):
+                row.status = "failed"
+            if hasattr(row, "result_payload"):
+                row.result_payload = json.dumps({"error": error_message}, ensure_ascii=False)
+            if hasattr(row, "updated_at"):
+                row.updated_at = now()
 
 
 def require_task_owner(subject: str, task_id: str) -> None:

@@ -237,9 +237,15 @@ CREATE INDEX IF NOT EXISTS ix_memory_facts_owner_status ON memory_facts(user_id,
 CREATE TABLE IF NOT EXISTS chat_tasks (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending'
+        CONSTRAINT chat_task_status CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+    result_payload TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ,
     expires_at TIMESTAMPTZ NOT NULL
 );
 CREATE INDEX IF NOT EXISTS ix_chat_tasks_user_id ON chat_tasks(user_id);
+CREATE INDEX IF NOT EXISTS ix_chat_tasks_owner_status ON chat_tasks(user_id, status);
 CREATE INDEX IF NOT EXISTS ix_chat_tasks_expires_at ON chat_tasks(expires_at);
 CREATE INDEX IF NOT EXISTS ix_chat_sessions_owner ON chat_sessions(user_id);
 CREATE INDEX IF NOT EXISTS ix_chat_messages_retention ON chat_messages(session_id, created_at);

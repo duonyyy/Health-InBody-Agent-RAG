@@ -237,22 +237,49 @@ class ChatService:
         expires = queue_expires if queue_expires is not None else 60.0
         deadline_epoch = time.time() + float(expires)
 
-        await get_lane("probe").run(
-            llm_handler.apply_async,
-            args=[
-                bot_id,
-                subject,
-                question,
-                str(conversation_id) if conversation_id else None,
-            ],
-            task_id=task_id,
-            expires=expires,
-            kwargs={"task_id": task_id, "deadline_epoch": deadline_epoch},
-            argsrepr="[redacted chat arguments]",
-            kwargsrepr="{redacted task metadata}",
-            budget=effective_budget,
-            pass_cancel_event=False,
-        )
+        try:
+            await get_lane("probe").run(
+                llm_handler.apply_async,
+                args=[
+                    bot_id,
+                    subject,
+                    question,
+                    str(conversation_id) if conversation_id else None,
+                ],
+                task_id=task_id,
+                expires=expires,
+                kwargs={"task_id": task_id, "deadline_epoch": deadline_epoch},
+                argsrepr="[redacted chat arguments]",
+                kwargsrepr="{redacted task metadata}",
+                budget=effective_budget,
+                pass_cancel_event=False,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Celery apply_async failed for task %s (%s). Cleaning up orphaned database task.",
+                task_id,
+                type(exc).__name__,
+            )
+            if hasattr(store, "delete_task"):
+                try:
+                    await get_lane("probe").run(
+                        _execute,
+                        store.delete_task,
+                        subject,
+                        str(task_id),
+                        budget=effective_budget,
+                        pass_cancel_event=False,
+                    )
+                except Exception as cleanup_err:
+                    logger.error(
+                        "Failed to cleanup orphaned task %s: %s",
+                        task_id,
+                        cleanup_err,
+                    )
+            raise QueueUnavailableError(
+                "Không thể gửi yêu cầu vào hàng đợi xử lý; vui lòng thử lại hoặc dùng sync_request=true."
+            ) from exc
+
         return str(task_id)
 
     async def poll_task_status(

@@ -522,24 +522,49 @@ def llm_handle_message(
     Recheck persisted task ownership and use bounded PostgreSQL history.
     Honors shared queue+worker deadline when deadline_epoch is provided.
     """
-    logger.info("Start Health/InBody message handling bot_id=%s", bot_id)
+    logger.info("Start Health/InBody message handling bot_id=%s task_id=%s", bot_id, task_id)
     from agents.constants import AGENT_MAX_REQUEST_TIMEOUT_SECONDS, AGENT_REQUEST_TIMEOUT_SECONDS
     from memory.chat import run_chat
-    from memory.store import require_task_owner
+    from memory.store import (
+        get_task_if_completed,
+        mark_task_completed,
+        mark_task_failed,
+        mark_task_processing,
+        require_task_owner,
+    )
     if task_id:
         require_task_owner(user_id, task_id)
+        # Idempotency guard: nếu task đã hoàn tất trước đó (do duplicate message delivery)
+        cached_result = get_task_if_completed(user_id, task_id)
+        if cached_result is not None:
+            logger.info("Idempotency guard hit: task %s already completed, returning cached result", task_id)
+            return cached_result
+        mark_task_processing(user_id, task_id)
+
     worker_budget = min(AGENT_REQUEST_TIMEOUT_SECONDS, AGENT_MAX_REQUEST_TIMEOUT_SECONDS, float(CELERY_TASK_SOFT_TIME_LIMIT))
     if deadline_epoch is not None:
         remaining = max(0.0, float(deadline_epoch) - time.time())
         worker_budget = min(worker_budget, remaining)
     deadline_monotonic = time.monotonic() + worker_budget
-    return run_chat(
-        question,
-        user_id,
-        conversation_id,
-        bot_id=bot_id,
-        deadline_monotonic=deadline_monotonic,
-    )
+
+    try:
+        result = run_chat(
+            question,
+            user_id,
+            conversation_id,
+            bot_id=bot_id,
+            deadline_monotonic=deadline_monotonic,
+        )
+        if task_id:
+            mark_task_completed(user_id, task_id, result)
+        return result
+    except Exception as exc:
+        if task_id:
+            try:
+                mark_task_failed(user_id, task_id, str(exc))
+            except Exception:
+                pass
+        raise
 
 
 @shared_task()
