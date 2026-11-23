@@ -551,6 +551,9 @@ def verify_runtime_release_sync(
     bm25_fp = _search_index_metadata.get("chunk_set_fingerprint")
 
     manifest_path = release_manifest_path or os.getenv("CORPUS_RELEASE_MANIFEST_PATH") or None
+    require_manifest = (
+        os.getenv("CORPUS_REQUIRE_MANIFEST", "").strip().lower() in {"1", "true", "yes", "on"}
+    )
     manifest: Optional[Dict[str, Any]] = None
     manifest_error: Optional[str] = None
     if manifest_path:
@@ -558,6 +561,8 @@ def verify_runtime_release_sync(
             manifest = load_release_manifest(manifest_path)
         except Exception as exc:
             manifest_error = str(exc)
+    elif require_manifest:
+        manifest_error = "Manifest bắt buộc nhưng CORPUS_RELEASE_MANIFEST_PATH không được cấu hình"
 
     reasons: List[str] = []
     if manifest_error:
@@ -589,13 +594,13 @@ def verify_runtime_release_sync(
             loaded_snapshot_sha = _search_index_metadata.get("snapshot_sha256")
             if not expected_snapshot_sha or loaded_snapshot_sha != expected_snapshot_sha:
                 reasons.append("BM25 snapshot sha256 thiếu hoặc không khớp release manifest")
-            if bm25_version and m_ver and bm25_version != m_ver:
+            if m_ver and bm25_version != m_ver:
                 reasons.append(f"BM25 corpus_version={bm25_version!r} != manifest {m_ver!r}")
-            if bm25_release_id and m_rel and bm25_release_id != m_rel:
+            if m_rel and bm25_release_id != m_rel:
                 reasons.append(f"BM25 release_id={bm25_release_id!r} != manifest {m_rel!r}")
-            if bm25_fp and m_fp and bm25_fp != m_fp:
+            if m_fp and bm25_fp != m_fp:
                 reasons.append(
-                    f"BM25 chunk_set_fingerprint={bm25_fp[:16]} != manifest {m_fp[:16]}"
+                    f"BM25 chunk_set_fingerprint={(bm25_fp or '')[:16]} != manifest {(m_fp or '')[:16]}"
                 )
 
     if reasons:
@@ -1168,6 +1173,8 @@ def hybrid_search(
             if release_mismatch_degraded:
                 doc["release_mismatch_degraded"] = True
     else:
+        if release_mismatch_degraded:
+            raise CorpusReleaseMismatchError("Corpus release mismatch; fallback returned no results")
         logger.info("No BM25/vector results available")
         combined = []
 

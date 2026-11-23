@@ -1,0 +1,88 @@
+{
+  "answer": "Các dấu hiệu bạn mô tả có thể cần được đánh giá y tế khẩn cấp. Hãy dừng tập ngay, nghỉ ở nơi an toàn và liên hệ cơ sở cấp cứu/y tế gần nhất. Nếu triệu chứng đang tiếp diễn, nặng lên hoặc bạn ở một mình, hãy nhờ người khác hỗ trợ; không tự tiếp tục tập hoặc tự lái xe khi đang choáng, đau ngực hay khó thở. Thông tin này chỉ nhằm cảnh báo an toàn, không phải chẩn đoán.",
+  "request_id": "req-9211a5d053a6",
+  "conversation_id": null,
+  "memory_status": "skipped_urgent",
+  "memory_proposals": [],
+  "user_message_id": null,
+  "status": "ok",
+  "retrieval_status": null,
+  "fast_path": "urgent_safety",
+  "latency_ms": 0.56,
+  "agent_trace": [
+    {
+      "agent": "SafetyGuard",
+      "action": "precheck_medical_safety",
+      "status": "success",
+      "summary": "Safety risk level: urgent."
+    },
+    {
+      "agent": "SafetyGuard",
+      "action": "urgent_safety_fast_path",
+      "status": "success",
+      "summary": "Returned deterministic urgent guidance without LLM or retrieval."
+    }
+  ],
+  "selected_agents": [],
+  "tool_results": [],
+  "retrieved_docs": [],
+  "citations": [],
+  "claim_evidence_links": [],
+  "evidence_status": "not_required",
+  "limitations": [
+    "Đây là cảnh báo an toàn khẩn cấp, không phải chẩn đoán y khoa."
+  ],
+  "safety_result": {
+    "risk_level": "urgent",
+    "conditions": [],
+    "recommended_action": "Khuyến nghị người dùng liên hệ cấp cứu hoặc cơ sở y tế ngay.",
+    "disclaimer": "Thông tin chỉ mang tính tham khảo, không thay thế chẩn đoán hoặc điều trị y khoa."
+  },
+  "personalization_used": {
+    "available": false,
+    "reason": null,
+    "provenance": []
+  },
+  "errors": [],
+  "agent": {
+    "domain": "health_inbody",
+    "orchestration": "LangGraph three-specialist RAG beta",
+    "entrypoint": "multi_agent_handle",
+    "runtime_budget": {
+      "request_timeout_seconds": 50.0,
+      "composer_reserve_seconds": 15.0,
+      "rag_max_retrieval_queries": 1,
+      "max_retrieval_calls": 2,
+      "max_composer_calls": 2,
+      "rag_embedding_timeout_seconds": 15.0,
+      "rag_composer_max_docs": 3,
+      "rag_composer_max_chars_per_doc": 700
+    },
+    "agents": [
+      {
+        "name": "InBodyAgent",
+        "responsibility": "Calculate BMI and evaluate PBF/visceral fat from text metrics."
+      },
+      {
+        "name": "LifestyleAgent",
+        "responsibility": "Suggest nutrition and basic exercise plans when the required inputs are available."
+      },
+      {
+        "name": "KnowledgeAgent",
+        "responsibility": "Retrieve corpus or fresh web context and handle general chat."
+      }
+    ],
+    "workflow_stages": [
+      "ContextLoader",
+      "IntentRouter",
+      "SafetyGuard",
+      "AnswerComposer"
+    ],
+    "trace_schema": {
+      "agent": "Agent name",
+      "action": "Action performed",
+      "status": "success | warning | error",
+      "summary": "Short human-readable result"
+    }
+  }
+}

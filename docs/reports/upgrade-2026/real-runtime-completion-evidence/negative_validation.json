@@ -1,0 +1,7 @@
+{
+  "status_code": 422,
+  "error_details": {
+    "detail": "Giá trị cân nặng không hợp lệ. Vui lòng kiểm tra dấu, đơn vị và nhập lại.",
+    "code": "invalid_health_input"
+  }
+}

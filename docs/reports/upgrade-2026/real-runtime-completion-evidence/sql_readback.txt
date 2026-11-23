@@ -1,0 +1,22 @@
+                  id                  |             external_id             |                        consent_flags                        | display_name 
+--------------------------------------+-------------------------------------+-------------------------------------------------------------+--------------
+ b35ae86f-4515-4d3d-8908-685a3fec7755 | bw_513b0b1e35df4019a9eecf63871cb67a | {"personalization": false, "health_data_processing": false} | 
+ 8db668f4-12bc-4ecb-a6fd-595fdacaec2a | bw_0b214fecd0ea4563913da18406128360 | {"personalization": true, "health_data_processing": true}   | Nguyen Van A
+(2 rows)
+
+               user_id                |    username     | active 
+--------------------------------------+-----------------+--------
+ e839397b-cd52-4244-a3ab-767e5480e9e9 | user_b_9b6478c3 | t
+ b35ae86f-4515-4d3d-8908-685a3fec7755 | user_b_a9814136 | t
+(2 rows)
+
+                  id                  |               user_id                | weight_kg | height_cm |  bmi  | smm_kg | bfm_kg | confirmed_by_user 
+--------------------------------------+--------------------------------------+-----------+-----------+-------+--------+--------+-------------------
+ 1a9230ef-2884-4c0f-a234-d747e292bf64 | 8db668f4-12bc-4ecb-a6fd-595fdacaec2a |     72.00 |    170.00 | 24.91 |  32.50 |  15.00 | t
+(1 row)
+
+                  id                  |               user_id                |          external_user_id           |       bot_id        
+--------------------------------------+--------------------------------------+-------------------------------------+---------------------
+ acc7e335-d385-4c07-8d71-c03983667af2 | 8db668f4-12bc-4ecb-a6fd-595fdacaec2a | bw_0b214fecd0ea4563913da18406128360 | health-inbody-agent
+(1 row)
+

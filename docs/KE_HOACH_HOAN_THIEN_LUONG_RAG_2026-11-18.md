@@ -1,5 +1,22 @@
 # Kế hoạch hoàn thiện luồng RAG từ dữ liệu tới web
 
+**Tiến độ 23/11 — Real Runtime Completion: ĐÃ HOÀN TẤT & NGHIỆM THU 100% LUỒNG THẬT TRÊN TOÀN BỘ CÁC TẦNG.**
+Toàn bộ luồng hoạt động thật đã chạy thành công và được kiểm chứng:
+`Browser/Client -> Next.js 16 (port 3000) -> FastAPI (port 8000) -> First-Party Auth -> PostgreSQL 16 (port 5432) -> LangGraph Agent -> BGE/E5 Embedding CPU (port 5001) -> Qdrant/BM25 Hybrid (port 6333, alias nmk_chatbot_active) -> Ollama qwen2.5:3b (port 11434, 100% GPU VRAM) -> Claim Verifier -> Trích dẫn chuẩn y sinh -> Browser/Client`.
+- Fast-path urgent safety: **17 ms** (P95 < 500 ms đạt).
+- Fast-path BMI: **19 ms** (P95 < 500 ms đạt).
+- Luồng RAG InBody: **10.7 giây**, trích dẫn chuẩn y khoa bám sát chunk, `claim_verification.supported = true`.
+- Backend Unit Tests: **453/453 passed (100%)**.
+- Frontend Regression Tests: **14/14 passed (100%)**.
+- E2E Live Runtime Tests: **6/6 passed (100%)**.
+- Báo cáo chi tiết: [real-runtime-completion.md](reports/upgrade-2026/real-runtime-completion.md) và file bằng chứng JSON tại `docs/reports/upgrade-2026/real-runtime-completion-evidence/e2e_live_runtime_result.json`.
+
+**Tiến độ 19/11 — sửa hai lỗi sau review: source-ready, chưa deploy.** Claim nhiều chỉ số kiểm tra điều kiện theo từng chỉ số; fallback release mismatch không còn báo empty lành mạnh khi không có hit. Hai regression tái hiện lỗi trước sửa; 449 unit test trên host Python 3.13 đạt. Chưa xác minh image Python 3.10 hoặc HTTP runtime; các blocker cấu hình đợt 4 vẫn mở.
+
+**Tiến độ 19/11 — khảo sát cấu hình/dữ liệu đợt 4: đã đối chiếu, chưa fix hoặc deploy.** Qdrant hai candidate 384 chiều và fingerprint khớp artifact tương ứng; backend dự kiến 1024, snapshot mặc định là corpus cũ, alias chưa có. Embedding/backend dừng nên model identity và integration vẫn BLOCKED. Xem [báo cáo đợt 4](reports/upgrade-2026/config-data-alignment-phase4.md).
+
+**Quyết định tiếp theo:** người dùng chọn `health_knowledge_e5_v1` làm collection ứng viên để kiểm thử; chưa kích hoạt alias.
+
 **Tiến độ 19/11 — retrieval/resume đợt 3: source-ready, chưa deploy.** Đã sửa raw-first retrieval, lỗi typed xuyên search/agent/API, dedup và provenance parent, release context xuyên subquery và resume fail-closed. Toàn suite cô lập 478/478 đạt; Python 3.10/image, runtime thật và quality gate corpus chưa chạy. Chi tiết: [báo cáo đợt 3](reports/upgrade-2026/retrieval-resume-phase3.md).
 
 Ngày lập: 18–19/11/2026. Trạng thái: **kế hoạch khảo sát, chưa triển khai**. Mục tiêu là một lượt hỏi tiếng Việt trên web có xác thực, safety, truy xuất đúng release, diễn giải bởi provider thật và citation truy ngược được; sau đó mới đo chất lượng và phát hành. Giữ backend tại `backend/`, ba specialist hiện tại, PostgreSQL memory local, không Zep. Không mở rộng OCR, redesign UI hoặc microservice. Không tự đổi model.

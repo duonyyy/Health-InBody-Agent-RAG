@@ -1,0 +1,128 @@
+{
+  "health": {
+    "status": "healthy",
+    "service": "Health/InBody Agent RAG Backend",
+    "cache": {
+      "namespace": "health_inbody",
+      "backend": "redis",
+      "memory_keys": 0,
+      "memory_max_entries": 256,
+      "llm_response_cache": {
+        "enabled": true,
+        "ttl_seconds": 300,
+        "hits": 0,
+        "misses": 0,
+        "writes": 0,
+        "invalidations": 0,
+        "errors": 0
+      }
+    },
+    "search": {
+      "initialized": true,
+      "documents_count": 3846,
+      "has_bm25": true,
+      "bm25_persistence": "versioned_json_gzip_snapshot",
+      "lexical_index_owner": "single_api_process_in_memory",
+      "multi_worker_supported": false,
+      "configured_api_workers": 1,
+      "snapshot_created_at": "2026-11-18T09:12:16.586373+00:00",
+      "snapshot_sha256": "50c561162feb5c707d77fed5b79dda4f548a6805af5b8870d2e9ca0d2526909a",
+      "snapshot_point_count": null,
+      "snapshot_error": null,
+      "corpus_version": "e5small-2026-11-18-v1",
+      "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+      "physical_collection": "health_knowledge_e5_v1",
+      "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+      "tokenizer_version": "vi-nfd-alnum-v1",
+      "release_sync_status": "synced",
+      "release_mismatch_reason": null,
+      "retrieval_mismatch_policy": "refuse",
+      "collection_name": "nmk_chatbot_active",
+      "domain": "health_inbody"
+    },
+    "llm": {
+      "provider": "ollama",
+      "model": "qwen3:8b",
+      "ollama_think": false,
+      "ollama_num_ctx": 2048,
+      "task_budgets": {
+        "router": {
+          "max_tokens": 16,
+          "timeout_seconds": 8
+        },
+        "normalize": {
+          "max_tokens": 96,
+          "timeout_seconds": 10
+        },
+        "rewrite": {
+          "max_tokens": 128,
+          "timeout_seconds": 15
+        },
+        "composer": {
+          "max_tokens": 96,
+          "timeout_seconds": 35
+        }
+      }
+    },
+    "agent": {
+      "domain": "health_inbody",
+      "orchestration": "LangGraph three-specialist RAG beta",
+      "entrypoint": "multi_agent_handle",
+      "runtime_budget": {
+        "request_timeout_seconds": 50.0,
+        "composer_reserve_seconds": 15.0,
+        "rag_max_retrieval_queries": 1,
+        "max_retrieval_calls": 2,
+        "max_composer_calls": 2,
+        "rag_embedding_timeout_seconds": 15.0,
+        "rag_composer_max_docs": 3,
+        "rag_composer_max_chars_per_doc": 700
+      },
+      "agents": [
+        {
+          "name": "InBodyAgent",
+          "responsibility": "Calculate BMI and evaluate PBF/visceral fat from text metrics."
+        },
+        {
+          "name": "LifestyleAgent",
+          "responsibility": "Suggest nutrition and basic exercise plans when the required inputs are available."
+        },
+        {
+          "name": "KnowledgeAgent",
+          "responsibility": "Retrieve corpus or fresh web context and handle general chat."
+        }
+      ],
+      "workflow_stages": [
+        "ContextLoader",
+        "IntentRouter",
+        "SafetyGuard",
+        "AnswerComposer"
+      ],
+      "trace_schema": {
+        "agent": "Agent name",
+        "action": "Action performed",
+        "status": "success | warning | error",
+        "summary": "Short human-readable result"
+      }
+    }
+  },
+  "ready": {
+    "status": "ready",
+    "dependencies": {
+      "postgres": true,
+      "qdrant": true,
+      "valkey": true,
+      "embedding_api": true,
+      "corpus_release_sync": true
+    },
+    "corpus_release": {
+      "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+      "corpus_version": "e5small-2026-11-18-v1",
+      "physical_collection": "health_knowledge_e5_v1",
+      "release_sync_status": "synced",
+      "release_mismatch_reason": null,
+      "lexical_index_owner": "single_api_process_in_memory"
+    },
+    "llm_provider": "not_checked"
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "answer": "- BMI của bạn là **24.91**, thuộc nhóm **tiền thừa cân theo ngưỡng châu Á**.\n\nCác chỉ số trên chỉ dùng để sàng lọc/tham khảo; nên đọc cùng thành phần cơ thể, tiền sử sức khỏe và triệu chứng thực tế.",
+  "request_id": "req-c1c755312487",
+  "conversation_id": null,
+  "memory_status": "disabled",
+  "memory_proposals": [],
+  "user_message_id": null,
+  "status": "ok",
+  "retrieval_status": null,
+  "fast_path": "inbody_tools",
+  "latency_ms": 7.89,
+  "agent_trace": [
+    {
+      "agent": "ContextLoader",
+      "action": "load_user_context",
+      "status": "warning",
+      "summary": "Personalization context was unavailable; continued without saved profile data."
+    },
+    {
+      "agent": "SafetyGuard",
+      "action": "precheck_medical_safety",
+      "status": "success",
+      "summary": "Safety risk level: low."
+    },
+    {
+      "agent": "InBodyAgent",
+      "action": "deterministic_inbody_fast_path",
+      "status": "success",
+      "summary": "Returned explicit InBody calculations without LLM or retrieval."
+    },
+    {
+      "agent": "AnswerComposer",
+      "action": "compose_template_answer",
+      "status": "success",
+      "summary": "Rendered a deterministic Vietnamese answer from tool results."
+    }
+  ],
+  "selected_agents": [
+    "InBodyAgent"
+  ],
+  "tool_results": [
+    {
+      "agent": "InBodyAgent",
+      "tool": "calculate_bmi",
+      "result": {
+        "weight_kg": 72.0,
+        "height_cm": 170.0,
+        "bmi": 24.91,
+        "category": "overweight_risk",
+        "status": "Tien thua can theo nguong chau A",
+        "recommendation": "Nen kiem soat nang luong va tang van dong de giam mo tu tu.",
+        "note": "BMI chi la chi so sang loc, can doc kem PBF, SMM va mo noi tang."
+      }
+    }
+  ],
+  "retrieved_docs": [],
+  "citations": [],
+  "claim_evidence_links": [],
+  "evidence_status": "not_required",
+  "limitations": [
+    "Kết quả là phép tính sàng lọc; cần đọc cùng PBF, SMM, triệu chứng và tiền sử sức khỏe."
+  ],
+  "safety_result": {
+    "risk_level": "low",
+    "conditions": [],
+    "recommended_action": "Có thể trả lời về sức khỏe, dinh dưỡng, tập luyện ở mức tham khảo.",
+    "disclaimer": "Thông tin chỉ mang tính tham khảo, không thay thế chẩn đoán hoặc điều trị y khoa."
+  },
+  "personalization_used": {
+    "available": false,
+    "reason": "consent_required",
+    "provenance": []
+  },
+  "errors": [],
+  "agent": {
+    "domain": "health_inbody",
+    "orchestration": "LangGraph three-specialist RAG beta",
+    "entrypoint": "multi_agent_handle",
+    "runtime_budget": {
+      "request_timeout_seconds": 50.0,
+      "composer_reserve_seconds": 15.0,
+      "rag_max_retrieval_queries": 1,
+      "max_retrieval_calls": 2,
+      "max_composer_calls": 2,
+      "rag_embedding_timeout_seconds": 15.0,
+      "rag_composer_max_docs": 3,
+      "rag_composer_max_chars_per_doc": 700
+    },
+    "agents": [
+      {
+        "name": "InBodyAgent",
+        "responsibility": "Calculate BMI and evaluate PBF/visceral fat from text metrics."
+      },
+      {
+        "name": "LifestyleAgent",
+        "responsibility": "Suggest nutrition and basic exercise plans when the required inputs are available."
+      },
+      {
+        "name": "KnowledgeAgent",
+        "responsibility": "Retrieve corpus or fresh web context and handle general chat."
+      }
+    ],
+    "workflow_stages": [
+      "ContextLoader",
+      "IntentRouter",
+      "SafetyGuard",
+      "AnswerComposer"
+    ],
+    "trace_schema": {
+      "agent": "Agent name",
+      "action": "Action performed",
+      "status": "success | warning | error",
+      "summary": "Short human-readable result"
+    }
+  }
+}

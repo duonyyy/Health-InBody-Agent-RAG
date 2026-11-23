@@ -67,13 +67,19 @@ def supervisor_agent(state: AgentState) -> AgentState:
     text = normalize_match_text(question)
     selected: List[str] = []
 
+    def _safe_extract(fn):
+        try:
+            return fn(question)
+        except Exception:
+            return None
+
     has_metrics = any(
         value is not None
         for value in [
-            extract_weight_kg(question),
-            extract_height_cm(question),
-            extract_pbf(question),
-            extract_visceral_fat(question),
+            _safe_extract(extract_weight_kg),
+            _safe_extract(extract_height_cm),
+            _safe_extract(extract_pbf),
+            _safe_extract(extract_visceral_fat),
         ]
     )
     if has_metrics or _has_any(text, ["bmi", "pbf", "smm", "bfm", "mỡ nội tạng", "visceral"]):

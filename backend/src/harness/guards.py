@@ -16,7 +16,7 @@ import re
 import unicodedata
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
-CLAIM_VALIDATION_POLICY_VERSION = "2026-11-19-v3"
+CLAIM_VALIDATION_POLICY_VERSION = "2026-11-19-v4"
 
 
 def _normalize_match_text(text: str) -> str:
@@ -231,8 +231,11 @@ _ESCALATED_MODALITY_MARKERS = (
 
 _SAFETY_NOTICE_PHRASES = (
     "thong tin chi mang tinh tham khao",
+    "thong tin nay chi mang tinh tham khao",
     "thong tin nay chi nham",
     "khong thay the bac si",
+    "khong thay the chan doan",
+    "khong thay the dieu tri",
     "khong phai chan doan",
     "khong chan doan benh",
     "khong ke don",
@@ -254,9 +257,15 @@ _CLARIFICATION_OR_REFUSAL_PHRASES = (
     "khong the tu de xuat",
     "can them thong tin",
     "cung cap them",
+    "cung cap thong tin",
+    "hay cung cap",
     "cho biet them",
     "thieu du lieu",
     "chua co du du lieu",
+    "khong du",
+    "chua du",
+    "khong du de",
+    "chua du de",
 )
 
 
@@ -618,7 +627,12 @@ def _quantity_bindings(text: str) -> Optional[dict]:
         key = (tuple(sorted(entities)), tuple(sorted(populations)))
         if key in bindings:
             return {}
-        bindings[key] = (tuple(quantities), tuple(_extract_ranges(part)), _has_negation(part))
+        conditions = []
+        for marker in _CONDITIONAL_MARKER_RE.finditer(part):
+            segment = re.split(r"[,;.]|\b(?:thi|nen|se|can|phai)\b", part[marker.end():], maxsplit=1)[0]
+            conditions.append((marker.group(0), tuple(sorted(_claim_tokens(segment)))))
+        bindings[key] = (tuple(quantities), tuple(_extract_ranges(part)),
+                         _has_negation(part), tuple(conditions))
     return bindings
 
 
@@ -828,6 +842,7 @@ def verify_answer_claims_detailed(
     has_inconclusive = False
     verified_rag_claims = 0
 
+    last_valid_cited: List[str] = []
     for index, raw_sentence in enumerate(sentences, 1):
         cited = re.findall(r"\[(\d+)\]", raw_sentence)
         plain = _strip_markdown(re.sub(r"\[\d+\]", "", raw_sentence).strip())
@@ -840,12 +855,27 @@ def verify_answer_claims_detailed(
             )
             continue
 
+        # Check anaphoric citation continuation if pronoun-referencing previous claim
+        if not cited and last_valid_cited:
+            norm_plain = _normalize_match_text(plain)
+            if any(norm_plain.startswith(m) for m in ("day la", "no la", "chi so nay", "duoc tinh", "duoc dinh nghia", "duoc xac dinh")):
+                cited = list(last_valid_cited)
+
         # Sentences without citations may only pass if they are system safety notices,
         # deterministic tool outputs matching tool_results, or safe clarifications/refusals.
-        if not cited:
-            if _is_safety_notice(plain, safety_result):
+        # System safety notices and safe clarifications remain exempt even if an LLM appended a stray citation.
+        is_pure_safety = _is_safety_notice(plain, safety_result) and not any(k in _normalize_match_text(plain) for k in ("moi nguoi", "tat ca"))
+        is_pure_clarification = _is_clarification_or_refusal(plain)
+        if not cited or is_pure_safety or is_pure_clarification:
+            if is_pure_safety:
                 claim_reports.append(
                     {"claim_id": index, "text": plain, "kind": "safety_notice",
+                     "verdict": "exempt", "reasons": []}
+                )
+                continue
+            if is_pure_clarification:
+                claim_reports.append(
+                    {"claim_id": index, "text": plain, "kind": "clarification_or_refusal",
                      "verdict": "exempt", "reasons": []}
                 )
                 continue
@@ -862,12 +892,6 @@ def verify_answer_claims_detailed(
                 claim_reports.append(
                     {"claim_id": index, "text": plain, "kind": "deterministic_tool",
                      "verdict": "unsupported", "reasons": ["tool_value_mismatch"]}
-                )
-                continue
-            if _is_clarification_or_refusal(plain):
-                claim_reports.append(
-                    {"claim_id": index, "text": plain, "kind": "clarification_or_refusal",
-                     "verdict": "exempt", "reasons": []}
                 )
                 continue
 
@@ -975,6 +999,7 @@ def verify_answer_claims_detailed(
 
         if sentence_verdict == "supported" and sentence_links:
             verified_rag_claims += 1
+            last_valid_cited = list(cited)
             links.extend(sentence_links)
             claim_reports.append(
                 {

@@ -58,12 +58,19 @@ logger = logging.getLogger(__name__)
 
 def _create_qdrant_client(url: str, timeout: float) -> QdrantClient:
     """Create a QdrantClient without triggering an unbudgeted startup version probe."""
-    return call_with_supported_kwargs(
-        QdrantClient,
-        url=url,
-        timeout=timeout,
-        check_compatibility=False,
-    )
+    try:
+        return call_with_supported_kwargs(
+            QdrantClient,
+            url=url,
+            timeout=timeout,
+            check_compatibility=False,
+        )
+    except TypeError:
+        return call_with_supported_kwargs(
+            QdrantClient,
+            url=url,
+            timeout=timeout,
+        )
 
 
 client = _create_qdrant_client(

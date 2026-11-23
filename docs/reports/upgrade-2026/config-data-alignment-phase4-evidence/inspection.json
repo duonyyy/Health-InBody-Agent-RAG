@@ -1,0 +1,737 @@
+{
+  "timestamp": "2026-11-18T19:54:58.487559+00:00",
+  "method": "Qdrant GET collections/aliases/info and POST exact count/scroll with metadata allowlist; local artifact SHA256 and project fingerprint functions; no vectors or content output",
+  "collections": {
+    "collections": [
+      {
+        "name": "health_knowledge_e5_v1"
+      },
+      {
+        "name": "nmk_chatbot_e5small_v20261118"
+      }
+    ]
+  },
+  "aliases": {
+    "aliases": []
+  },
+  "candidates": {
+    "health_knowledge_e5_v1": {
+      "info": {
+        "status": "green",
+        "optimizer_status": "ok",
+        "indexed_vectors_count": 0,
+        "points_count": 3846,
+        "segments_count": 8,
+        "config": {
+          "params": {
+            "vectors": {
+              "size": 384,
+              "distance": "Cosine"
+            },
+            "shard_number": 1,
+            "replication_factor": 1,
+            "write_consistency_factor": 1,
+            "on_disk_payload": true
+          },
+          "hnsw_config": {
+            "m": 16,
+            "ef_construct": 100,
+            "full_scan_threshold": 10000,
+            "max_indexing_threads": 0,
+            "on_disk": false
+          },
+          "optimizer_config": {
+            "deleted_threshold": 0.2,
+            "vacuum_min_vector_number": 1000,
+            "default_segment_number": 0,
+            "max_segment_size": null,
+            "memmap_threshold": null,
+            "indexing_threshold": 10000,
+            "flush_interval_sec": 5,
+            "max_optimization_threads": null,
+            "prevent_unoptimized": null
+          },
+          "wal_config": {
+            "wal_capacity_mb": 32,
+            "wal_segments_ahead": 0,
+            "wal_retain_closed": 1
+          },
+          "quantization_config": null
+        },
+        "payload_schema": {
+          "review_status": {
+            "data_type": "keyword",
+            "points": 0
+          },
+          "medical_review_status": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "corpus_version": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "release_id": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "doc_id": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "source": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "language": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "document_id": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "review_verification_status": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "embedding_fingerprint": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "review_id": {
+            "data_type": "keyword",
+            "points": 0
+          },
+          "content_type": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "content_hash": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "chunk_id": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "domain": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "privacy_review_status": {
+            "data_type": "keyword",
+            "points": 0
+          }
+        },
+        "update_queue": {
+          "length": 0
+        },
+        "created_at": "2026-11-18T09:11:37.785Z"
+      },
+      "count_before": 3846,
+      "count_after": 3846,
+      "scrolled": 3846,
+      "fingerprint": {
+        "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+        "total_chunks": 3846,
+        "unique_chunk_count": 3846,
+        "unique_document_count": 1008,
+        "duplicate_chunk_ids": 0
+      },
+      "missing": {
+        "document_id": 0,
+        "doc_id": 0,
+        "chunk_id": 0,
+        "content_hash": 0,
+        "corpus_version": 0,
+        "release_id": 0,
+        "embedding_fingerprint": 0,
+        "vector_size": 3846,
+        "embedding_dimension": 3846
+      },
+      "distribution": {
+        "corpus_version": {
+          "e5small-2026-11-18-v1": 3846
+        },
+        "release_id": {
+          "rel-e5small-2026-11-18-v1-bcd3cb9369e0": 3846
+        },
+        "embedding_fingerprint": {
+          "2f4b5160f4d0e47bf741ad12f59d66cde1014c353d2123f3f2485c30b1ad0c97": 3846
+        },
+        "vector_size": {
+          "<missing>": 3846
+        },
+        "embedding_dimension": {
+          "<missing>": 3846
+        }
+      },
+      "duplicate_document_chunk_pairs": 0,
+      "same_count_changed_hash_changes_fingerprint": true,
+      "stable_counts_during_scroll": true
+    },
+    "nmk_chatbot_e5small_v20261118": {
+      "info": {
+        "status": "green",
+        "optimizer_status": "ok",
+        "indexed_vectors_count": 0,
+        "points_count": 3846,
+        "segments_count": 8,
+        "config": {
+          "params": {
+            "vectors": {
+              "size": 384,
+              "distance": "Cosine"
+            },
+            "shard_number": 1,
+            "replication_factor": 1,
+            "write_consistency_factor": 1,
+            "on_disk_payload": true
+          },
+          "hnsw_config": {
+            "m": 16,
+            "ef_construct": 100,
+            "full_scan_threshold": 10000,
+            "max_indexing_threads": 0,
+            "on_disk": false
+          },
+          "optimizer_config": {
+            "deleted_threshold": 0.2,
+            "vacuum_min_vector_number": 1000,
+            "default_segment_number": 0,
+            "max_segment_size": null,
+            "memmap_threshold": null,
+            "indexing_threshold": 10000,
+            "flush_interval_sec": 5,
+            "max_optimization_threads": null,
+            "prevent_unoptimized": null
+          },
+          "wal_config": {
+            "wal_capacity_mb": 32,
+            "wal_segments_ahead": 0,
+            "wal_retain_closed": 1
+          },
+          "quantization_config": null
+        },
+        "payload_schema": {
+          "source": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "content_hash": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "domain": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "privacy_review_status": {
+            "data_type": "keyword",
+            "points": 0
+          },
+          "corpus_version": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "document_id": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "chunk_id": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "medical_review_status": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "review_id": {
+            "data_type": "keyword",
+            "points": 0
+          },
+          "release_id": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "language": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "doc_id": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "review_verification_status": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "review_status": {
+            "data_type": "keyword",
+            "points": 0
+          },
+          "embedding_fingerprint": {
+            "data_type": "keyword",
+            "points": 3846
+          },
+          "content_type": {
+            "data_type": "keyword",
+            "points": 3846
+          }
+        },
+        "update_queue": {
+          "length": 0
+        },
+        "created_at": "2026-11-18T08:41:39.160Z"
+      },
+      "count_before": 3846,
+      "count_after": 3846,
+      "scrolled": 3846,
+      "fingerprint": {
+        "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+        "total_chunks": 3846,
+        "unique_chunk_count": 3846,
+        "unique_document_count": 1008,
+        "duplicate_chunk_ids": 0
+      },
+      "missing": {
+        "document_id": 0,
+        "doc_id": 0,
+        "chunk_id": 0,
+        "content_hash": 0,
+        "corpus_version": 0,
+        "release_id": 0,
+        "embedding_fingerprint": 0,
+        "vector_size": 3846,
+        "embedding_dimension": 3846
+      },
+      "distribution": {
+        "corpus_version": {
+          "e5small-2026-11-18-v1": 3846
+        },
+        "release_id": {
+          "rel-e5small-2026-11-18-v1-bcd3cb9369e0": 3846
+        },
+        "embedding_fingerprint": {
+          "2f4b5160f4d0e47bf741ad12f59d66cde1014c353d2123f3f2485c30b1ad0c97": 3846
+        },
+        "vector_size": {
+          "<missing>": 3846
+        },
+        "embedding_dimension": {
+          "<missing>": 3846
+        }
+      },
+      "duplicate_document_chunk_pairs": 0,
+      "same_count_changed_hash_changes_fingerprint": true,
+      "stable_counts_during_scroll": true
+    }
+  },
+  "artifacts": {
+    "health_knowledge_e5_v1": {
+      "manifest": {
+        "schema_version": 2,
+        "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+        "corpus_version": "e5small-2026-11-18-v1",
+        "physical_collection": "health_knowledge_e5_v1",
+        "serving_alias": "nmk_chatbot_active",
+        "created_at": "2026-11-18T08:54:38.019392+00:00",
+        "updated_at": "2026-11-18T09:12:17.118449+00:00",
+        "canonical_id_schema": "canonical-doc-chunk-v2",
+        "source_manifest": {
+          "path": "backend\\artifacts\\e5small-2026-11-18-v1\\embedding_documents_filtered.jsonl",
+          "sha256": "bcd3cb9369e08f064a605547a474e9a2869acc506e6726c8c76cba57d8c25ecf",
+          "document_count": 1008,
+          "counts_by_content_type": {
+            "inbody_metric": 35,
+            "nutrition": 558,
+            "exercise": 403,
+            "medical_safety": 11,
+            "general_health": 1
+          }
+        },
+        "chunk_manifest": {
+          "expected_count": 3846,
+          "unique_document_count": 1008,
+          "unique_chunk_count": 3846,
+          "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc"
+        },
+        "chunking_config": {
+          "chunk_size": 512,
+          "chunk_overlap": 50,
+          "splitter_version": "fallback_char_splitter"
+        },
+        "embedding_config": {
+          "model_identifier": "intfloat/multilingual-e5-small",
+          "model_revision": "62ff60abe92eb88c1b297fabaad28f7ac77b5875",
+          "vector_size": 384,
+          "distance": "Cosine",
+          "normalize_embeddings": true,
+          "max_length": null,
+          "query_prefix": "query: ",
+          "passage_prefix": "passage: ",
+          "fingerprint": "2f4b5160f4d0e47bf741ad12f59d66cde1014c353d2123f3f2485c30b1ad0c97"
+        },
+        "bm25_artifact": {
+          "status": "ok",
+          "output_path": "backend\\artifacts\\health_knowledge_e5_v1\\bm25_snapshot.json.gz",
+          "sha256": "50c561162feb5c707d77fed5b79dda4f548a6805af5b8870d2e9ca0d2526909a",
+          "document_count": 3846,
+          "unique_document_count": 1008,
+          "unique_chunk_count": 3846,
+          "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+          "collection_name": "nmk_chatbot_active",
+          "physical_collection": "health_knowledge_e5_v1",
+          "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+          "corpus_version": "e5small-2026-11-18-v1",
+          "schema_version": 1,
+          "tokenizer_version": "vi-nfd-alnum-v1",
+          "created_at": "2026-11-18T09:12:16.586373+00:00",
+          "file_size_kb": 1203.6,
+          "path": "C:\\Users\\Admin\\Desktop\\KLTN\\LLL RAG\\backend\\artifacts\\health_knowledge_e5_v1\\bm25_snapshot.json.gz"
+        },
+        "provenance_summary": {
+          "verified": 0,
+          "provisional": 952,
+          "unverified_legacy": 56,
+          "stale_review": 0
+        },
+        "eval_binding": {
+          "suite_path": null,
+          "suite_version": null,
+          "suite_sha256": null,
+          "label_granularity": null,
+          "status": "not_run",
+          "last_eval_at": null,
+          "report_sha256": null
+        },
+        "write_receipt": {
+          "ok": true,
+          "status": "committed",
+          "attempted_points": 3846,
+          "acknowledged_points": 3846,
+          "committed_points": 3846,
+          "failed_points": 0,
+          "unconfirmed_points": 0,
+          "conflict_points": 0,
+          "partial_write": false,
+          "rollback_performed": false
+        },
+        "build_status": "imported",
+        "publication_status": "staging",
+        "verification": {
+          "verified_at": null,
+          "qdrant_verified": false,
+          "bm25_verified": false,
+          "count_matched": false,
+          "fingerprint_matched": false,
+          "payload_indexes_verified": false,
+          "errors": []
+        },
+        "previous_release": {}
+      },
+      "source_exists": true,
+      "source_sha_actual": "bcd3cb9369e08f064a605547a474e9a2869acc506e6726c8c76cba57d8c25ecf",
+      "snapshot_sha_actual": "50c561162feb5c707d77fed5b79dda4f548a6805af5b8870d2e9ca0d2526909a",
+      "snapshot_header": {
+        "schema_version": 1,
+        "collection_name": "nmk_chatbot_active",
+        "physical_collection": "health_knowledge_e5_v1",
+        "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+        "corpus_version": "e5small-2026-11-18-v1",
+        "created_at": "2026-11-18T09:12:16.586373+00:00",
+        "document_count": 3846,
+        "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+        "metadata": {
+          "corpus_version": "e5small-2026-11-18-v1",
+          "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+          "physical_collection": "health_knowledge_e5_v1",
+          "serving_alias": "nmk_chatbot_active",
+          "built_by": "data_pipeline",
+          "chunk_count": 3846,
+          "unique_chunk_count": 3846,
+          "unique_document_count": 1008,
+          "duplicate_chunk_ids": 0,
+          "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+          "tokenizer_version": "vi-nfd-alnum-v1",
+          "canonical_id_schema": "canonical-doc-chunk-v2"
+        }
+      },
+      "snapshot_fingerprint_actual": {
+        "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+        "total_chunks": 3846,
+        "unique_chunk_count": 3846,
+        "unique_document_count": 1008,
+        "duplicate_chunk_ids": 0
+      },
+      "embedding_fingerprint_actual": "2f4b5160f4d0e47bf741ad12f59d66cde1014c353d2123f3f2485c30b1ad0c97"
+    },
+    "e5small-2026-11-18-v1": {
+      "manifest": {
+        "schema_version": 2,
+        "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+        "corpus_version": "e5small-2026-11-18-v1",
+        "physical_collection": "nmk_chatbot_e5small_v20261118",
+        "serving_alias": "nmk_chatbot_active",
+        "created_at": "2026-11-18T08:54:38.019392+00:00",
+        "updated_at": "2026-11-18T08:59:15.918998+00:00",
+        "canonical_id_schema": "canonical-doc-chunk-v2",
+        "source_manifest": {
+          "path": "backend\\artifacts\\e5small-2026-11-18-v1\\embedding_documents_filtered.jsonl",
+          "sha256": "bcd3cb9369e08f064a605547a474e9a2869acc506e6726c8c76cba57d8c25ecf",
+          "document_count": 1008,
+          "counts_by_content_type": {
+            "inbody_metric": 35,
+            "nutrition": 558,
+            "exercise": 403,
+            "medical_safety": 11,
+            "general_health": 1
+          }
+        },
+        "chunk_manifest": {
+          "expected_count": 3846,
+          "unique_document_count": 1008,
+          "unique_chunk_count": 3846,
+          "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc"
+        },
+        "chunking_config": {
+          "chunk_size": 512,
+          "chunk_overlap": 50,
+          "splitter_version": "fallback_char_splitter"
+        },
+        "embedding_config": {
+          "model_identifier": "intfloat/multilingual-e5-small",
+          "model_revision": "62ff60abe92eb88c1b297fabaad28f7ac77b5875",
+          "vector_size": 384,
+          "distance": "Cosine",
+          "normalize_embeddings": true,
+          "max_length": null,
+          "query_prefix": "query: ",
+          "passage_prefix": "passage: ",
+          "fingerprint": "2f4b5160f4d0e47bf741ad12f59d66cde1014c353d2123f3f2485c30b1ad0c97"
+        },
+        "bm25_artifact": {
+          "status": "ok",
+          "output_path": "backend\\artifacts\\e5small-2026-11-18-v1\\bm25_snapshot.json.gz",
+          "sha256": "4c88f618a1e9eee70231a3f99fe7fa14284599c9f57e19b524b857759def75bb",
+          "document_count": 3846,
+          "unique_document_count": 1008,
+          "unique_chunk_count": 3846,
+          "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+          "collection_name": "nmk_chatbot_active",
+          "physical_collection": "nmk_chatbot_e5small_v20261118",
+          "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+          "corpus_version": "e5small-2026-11-18-v1",
+          "schema_version": 1,
+          "tokenizer_version": "vi-nfd-alnum-v1",
+          "created_at": "2026-11-18T08:59:15.632317+00:00",
+          "file_size_kb": 1210.3,
+          "path": "C:\\Users\\Admin\\Desktop\\KLTN\\LLL RAG\\backend\\artifacts\\e5small-2026-11-18-v1\\bm25_snapshot.json.gz"
+        },
+        "provenance_summary": {
+          "verified": 0,
+          "provisional": 952,
+          "unverified_legacy": 56,
+          "stale_review": 0
+        },
+        "eval_binding": {
+          "suite_path": null,
+          "suite_version": null,
+          "suite_sha256": null,
+          "label_granularity": null,
+          "status": "not_run",
+          "last_eval_at": null,
+          "report_sha256": null
+        },
+        "write_receipt": {
+          "ok": true,
+          "status": "committed",
+          "attempted_points": 3383,
+          "acknowledged_points": 3383,
+          "committed_points": 3383,
+          "failed_points": 0,
+          "unconfirmed_points": 0,
+          "skipped_points": 463,
+          "conflict_points": 0,
+          "partial_write": false,
+          "rollback_performed": false
+        },
+        "build_status": "imported",
+        "publication_status": "staging",
+        "verification": {
+          "verified_at": null,
+          "qdrant_verified": false,
+          "bm25_verified": false,
+          "count_matched": false,
+          "fingerprint_matched": false,
+          "payload_indexes_verified": false,
+          "errors": []
+        },
+        "previous_release": {}
+      },
+      "source_exists": true,
+      "source_sha_actual": "bcd3cb9369e08f064a605547a474e9a2869acc506e6726c8c76cba57d8c25ecf",
+      "snapshot_sha_actual": "4c88f618a1e9eee70231a3f99fe7fa14284599c9f57e19b524b857759def75bb",
+      "snapshot_header": {
+        "schema_version": 1,
+        "collection_name": "nmk_chatbot_active",
+        "physical_collection": "nmk_chatbot_e5small_v20261118",
+        "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+        "corpus_version": "e5small-2026-11-18-v1",
+        "created_at": "2026-11-18T08:59:15.632317+00:00",
+        "document_count": 3846,
+        "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+        "metadata": {
+          "corpus_version": "e5small-2026-11-18-v1",
+          "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+          "physical_collection": "nmk_chatbot_e5small_v20261118",
+          "serving_alias": "nmk_chatbot_active",
+          "built_by": "data_pipeline",
+          "chunk_count": 3846,
+          "unique_chunk_count": 3846,
+          "unique_document_count": 1008,
+          "duplicate_chunk_ids": 0,
+          "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+          "tokenizer_version": "vi-nfd-alnum-v1",
+          "canonical_id_schema": "canonical-doc-chunk-v2"
+        }
+      },
+      "snapshot_fingerprint_actual": {
+        "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+        "total_chunks": 3846,
+        "unique_chunk_count": 3846,
+        "unique_document_count": 1008,
+        "duplicate_chunk_ids": 0
+      },
+      "embedding_fingerprint_actual": "2f4b5160f4d0e47bf741ad12f59d66cde1014c353d2123f3f2485c30b1ad0c97"
+    }
+  },
+  "default_snapshot": {
+    "exists": true,
+    "sha256": "9d8e4e00a0c487768e1077ac652af7954081c7bae9bc238b6e1741c87b999a9f",
+    "header": {
+      "schema_version": 1,
+      "collection_name": "nmk_chatbot_active",
+      "created_at": "2026-10-16T09:28:51.496570+00:00",
+      "document_count": 4405,
+      "metadata": {
+        "corpus_version": "2026.1",
+        "built_by": "data_pipeline",
+        "chunk_count": 4405
+      }
+    },
+    "computed": {
+      "chunk_set_fingerprint": "51f499d493f3b47c516838069c630c657a4ede48150fc548a028501b97d95d4e",
+      "total_chunks": 4405,
+      "unique_chunk_count": 4405,
+      "unique_document_count": 986,
+      "duplicate_chunk_ids": 0
+    }
+  },
+  "env_files": {
+    "backend/.env": {
+      "exists": true,
+      "allowlisted": {
+        "CUSTOM_EMBEDDING_API_URL": "http://host.docker.internal:5001",
+        "VECTOR_SIZE": "1024",
+        "QDRANT_COLLECTION_NAME": "nmk_chatbot_active",
+        "QDRANT_COLLECTION_ALIAS": "nmk_chatbot_active"
+      }
+    },
+    "infra/embed_serving/.env.serving": {
+      "exists": true,
+      "allowlisted": {
+        "MODEL_PATH": "/app/models/multilingual-e5-small",
+        "EMBEDDING_DEVICE": "cpu",
+        "EMBEDDING_DTYPE": "float32"
+      }
+    }
+  },
+  "shell_allowlisted": {},
+  "compose": {
+    "backend": {
+      "status": "resolved",
+      "allowlisted": {
+        "BM25_AUTOLOAD": "true",
+        "BM25_SNAPSHOT_PATH": "/usr/src/app/data/generated/bm25_snapshot.json.gz",
+        "CORPUS_VERSION": "",
+        "CUSTOM_EMBEDDING_API_URL": "http://host.docker.internal:5001",
+        "QDRANT_COLLECTION_ALIAS": "nmk_chatbot_active",
+        "QDRANT_COLLECTION_NAME": "nmk_chatbot_active",
+        "VECTOR_SIZE": "1024"
+      },
+      "networks": [
+        "internal-network"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "C:\\Users\\Admin\\Desktop\\KLTN\\LLL RAG\\backend",
+          "target": "/usr/src/app",
+          "bind": {
+            "create_host_path": true
+          }
+        }
+      ]
+    },
+    "infra": {
+      "status": "resolved",
+      "allowlisted": {
+        "EMBEDDING_DEVICE": "cpu",
+        "EMBEDDING_DTYPE": "float32",
+        "MODEL_PATH": "/app/models/multilingual-e5-small"
+      },
+      "networks": [
+        "internal-network"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "C:\\Users\\Admin\\Desktop\\KLTN\\LLL RAG\\infra\\embed_serving\\models",
+          "target": "/app/models",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "C:\\Users\\Admin\\Desktop\\KLTN\\LLL RAG\\infra\\embed_serving\\logs",
+          "target": "/app/logs",
+          "bind": {
+            "create_host_path": true
+          }
+        }
+      ]
+    },
+    "serving": {
+      "status": "resolved",
+      "allowlisted": {
+        "EMBEDDING_DEVICE": "cpu",
+        "EMBEDDING_DTYPE": "float32",
+        "MODEL_PATH": "/app/models/multilingual-e5-small"
+      },
+      "networks": [
+        "default"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "C:\\Users\\Admin\\Desktop\\KLTN\\LLL RAG\\infra\\embed_serving\\models",
+          "target": "/app/models",
+          "bind": {
+            "create_host_path": true
+          }
+        },
+        {
+          "type": "bind",
+          "source": "C:\\Users\\Admin\\Desktop\\KLTN\\LLL RAG\\infra\\embed_serving\\logs",
+          "target": "/app/logs",
+          "bind": {
+            "create_host_path": true
+          }
+        }
+      ]
+    }
+  }
+}

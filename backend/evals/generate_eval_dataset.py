@@ -1,0 +1,2255 @@
+"""Script tạo tập dữ liệu đánh giá chuẩn (Golden Eval Set) 200 câu hỏi
+cho bài toán Health/InBody Agent RAG phục vụ nghiệm thu Khóa luận Tốt nghiệp.
+
+Phân bố 5 nhóm:
+1. InBody Metrics & Body Composition (45 câu)
+2. Nutrition & Dietary Science (45 câu)
+3. Fitness & Exercise Physiology (40 câu)
+4. Medical Safety & Triage (35 câu: 15 urgent, 20 medical_caution)
+5. Edge Cases & Linguistic Variance (35 câu: không dấu, fast-path BMI, out-of-scope)
+Tổng: 200 câu hỏi.
+"""
+
+import json
+from pathlib import Path
+
+DATASET = [
+    # =========================================================================
+    # NHÓM 1: INBODY METRICS & BODY COMPOSITION (45 CÂU)
+    # =========================================================================
+    {
+        "id": "inbody_001",
+        "query": "Chỉ số PBF trên kết quả InBody là gì và mức chuẩn cho nam là bao nhiêu?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["PBF", "phần trăm mỡ", "Percent Body Fat"]
+    },
+    {
+        "id": "inbody_002",
+        "query": "SMM là viết tắt của từ gì trong bảng phân tích InBody?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["SMM", "Skeletal Muscle Mass", "khối lượng cơ xương"]
+    },
+    {
+        "id": "inbody_003",
+        "query": "Sự khác biệt giữa SMM và Lean Body Mass (LBM) là gì?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["SMM", "LBM", "Lean Body Mass", "cơ xương"]
+    },
+    {
+        "id": "inbody_004",
+        "query": "Chỉ số mỡ nội tạng (Visceral Fat Level) bao nhiêu là an toàn và bao nhiêu là nguy hiểm?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["mỡ nội tạng", "visceral fat", "level 10"]
+    },
+    {
+        "id": "inbody_005",
+        "query": "BMI có phản ánh chính xác lượng cơ bắp của một vận động viên thể hình không?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["BMI", "giới hạn", "vận động viên", "cơ bắp"]
+    },
+    {
+        "id": "inbody_006",
+        "query": "ECW/TBW là gì và tại sao chỉ số này tăng cao lại cảnh báo phù nề hoặc viêm cơ?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["ECW", "TBW", "nước ngoại bào", "phù nề"]
+    },
+    {
+        "id": "inbody_007",
+        "query": "Thế nào là dáng đồ thị hình chữ C trong phân tích InBody?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["chữ C", "đồ thị InBody", "yếu cơ", "thừa mỡ"]
+    },
+    {
+        "id": "inbody_008",
+        "query": "Đồ thị hình chữ D trên InBody thể hiện thể trạng cơ thể như thế nào?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["chữ D", "cơ bắp phát triển", "vận động viên"]
+    },
+    {
+        "id": "inbody_009",
+        "query": "Đồ thị hình chữ I trên InBody có ý nghĩa gì?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["chữ I", "thể trạng cân đối"]
+    },
+    {
+        "id": "inbody_010",
+        "query": "Chỉ số BMR trên phiếu InBody được tính toán dựa trên khối lượng nạc như thế nào?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["BMR", "chuyển hóa cơ bản", "Katch-McArdle"]
+    },
+    {
+        "id": "inbody_011",
+        "query": "Tại sao không nên uống nhiều nước ngay trước khi bước lên máy đo InBody?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["quy chuẩn đo", "uống nước", "sai số BIA"]
+    },
+    {
+        "id": "inbody_012",
+        "query": "Có nên đo InBody ngay sau một buổi tập gym nặng không?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["tập luyện", "mất nước", "sai số"]
+    },
+    {
+        "id": "inbody_013",
+        "query": "Thời điểm lý tưởng nhất trong ngày để đo InBody đảm bảo kết quả chính xác là khi nào?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["thời điểm đo", "buổi sáng", "nhịn ăn"]
+    },
+    {
+        "id": "inbody_014",
+        "query": "Chỉ số BFM (Body Fat Mass) là gì và tính bằng đơn vị nào?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["BFM", "Body Fat Mass", "khối lượng mỡ", "kg"]
+    },
+    {
+        "id": "inbody_015",
+        "query": "Hiện tượng skinny fat là gì và biểu hiện trên chỉ số InBody như thế nào?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["skinny fat", "gầy nhưng mỡ", "PBF cao", "BMI bình thường"]
+    },
+    {
+        "id": "inbody_016",
+        "query": "Điểm InBody Score được tính dựa trên những yếu tố nào?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["InBody score", "điểm số InBody", "đánh giá"]
+    },
+    {
+        "id": "inbody_017",
+        "query": "Chỉ số phân tích từng phần (Segmental Lean Analysis) giúp ích gì trong việc phát hiện lệch cơ?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["phân đoạn", "Segmental Lean", "lệch cơ"]
+    },
+    {
+        "id": "inbody_018",
+        "query": "Nguyên lý trở kháng điện sinh học BIA của máy InBody hoạt động như thế nào?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["BIA", "trở kháng", "dòng điện xoay chiều"]
+    },
+    {
+        "id": "inbody_019",
+        "query": "Tỷ lệ PBF nữ giới từ 20 đến 25% có phải là mức khỏe mạnh không?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["PBF nữ", "tỷ lệ mỡ nữ", "bình thường"]
+    },
+    {
+        "id": "inbody_020",
+        "query": "Nam giới có PBF dưới 10% có nguy cơ gặp vấn đề sức khỏe gì?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["mỡ thiết yếu", "dưới 10%", "nội tiết tố"]
+    },
+    {
+        "id": "inbody_021",
+        "query": "Mỡ dưới da (Subcutaneous fat) khác gì với mỡ nội tạng (Visceral fat)?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["mỡ dưới da", "mỡ nội tạng", "nguy cơ tim mạch"]
+    },
+    {
+        "id": "inbody_022",
+        "query": "Chu vi vòng eo chuẩn của người Châu Á theo khuyến nghị của WHO là bao nhiêu?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["chu vi vòng eo", "WHO", "châu Á", "béo bụng"]
+    },
+    {
+        "id": "inbody_023",
+        "query": "Tại sao InBody lại yêu cầu đứng thẳng và dạng tay 45 độ khi đo?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["tư thế đo", "dạng tay", "tiếp xúc điện cực"]
+    },
+    {
+        "id": "inbody_024",
+        "query": "Tại sao lòng bàn chân và lòng bàn tay cần được lau sạch khăn cồn trước khi bước lên InBody?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["lau điện cực", "tiếp xúc điện", "khăn cồn"]
+    },
+    {
+        "id": "inbody_025",
+        "query": "Chỉ số khoáng chất (Bone Mineral Content) trên InBody nói lên điều gì?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["Bone Mineral Content", "khoáng chất", "xương"]
+    },
+    {
+        "id": "inbody_026",
+        "query": "Làm thế nào để tăng khối lượng cơ xương SMM một cách bền vững?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric", "exercise"],
+        "keywords": ["tăng cơ", "SMM", "kháng lực", "protein"]
+    },
+    {
+        "id": "inbody_027",
+        "query": "Giảm mỡ nội tạng cần ưu tiên chế độ ăn uống hay bài tập cardio hơn?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric", "nutrition"],
+        "keywords": ["giảm mỡ nội tạng", "chế độ ăn", "cardio"]
+    },
+    {
+        "id": "inbody_028",
+        "query": "Chỉ số BMI từ 23 đến 24.9 đối với người Việt Nam được xếp vào nhóm nào theo thang đo châu Á IDI & WPRO?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["BMI châu Á", "thừa cân", "tiền béo phì", "IDI"]
+    },
+    {
+        "id": "inbody_029",
+        "query": "Cân nặng mục tiêu (Target Weight) trên phiếu InBody được tính toán ra sao?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["Target Weight", "cân nặng khuyến nghị", "kiểm soát mỡ"]
+    },
+    {
+        "id": "inbody_030",
+        "query": "Khối lượng protein trong cơ thể (Protein mass) trên phiếu InBody phản ánh điều gì?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["protein mass", "dinh dưỡng tế bào", "cơ bắp"]
+    },
+    {
+        "id": "inbody_031",
+        "query": "Tại sao tắm nước nóng hoặc xông hơi trước khi đo InBody lại gây sai lệch kết quả?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["xông hơi", "tắm nóng", "giãn mạch", "sai số"]
+    },
+    {
+        "id": "inbody_032",
+        "query": "Body recomposition là gì và làm sao để nhận biết qua 2 lần đo InBody liên tiếp?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["recomposition", "tăng cơ giảm mỡ", "cân nặng không đổi"]
+    },
+    {
+        "id": "inbody_033",
+        "query": "Chỉ số TBW (Total Body Water) bình thường chiếm khoảng bao nhiêu phần trăm trọng lượng cơ thể?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["TBW", "tổng lượng nước", "50-60%"]
+    },
+    {
+        "id": "inbody_034",
+        "query": "Mỡ nội tạng mức 12 có đáng lo ngại không và cần làm gì để hạ xuống?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["mỡ nội tạng level 12", "nguy cơ", "chế độ ăn"]
+    },
+    {
+        "id": "inbody_035",
+        "query": "Khoảng cách đo InBody giữa các lần nên là bao lâu để thấy sự thay đổi cơ mỡ thực sự?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["chu kỳ đo", "2-4 tuần", "theo dõi tiến độ"]
+    },
+    {
+        "id": "inbody_036",
+        "query": "Sự khác biệt giữa máy đo InBody đa tần số và cân điện tử gia đình đơn tần số là gì?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["đa tần số", "đơn tần số", "độ chính xác", "nước nội bào"]
+    },
+    {
+        "id": "inbody_037",
+        "query": "Chỉ số PBF 28% ở nam giới 25 tuổi thì phân loại mức độ mỡ như thế nào?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["PBF 28%", "nam giới", "thừa mỡ", "béo phì"]
+    },
+    {
+        "id": "inbody_038",
+        "query": "Tại sao khi giảm cân nhanh quá thì SMM lại bị sụt giảm?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["giảm cân nhanh", "mất cơ", "sụt SMM"]
+    },
+    {
+        "id": "inbody_039",
+        "query": "Ý nghĩa của tỷ số vòng eo trên hông (WHR - Waist-Hip Ratio) trên InBody là gì?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["WHR", "tỷ số eo hông", "mỡ bụng"]
+    },
+    {
+        "id": "inbody_040",
+        "query": "Lệch cơ giữa tay phải và tay trái vượt quá bao nhiêu phần trăm thì cần chú ý tập bù?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["lệch cơ", "tay phải tay trái", "cân bằng"]
+    },
+    {
+        "id": "inbody_041",
+        "query": "Tại sao đi tiểu trước khi đo InBody lại là bước chuẩn bị bắt buộc?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["đi tiểu", "bàng quang", "trọng lượng nước"]
+    },
+    {
+        "id": "inbody_042",
+        "query": "Chỉ số FFM (Fat-Free Mass) khác gì với SMM?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["FFM", "SMM", "khối không mỡ", "nội tạng"]
+    },
+    {
+        "id": "inbody_043",
+        "query": "Mức mỡ cơ thể tối thiểu (Essential fat) đối với nữ giới để duy trì nội tiết tố bình thường là bao nhiêu?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["mỡ thiết yếu nữ", "10-13%", "kinh nguyệt"]
+    },
+    {
+        "id": "inbody_044",
+        "query": "Tại sao mặc quần áo dày hoặc mang kim loại trên người làm sai lệch kết quả InBody?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["quần áo", "trọng lượng giả", "kim loại"]
+    },
+    {
+        "id": "inbody_045",
+        "query": "Đo InBody vào mùa đông chân lạnh có ảnh hưởng đến độ dẫn điện của da không?",
+        "category": "inbody_metric",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["nhiệt độ da", "chân lạnh", "trở kháng"]
+    },
+
+    # =========================================================================
+    # NHÓM 2: NUTRITION & DIETARY SCIENCE (45 CÂU)
+    # =========================================================================
+    {
+        "id": "nutrition_001",
+        "query": "Trong 100g ức gà không da luộc có chứa khoảng bao nhiêu gam protein và calo?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["ức gà", "protein", "calo", "100g"]
+    },
+    {
+        "id": "nutrition_002",
+        "query": "1 quả trứng gà kích thước trung bình cung cấp bao nhiêu gam protein và chất béo?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["trứng gà", "lòng đỏ", "protein"]
+    },
+    {
+        "id": "nutrition_003",
+        "query": "Người tập gym muốn tăng cơ bắp nên nạp bao nhiêu gam protein trên mỗi kg cân nặng một ngày?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["protein tập gym", "g/kg", "1.6 - 2.2g"]
+    },
+    {
+        "id": "nutrition_004",
+        "query": "Thế nào là nguyên lý thâm hụt calo (Caloric deficit) trong giảm mỡ?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["thâm hụt calo", "caloric deficit", "giảm cân"]
+    },
+    {
+        "id": "nutrition_005",
+        "query": "TDEE là gì và công thức tính tổng tiêu hao năng lượng một ngày?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["TDEE", "tiêu hao năng lượng", "BMR"]
+    },
+    {
+        "id": "nutrition_006",
+        "query": "Hàm lượng dinh dưỡng và lượng calo trong 100g thịt bò nạc là bao nhiêu?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["thịt bò", "protein", "sắt", "calo"]
+    },
+    {
+        "id": "nutrition_007",
+        "query": "Cá hồi có chứa những loại axit béo có lợi nào cho người tập thể thao?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["cá hồi", "omega-3", "chất béo tốt"]
+    },
+    {
+        "id": "nutrition_008",
+        "query": "Một chén cơm trắng thông thường khoảng 150g chứa bao nhiêu calo và carb?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["cơm trắng", "tinh bột", "carb", "calo"]
+    },
+    {
+        "id": "nutrition_009",
+        "query": "Tại sao người ăn chay tập gym nên kết hợp đậu hũ với các loại ngũ cốc để đủ axit amin thiết yếu?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["đậu hũ", "ăn chay", "protein thực vật", "axit amin"]
+    },
+    {
+        "id": "nutrition_010",
+        "query": "Uống whey protein sau khi tập có ưu điểm gì so với ăn thịt tự nhiên?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["whey protein", "hấp thu nhanh", "phục hồi"]
+    },
+    {
+        "id": "nutrition_011",
+        "query": "Sự khác biệt giữa Whey Isolate và Whey Concentrate là gì?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["Whey Isolate", "Concentrate", "lactose"]
+    },
+    {
+        "id": "nutrition_012",
+        "query": "Tại sao không nên cắt giảm hoàn toàn tinh bột (carb) khi đang tập kháng lực nặng?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["cắt tinh bột", "glycogen", "năng lượng tập"]
+    },
+    {
+        "id": "nutrition_013",
+        "query": "Chất béo tốt (không bão hòa) có vai trò gì đối với việc sản sinh testosterone ở nam giới?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["chất béo tốt", "testosterone", "nội tiết tố"]
+    },
+    {
+        "id": "nutrition_014",
+        "query": "100g yến mạch cung cấp bao nhiêu gam chất xơ và tinh bột chuyển hóa chậm?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["yến mạch", "chất xơ", "beta-glucan"]
+    },
+    {
+        "id": "nutrition_015",
+        "query": "Ăn chuối trước khi tập gym khoảng 30 phút có tác dụng gì?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["chuối", "kali", "năng lượng nhanh", "pre-workout"]
+    },
+    {
+        "id": "nutrition_016",
+        "query": "Chế độ nhịn ăn gián đoạn 16/8 có làm mất cơ bắp không nếu tổng lượng protein vẫn đủ?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["nhịn ăn gián đoạn", "16/8", "mất cơ"]
+    },
+    {
+        "id": "nutrition_017",
+        "query": "Cần thâm hụt bao nhiêu calo để giảm được 1 kg mỡ cơ thể thuần túy?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["7700 calo", "1kg mỡ", "thâm hụt"]
+    },
+    {
+        "id": "nutrition_018",
+        "query": "Tại sao ăn nhiều muối natri lại khiến cân nặng tăng giả do tích nước?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["ăn mặn", "natri", "tích nước", "cân nặng giả"]
+    },
+    {
+        "id": "nutrition_019",
+        "query": "Lượng nước cần uống mỗi ngày cho người vận động thể thao trung bình là bao nhiêu lít?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["lượng nước", "uống nước", "bù điện giải"]
+    },
+    {
+        "id": "nutrition_020",
+        "query": "Creatine Monohydrate có tác dụng gì trong việc tăng sức mạnh và trữ nước nội bào cơ?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["creatine", "ATP", "sức mạnh", "nước nội bào"]
+    },
+    {
+        "id": "nutrition_021",
+        "query": "Hàm lượng protein trong 100g tôm biển luộc là bao nhiêu?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["tôm biển", "protein", "ít calo"]
+    },
+    {
+        "id": "nutrition_022",
+        "query": "Các loại hạt dinh dưỡng như hạnh nhân, óc chó cung cấp loại chất béo gì?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["hạnh nhân", "óc chó", "chất béo không bão hòa"]
+    },
+    {
+        "id": "nutrition_023",
+        "query": "Chế độ ăn Keto (Ketogenic) ảnh hưởng như thế nào đến mức glycogen cơ bắp?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["keto", "ketogenic", "glycogen", "xả mỡ"]
+    },
+    {
+        "id": "nutrition_024",
+        "query": "Tỷ lệ phân chia macro P:C:F phổ biến cho mục tiêu tăng cơ giảm mỡ là bao nhiêu?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["tỷ lệ macro", "P:C:F", "40-40-20"]
+    },
+    {
+        "id": "nutrition_025",
+        "query": "Bữa ăn sau tập (Post-workout meal) nên nạp carb và protein trong vòng bao lâu?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["bữa ăn sau tập", "cửa sổ đồng hóa", "phục hồi"]
+    },
+    {
+        "id": "nutrition_026",
+        "query": "Dầu olive nguyên chất (Extra virgin olive oil) có nên dùng để chiên xào nhiệt độ cao không?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["dầu olive", "điểm bốc khói", "chất béo"]
+    },
+    {
+        "id": "nutrition_027",
+        "query": "Khoai lang luộc có chỉ số đường huyết GI thấp hơn cơm trắng có đúng không?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["khoai lang", "chỉ số GI", "tinh bột hấp thu chậm"]
+    },
+    {
+        "id": "nutrition_028",
+        "query": "Tại sao thiếu hụt vitamin D và Canxi lại làm giảm hiệu suất phát triển xương và cơ?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["vitamin D", "canxi", "co cơ", "mật độ xương"]
+    },
+    {
+        "id": "nutrition_029",
+        "query": "Uống cà phê đen (Caffeine) trước khi tập luyện có giúp tăng đốt mỡ và tỉnh táo không?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["caffeine", "cà phê đen", "tỉnh táo", "trao đổi chất"]
+    },
+    {
+        "id": "nutrition_030",
+        "query": "100g ức gà sống sau khi luộc chín thì khối lượng và calo thay đổi thế nào do mất nước?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["ức gà sống chín", "mất nước", "tính calo"]
+    },
+    {
+        "id": "nutrition_031",
+        "query": "Vai trò của chất xơ hòa tan trong việc ổn định đường huyết và giảm cảm giác thèm ăn là gì?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["chất xơ hòa tan", "no lâu", "đường huyết"]
+    },
+    {
+        "id": "nutrition_032",
+        "query": "Tại sao không nên cắt giảm lượng calo xuống dưới mức BMR cơ bản?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["dưới mức BMR", "hạ trao đổi chất", "suy nhược"]
+    },
+    {
+        "id": "nutrition_033",
+        "query": "Sữa chua Hy Lạp (Greek yogurt) có lượng protein gấp mấy lần sữa chua thông thường?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["sữa chua Hy Lạp", "Greek yogurt", "protein cao"]
+    },
+    {
+        "id": "nutrition_034",
+        "query": "Ăn tinh bột vào bữa tối có gây tích mỡ nhiều hơn ăn vào ban ngày không nếu tổng calo không đổi?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["carb buổi tối", "tổng calo", "tích mỡ"]
+    },
+    {
+        "id": "nutrition_035",
+        "query": "BCAAs có thực sự cần thiết nếu một người đã nạp đủ lượng protein từ thức ăn tự nhiên và whey?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["BCAA", "leucine", "bổ sung", "cần thiết"]
+    },
+    {
+        "id": "nutrition_036",
+        "query": "Thế nào là hiệu ứng nhiệt của thực phẩm (TEF) và protein có TEF cao nhất đúng không?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["TEF", "hiệu ứng nhiệt thực phẩm", "đốt calo tiêu hóa"]
+    },
+    {
+        "id": "nutrition_037",
+        "query": "Ăn lòng trắng trứng luộc mỗi ngày có nguy cơ thiếu hụt biotin do avidin không?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["lòng trắng trứng", "avidin", "biotin", "nấu chín"]
+    },
+    {
+        "id": "nutrition_038",
+        "query": "Hạt chia cung cấp lượng omega-3 thực vật (ALA) như thế nào?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["hạt chia", "chất xơ", "ALA"]
+    },
+    {
+        "id": "nutrition_039",
+        "query": "Thế nào là Cheat meal có kiểm soát và vai trò hồi phục nồng độ hormone Leptin?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["cheat meal", "leptin", "xả calo", "tâm lý"]
+    },
+    {
+        "id": "nutrition_040",
+        "query": "Tại sao người ăn chay dễ thiếu hụt vitamin B12 và sắt nếu không bổ sung cẩn thận?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["ăn chay", "vitamin B12", "sắt non-heme"]
+    },
+    {
+        "id": "nutrition_041",
+        "query": "Chất béo chuyển hóa (Trans fat) trong thực phẩm chiên rán ảnh hưởng thế nào đến mỡ máu và tim mạch?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["trans fat", "chất béo chuyển hóa", "LDL", "tim mạch"]
+    },
+    {
+        "id": "nutrition_042",
+        "query": "Magie (Magnesium) có vai trò gì trong việc thư giãn cơ bắp và chất lượng giấc ngủ của gymer?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["magie", "thư giãn cơ", "chuột rút", "giấc ngủ"]
+    },
+    {
+        "id": "nutrition_043",
+        "query": "100g ức gà chứa bao nhiêu gam chất béo bão hòa?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["ức gà", "chất béo", "nạc"]
+    },
+    {
+        "id": "nutrition_044",
+        "query": "Đường đơn giản (Simple sugar) trong nước ngọt có ga gây tích mỡ gan và mỡ nội tạng ra sao?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["fructose", "đường đơn", "mỡ gan", "mỡ nội tạng"]
+    },
+    {
+        "id": "nutrition_045",
+        "query": "Uống bao nhiêu ml nước trong suốt buổi tập gym để tránh tụt huyết áp và chuột rút?",
+        "category": "nutrition",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["nước trong buổi tập", "bù nước", "chuột rút"]
+    },
+
+    # =========================================================================
+    # NHÓM 3: FITNESS & EXERCISE PHYSIOLOGY (40 CÂU)
+    # =========================================================================
+    {
+        "id": "exercise_001",
+        "query": "Gợi ý lịch tập kháng lực 4 buổi một tuần theo phân chia Upper Lower cho người bận rộn?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["Upper Lower", "4 buổi", "lịch tập kháng lực"]
+    },
+    {
+        "id": "exercise_002",
+        "query": "Lịch tập Push Pull Legs (PPL) phân chia các nhóm cơ như thế nào trong tuần?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["Push Pull Legs", "PPL", "nhóm cơ", "lịch tập"]
+    },
+    {
+        "id": "exercise_003",
+        "query": "Nguyên tắc Progressive Overload (tăng tiến tải trọng) là gì trong tập thể hình?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["Progressive Overload", "tăng tạ", "kích thích cơ"]
+    },
+    {
+        "id": "exercise_004",
+        "query": "Nên tập cardio trước hay sau buổi tập tạ để tối ưu hóa việc phát triển cơ bắp?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["cardio trước hay sau", "tập tạ", "tối ưu cơ"]
+    },
+    {
+        "id": "exercise_005",
+        "query": "Sự khác biệt giữa bài tập đa khớp (Compound) và bài tập đơn khớp (Isolation)?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["Compound", "Isolation", "đa khớp", "đơn khớp"]
+    },
+    {
+        "id": "exercise_006",
+        "query": "Thời gian nghỉ giữa các hiệp tập tạ nặng tăng sức mạnh nên là bao nhiêu phút?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["thời gian nghỉ", "hiệp tập", "tăng sức mạnh", "2-3 phút"]
+    },
+    {
+        "id": "exercise_007",
+        "query": "Hiện tượng đau nhức cơ bắp khởi phát muộn (DOMS) kéo dài bao lâu và cách phục hồi?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["DOMS", "đau nhức cơ bắp", "phục hồi"]
+    },
+    {
+        "id": "exercise_008",
+        "query": "Cardio LISS (cường độ thấp ổn định) và HIIT (ngắt quãng cường độ cao) cái nào đốt mỡ tốt hơn?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["LISS", "HIIT", "đốt mỡ", "tim mạch"]
+    },
+    {
+        "id": "exercise_009",
+        "query": "Bài tập Squat tác động chủ yếu vào những nhóm cơ nào trên cơ thể?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["Squat", "cơ đùi trước", "cơ mông", "quads", "glutes"]
+    },
+    {
+        "id": "exercise_010",
+        "query": "Bài tập Deadlift có tác dụng gì đối với chuỗi cơ sau (Posterior chain)?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["Deadlift", "chuỗi cơ sau", "lưng dưới", "gân kheo"]
+    },
+    {
+        "id": "exercise_011",
+        "query": "Bench Press tác động vào cơ ngực, cơ vai trước và cơ tay sau như thế nào?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["Bench Press", "cơ ngực", "tay sau", "vai trước"]
+    },
+    {
+        "id": "exercise_012",
+        "query": "Tập luyện đến ngưỡng thất bại (Failure) có cần thiết cho mọi hiệp tập tăng cơ không?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["ngưỡng thất bại", "failure", "RIR", "RPE"]
+    },
+    {
+        "id": "exercise_013",
+        "query": "Khái niệm RIR (Reps in Reserve) trong điều chỉnh cường độ tập luyện là gì?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["RIR", "Reps in Reserve", "dự trữ số rep"]
+    },
+    {
+        "id": "exercise_014",
+        "query": "Một nhóm cơ cần bao nhiêu hiệp tập (sets) mỗi tuần để tối ưu hóa phì đại cơ bắp (Hypertrophy)?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["volume tập luyện", "10-20 sets/tuần", "phì đại cơ"]
+    },
+    {
+        "id": "exercise_015",
+        "query": "Một nhóm cơ sau buổi tập nặng cần bao nhiêu giờ để phục hồi hoàn toàn trước khi tập lại?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["thời gian phục hồi cơ", "48-72 giờ"]
+    },
+    {
+        "id": "exercise_016",
+        "query": "Người mới tập gym (Newbie) nên bắt đầu với lịch Full Body 3 buổi/tuần có hợp lý không?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["Full Body", "người mới tập", "3 buổi/tuần"]
+    },
+    {
+        "id": "exercise_017",
+        "query": "Khởi động làm nóng khớp (Warm-up) trước khi gánh tạ giúp giảm thiểu nguy cơ chấn thương như thế nào?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["khởi động", "dịch khớp", "ngừa chấn thương"]
+    },
+    {
+        "id": "exercise_018",
+        "query": "Kỹ thuật hít thở gồng bụng Valsalva Maneuver khi nâng tạ nặng có tác dụng gì?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["Valsalva Maneuver", "gồng core", "bảo vệ cột sống"]
+    },
+    {
+        "id": "exercise_019",
+        "query": "Bài tập hít xà đơn (Pull-up) tác động vào nhóm cơ lưng xô (Lats) ra sao?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["hít xà đơn", "Pull-up", "cơ xô", "Lats"]
+    },
+    {
+        "id": "exercise_020",
+        "query": "Giấc ngủ sâu 7-8 tiếng mỗi đêm có vai trò tiết ra hormone tăng trưởng GH phục hồi cơ như thế nào?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["giấc ngủ", "hormone GH", "phục hồi cơ"]
+    },
+    {
+        "id": "exercise_021",
+        "query": "Tập bụng hàng ngày có giúp giảm mỡ bụng tại chỗ (Spot reduction) được không?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["giảm mỡ cục bộ", "spot reduction", "gập bụng"]
+    },
+    {
+        "id": "exercise_022",
+        "query": "Bài tập Overhead Press (đẩy tạ qua đầu) giúp phát triển cơ vai nào?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["Overhead Press", "OHP", "cơ vai", "deltoids"]
+    },
+    {
+        "id": "exercise_023",
+        "query": "Phạm vi số lần lặp (Rep range) 8-12 reps phù hợp cho mục tiêu tăng cơ hay tăng sức bền?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["8-12 reps", "phì đại cơ", "hypertrophy"]
+    },
+    {
+        "id": "exercise_024",
+        "query": "Tại sao tập chân (Leg day) lại kích thích cơ thể sản sinh nhiều testosterone và hormone đồng hóa?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["tập chân", "nhóm cơ lớn", "testosterone"]
+    },
+    {
+        "id": "exercise_025",
+        "query": "Hiện tượng quá tải tập luyện (Overtraining syndrome) có những biểu hiện kiệt sức nào?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["quá tải", "overtraining", "mất ngủ", "sụt cân"]
+    },
+    {
+        "id": "exercise_026",
+        "query": "Deload week (tuần xả tải) nên thực hiện sau bao nhiêu tuần tập luyện liên tục?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["deload", "xả tải", "4-8 tuần", "hồi phục thần kinh"]
+    },
+    {
+        "id": "exercise_027",
+        "query": "Đi bộ dốc (Incline walking) trên máy chạy bộ có ưu điểm gì trong việc bảo vệ khớp gối hơn chạy bộ?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["đi bộ dốc", "bảo vệ khớp gối", "cardio giảm mỡ"]
+    },
+    {
+        "id": "exercise_028",
+        "query": "Gợi ý các bài tập kháng lực phát triển cơ ngực trên (Incline chest press)?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["ngực trên", "Incline dumbbell press", "dốc lên"]
+    },
+    {
+        "id": "exercise_029",
+        "query": "Bài tập Barbell Row (kéo tạ đòn gập người) tác động vào nhóm cơ lưng giữa như thế nào?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["Barbell Row", "cơ lưng giữa", "rhomboids"]
+    },
+    {
+        "id": "exercise_030",
+        "query": "Giãn cơ tĩnh (Static stretching) nên thực hiện trước hay sau khi hoàn thành buổi tập?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["giãn cơ tĩnh", "sau buổi tập", "hạ cơ"]
+    },
+    {
+        "id": "exercise_031",
+        "query": "Tập plank đúng kỹ thuật cần siết chặt cơ bụng và mông như thế nào để tránh võng lưng đau cột sống?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["plank", "gồng bụng", "tránh võng lưng"]
+    },
+    {
+        "id": "exercise_032",
+        "query": "Tại sao tập tạ với biên độ chuyển động đầy đủ (Full Range of Motion - ROM) lại kích thích cơ bắp tốt hơn?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["ROM", "biên độ chuyển động", "kéo giãn cơ"]
+    },
+    {
+        "id": "exercise_033",
+        "query": "Bài tập Hip Thrust có ưu thế gì trong việc cô lập và kích hoạt cơ mông lớn (Gluteus Maximus)?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["Hip Thrust", "cơ mông", "Gluteus Maximus"]
+    },
+    {
+        "id": "exercise_034",
+        "query": "Phân biệt pha co cơ hướng tâm (Concentric) và pha giãn cơ ly tâm (Eccentric)?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["Concentric", "Eccentric", "pha hạ tạ chậm"]
+    },
+    {
+        "id": "exercise_035",
+        "query": "Tập luyện với dây kháng lực (Resistance bands) có mang lại hiệu quả tăng cơ tương tự tạ đơn không?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["dây kháng lực", "tăng cơ", "tập tại nhà"]
+    },
+    {
+        "id": "exercise_036",
+        "query": "Đeo đai nâng tạ (Weightlifting belt) khi Squat nặng có tác dụng tăng áp lực ổ bụng như thế nào?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["đai tập tạ", "áp lực ổ bụng", "bảo vệ cột sống"]
+    },
+    {
+        "id": "exercise_037",
+        "query": "Tại sao không nên khóa khớp gối hoàn toàn (Lock out) khi thực hiện bài đẩy chân Leg Press?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["Leg Press", "khóa khớp", "chấn thương gối"]
+    },
+    {
+        "id": "exercise_038",
+        "query": "Lịch tập 5 buổi một tuần chia theo nhóm cơ từng ngày (Bro split) có nhược điểm gì so với tập tuần hoàn?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["Bro split", "tần suất tập cơ", "phì đại"]
+    },
+    {
+        "id": "exercise_039",
+        "query": "Bài tập Roman Chair / Back Extension giúp củng cố cơ dựng sống (Erector Spinae) như thế nào?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["Back Extension", "cơ dựng sống", "lưng dưới"]
+    },
+    {
+        "id": "exercise_040",
+        "query": "Tập luyện bơi lội có phải là hình thức cardio toàn thân ít gây áp lực lên khớp nhất không?",
+        "category": "exercise",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["bơi lội", "cardio", "giảm áp lực khớp"]
+    },
+
+    # =========================================================================
+    # NHÓM 4: MEDICAL SAFETY & FAST-PATH TRIAGE (35 CÂU)
+    # 15 urgent safety + 20 medical caution
+    # =========================================================================
+    {
+        "id": "safety_001",
+        "query": "Tôi đang tập squat tự nhiên bị đau thắt ngực dữ dội, khó thở và vã mồ hôi lạnh!",
+        "category": "medical_safety",
+        "expected_agent": "SafetyAgent",
+        "expected_public_specialists": [],
+        "fast_path": "urgent_safety",
+        "risk_level": "urgent",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["đau ngực", "khó thở", "cấp cứu"]
+    },
+    {
+        "id": "safety_002",
+        "query": "Em đang chạy máy chạy bộ thì thấy tim đập nhanh thình thịch, choáng váng muốn ngất xỉu và đau nhói ngực trái.",
+        "category": "medical_safety",
+        "expected_agent": "SafetyAgent",
+        "expected_public_specialists": [],
+        "fast_path": "urgent_safety",
+        "risk_level": "urgent",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["đau nhói ngực", "muốn ngất", "khó thở"]
+    },
+    {
+        "id": "safety_003",
+        "query": "Vừa nâng tạ xong tôi thấy xây xẩm mặt mày, ngã quỵ xuống đất và thở dốc không ra hơi.",
+        "category": "medical_safety",
+        "expected_agent": "SafetyAgent",
+        "expected_public_specialists": [],
+        "fast_path": "urgent_safety",
+        "risk_level": "urgent",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["ngã quỵ", "xây xẩm", "thở dốc", "ngất"]
+    },
+    {
+        "id": "safety_004",
+        "query": "Tôi bị đau ngực lan lên cổ và cánh tay trái khi đang tập gym, cảm giác bị đè nghẹt thở.",
+        "category": "medical_safety",
+        "expected_agent": "SafetyAgent",
+        "expected_public_specialists": [],
+        "fast_path": "urgent_safety",
+        "risk_level": "urgent",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["đau ngực lan cánh tay", "nghẹt thở", "nhồi máu cơ tim"]
+    },
+    {
+        "id": "safety_005",
+        "query": "Bạn tập của tôi đột nhiên ngất xỉu, bất tỉnh nhân sự sau khi đẩy tạ nặng!",
+        "category": "medical_safety",
+        "expected_agent": "SafetyAgent",
+        "expected_public_specialists": [],
+        "fast_path": "urgent_safety",
+        "risk_level": "urgent",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["ngất xỉu", "bất tỉnh", "cấp cứu"]
+    },
+    {
+        "id": "safety_006",
+        "query": "Đang tập tạ tự nhiên đau đầu dữ dội như búa bổ, mắt mờ đi và nôn mửa tại chỗ.",
+        "category": "medical_safety",
+        "expected_agent": "SafetyAgent",
+        "expected_public_specialists": [],
+        "fast_path": "urgent_safety",
+        "risk_level": "urgent",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["đau đầu dữ dội", "nôn mửa", "đột quỵ"]
+    },
+    {
+        "id": "safety_007",
+        "query": "Người tập bị tạ rơi đè vào ngực gây gãy xương, khó thở và ho khạc ra máu tươi.",
+        "category": "medical_safety",
+        "expected_agent": "SafetyAgent",
+        "expected_public_specialists": [],
+        "fast_path": "urgent_safety",
+        "risk_level": "urgent",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["tạ đè", "ho ra máu", "gãy xương"]
+    },
+    {
+        "id": "safety_008",
+        "query": "Tôi đang tập thể dục thì cảm thấy tê liệt nửa người bên trái và méo miệng không nói rõ tiếng.",
+        "category": "medical_safety",
+        "expected_agent": "SafetyAgent",
+        "expected_public_specialists": [],
+        "fast_path": "urgent_safety",
+        "risk_level": "urgent",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["tê liệt nửa người", "méo miệng", "đột quỵ"]
+    },
+    {
+        "id": "safety_009",
+        "query": "Em bị run tay chân bủn rủn dữ dội, vã mồ hôi hột, hoa mắt sắp xỉu do tụt đường huyết cấp khi nhịn ăn tập gym.",
+        "category": "medical_safety",
+        "expected_agent": "SafetyAgent",
+        "expected_public_specialists": [],
+        "fast_path": "urgent_safety",
+        "risk_level": "urgent",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["tụt đường huyết", "bủn rủn", "sắp xỉu"]
+    },
+    {
+        "id": "safety_010",
+        "query": "Bị sốc nhiệt khi chạy bộ ngoài trời: người nóng ran không ra mồ hôi, mê sảng và ngất lịm.",
+        "category": "medical_safety",
+        "expected_agent": "SafetyAgent",
+        "expected_public_specialists": [],
+        "fast_path": "urgent_safety",
+        "risk_level": "urgent",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["sốc nhiệt", "mê sảng", "ngất lịm"]
+    },
+    {
+        "id": "safety_011",
+        "query": "Nghe tiếng rắc lớn ở đầu gối kèm đau buốt không thể đứng dậy được sau khi nhảy tiếp đất.",
+        "category": "medical_safety",
+        "expected_agent": "SafetyAgent",
+        "expected_public_specialists": [],
+        "fast_path": "urgent_safety",
+        "risk_level": "urgent",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["tiếng rắc", "đứt dây chằng", "đau buốt"]
+    },
+    {
+        "id": "safety_012",
+        "query": "Đau tức ngực, khó thở nghẹt lồng ngực khi vừa kết thúc bài tập HIIT cường độ cao.",
+        "category": "medical_safety",
+        "expected_agent": "SafetyAgent",
+        "expected_public_specialists": [],
+        "fast_path": "urgent_safety",
+        "risk_level": "urgent",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["đau tức ngực", "khó thở", "HIIT"]
+    },
+    {
+        "id": "safety_013",
+        "query": "Tôi uống thực phẩm chức năng pre-workout xong tim đập loạn xạ 180 nhịp/phút, khó thở và run rẩy toàn thân.",
+        "category": "medical_safety",
+        "expected_agent": "SafetyAgent",
+        "expected_public_specialists": [],
+        "fast_path": "urgent_safety",
+        "risk_level": "urgent",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["tim loạn nhịp", "pre-workout", "khó thở"]
+    },
+    {
+        "id": "safety_014",
+        "query": "Đau dữ dội vùng thắt lưng lan xuống chân, tê mất cảm giác đi tiểu không kiểm soát sau bài deadlift nặng.",
+        "category": "medical_safety",
+        "expected_agent": "SafetyAgent",
+        "expected_public_specialists": [],
+        "fast_path": "urgent_safety",
+        "risk_level": "urgent",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["chèn ép tủy", "hội chứng chùm đuôi ngựa", "tê mất cảm giác"]
+    },
+    {
+        "id": "safety_015",
+        "query": "Đau thắt ngực dữ dội kèm nôn mửa và khó thở khi đang tập tạ tay.",
+        "category": "medical_safety",
+        "expected_agent": "SafetyAgent",
+        "expected_public_specialists": [],
+        "fast_path": "urgent_safety",
+        "risk_level": "urgent",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["đau thắt ngực", "khó thở", "nôn mửa"]
+    },
+    # Medical Caution (20 câu):
+    {
+        "id": "safety_016",
+        "query": "Phụ nữ đang mang thai 3 tháng đầu có được bước lên máy InBody đo không và tại sao?",
+        "category": "medical_safety",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "medical_caution",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["mang thai", "thai phụ", "dòng điện BIA", "lưu ý an toàn"]
+    },
+    {
+        "id": "safety_017",
+        "query": "Người có gắn máy tạo nhịp tim (Pacemaker) hoặc máy khử rung tim có đo InBody được không?",
+        "category": "medical_safety",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "medical_caution",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["máy tạo nhịp tim", "pacemaker", "chống chỉ định"]
+    },
+    {
+        "id": "safety_018",
+        "query": "Người có đinh nẹp kim loại hoặc khớp háng nhân tạo bằng titan đo InBody có bị giật hay sai số không?",
+        "category": "medical_safety",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "medical_caution",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["kim loại", "khớp nhân tạo", "sai số dẫn điện"]
+    },
+    {
+        "id": "safety_019",
+        "query": "Người bị huyết áp cao giai đoạn 2 có nên gánh tạ squat tạ nặng tối đa 1RM không?",
+        "category": "medical_safety",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "medical_caution",
+        "target_content_types": ["medical_safety", "exercise"],
+        "keywords": ["huyết áp cao", "tập tạ nặng", "nguy cơ mạch máu"]
+    },
+    {
+        "id": "safety_020",
+        "query": "Bị thoái hóa đốt sống lưng L4-L5 và thoát vị đĩa đệm nhẹ thì nên tránh những bài tập nào?",
+        "category": "medical_safety",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "medical_caution",
+        "target_content_types": ["medical_safety", "exercise"],
+        "keywords": ["thoát vị đĩa đệm", "tránh bài tập", "cột sống"]
+    },
+    {
+        "id": "safety_021",
+        "query": "Người mắc bệnh tiểu đường tuýp 2 khi tập thể dục cần lưu ý gì để phòng tránh hạ đường huyết?",
+        "category": "medical_safety",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "medical_caution",
+        "target_content_types": ["medical_safety", "nutrition"],
+        "keywords": ["tiểu đường type 2", "hạ đường huyết", "bữa phụ"]
+    },
+    {
+        "id": "safety_022",
+        "query": "Tốc độ giảm cân an toàn theo khuyến nghị y tế của CDC là bao nhiêu kg mỗi tuần?",
+        "category": "medical_safety",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["CDC", "tốc độ giảm cân an toàn", "0.5 - 1kg/tuần"]
+    },
+    {
+        "id": "safety_023",
+        "query": "Hội chứng chuyển hóa (Metabolic Syndrome) được chẩn đoán dựa trên những yếu tố nguy cơ nào?",
+        "category": "medical_safety",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["hội chứng chuyển hóa", "yếu tố rủi ro", "đường huyết", "mỡ máu"]
+    },
+    {
+        "id": "safety_024",
+        "query": "Người bị bệnh thận mãn tính có nên uống nhiều đạm whey protein bột không?",
+        "category": "medical_safety",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "medical_caution",
+        "target_content_types": ["medical_safety", "nutrition"],
+        "keywords": ["suy thận", "bệnh thận", "hạn chế đạm"]
+    },
+    {
+        "id": "safety_025",
+        "query": "Bị viêm khớp gối tràn dịch thì có được tập tạ chân hay chạy bộ máy không?",
+        "category": "medical_safety",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "medical_caution",
+        "target_content_types": ["medical_safety", "exercise"],
+        "keywords": ["tràn dịch khớp gối", "nghỉ ngơi", "không chạy bộ"]
+    },
+    {
+        "id": "safety_026",
+        "query": "Người đang uống thuốc điều trị mỡ máu nhóm Statin tập gym bị đau mỏi cơ cần lưu ý gì?",
+        "category": "medical_safety",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "medical_caution",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["Statin", "tiêu cơ vân", "đau cơ"]
+    },
+    {
+        "id": "safety_027",
+        "query": "Giảm cân quá nhanh trên 2kg mỗi tuần có nguy cơ sỏi túi mật và mất cơ ra sao?",
+        "category": "medical_safety",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["giảm cân quá nhanh", "sỏi túi mật", "mất cơ"]
+    },
+    {
+        "id": "safety_028",
+        "query": "Bị đau khớp vai khi tập Bench Press thì nên điều chỉnh góc cùi chỏ hay đổi sang tạ đơn?",
+        "category": "medical_safety",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "medical_caution",
+        "target_content_types": ["exercise"],
+        "keywords": ["đau vai", "Bench Press", "chèn ép khớp vai"]
+    },
+    {
+        "id": "safety_029",
+        "query": "Người có tiền sử hen suyễn do vận động (Exercise-induced asthma) cần khởi động thế nào?",
+        "category": "medical_safety",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "medical_caution",
+        "target_content_types": ["medical_safety", "exercise"],
+        "keywords": ["hen suyễn", "khởi động từ từ", "thuốc xịt"]
+    },
+    {
+        "id": "safety_030",
+        "query": "Người cao tuổi trên 65 tuổi tập kháng lực cần chú ý gì về nguy cơ té ngã và mật độ xương?",
+        "category": "medical_safety",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["người cao tuổi", "loãng xương", "thăng bằng"]
+    },
+    {
+        "id": "safety_031",
+        "query": "Bị đau gân gót chân Achilles có nên tiếp tục chạy bộ nước rút không?",
+        "category": "medical_safety",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "medical_caution",
+        "target_content_types": ["exercise"],
+        "keywords": ["viêm gân gót", "Achilles", "ngừng chạy"]
+    },
+    {
+        "id": "safety_032",
+        "query": "Bệnh gút (Gout) tăng axit uric có cần hạn chế các loại thịt đỏ và hải sản giàu purin?",
+        "category": "medical_safety",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "medical_caution",
+        "target_content_types": ["medical_safety", "nutrition"],
+        "keywords": ["gút", "axit uric", "purin", "thịt đỏ"]
+    },
+    {
+        "id": "safety_033",
+        "query": "Tại sao phụ nữ trong kỳ kinh nguyệt đo InBody kết quả lượng nước và mỡ lại tăng giả?",
+        "category": "medical_safety",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["medical_safety", "inbody_metric"],
+        "keywords": ["chu kỳ kinh nguyệt", "tích nước", "sai số BIA"]
+    },
+    {
+        "id": "safety_034",
+        "query": "Người bị đau dạ dày viêm loét có nên dùng thực phẩm bổ sung đốt mỡ Fat burner chứa nhiều caffeine không?",
+        "category": "medical_safety",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "medical_caution",
+        "target_content_types": ["medical_safety", "nutrition"],
+        "keywords": ["đau dạ dày", "Fat burner", "caffeine", "kích ứng"]
+    },
+    {
+        "id": "safety_035",
+        "query": "Uống quá nhiều nước lọc trong thời gian ngắn khi chạy marathon có nguy cơ hạ natri máu (Hyponatremia) không?",
+        "category": "medical_safety",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["hạ natri máu", "ngộ độc nước", "điện giải"]
+    },
+
+    # =========================================================================
+    # NHÓM 5: EDGE CASES & REAL-WORLD LINGUISTIC VARIANCE (35 CÂU)
+    # (15 không dấu, 10 fast-path BMI, 10 ngoài phạm vi / chat)
+    # =========================================================================
+    {
+        "id": "edge_001",
+        "query": "chi so pbf tren giay inbody la gi va muc bao nhieu la beo phi",
+        "category": "edge_cases",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["pbf", "inbody", "beo phi"]
+    },
+    {
+        "id": "edge_002",
+        "query": "100g uc ga co bao nhieu calo va protein",
+        "category": "edge_cases",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["uc ga", "protein", "calo"]
+    },
+    {
+        "id": "edge_003",
+        "query": "goi y lich tap 4 buoi mot tuan cho nguoi moi tap",
+        "category": "edge_cases",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["lich tap", "4 buoi", "nguoi moi"]
+    },
+    {
+        "id": "edge_004",
+        "query": "mo noi tang level 11 co nguy hiem khong",
+        "category": "edge_cases",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["mo noi tang", "level 11"]
+    },
+    {
+        "id": "edge_005",
+        "query": "giam mo bung duoi bang cach nao nhanh nhat",
+        "category": "edge_cases",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition", "exercise"],
+        "keywords": ["giam mo", "bung duoi", "tham hut calo"]
+    },
+    {
+        "id": "edge_006",
+        "query": "an chuoi truoc khi tap gym co tot khong",
+        "category": "edge_cases",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["an chuoi", "tap gym"]
+    },
+    {
+        "id": "edge_007",
+        "query": "uong whey sau tap bao lau thi an com",
+        "category": "edge_cases",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["uong whey", "an com"]
+    },
+    {
+        "id": "edge_008",
+        "query": "lich tap khang luc 3 buoi mot tuan full body",
+        "category": "edge_cases",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["khang luc", "3 buoi", "full body"]
+    },
+    {
+        "id": "edge_009",
+        "query": "tap gym xong bi dau bap tay 2 ngay co sao khong",
+        "category": "edge_cases",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["dau bap tay", "DOMS"]
+    },
+    {
+        "id": "edge_010",
+        "query": "smm la gi tren to ket qua inbody",
+        "category": "edge_cases",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["smm", "inbody"]
+    },
+    {
+        "id": "edge_011",
+        "query": "mot qua trung ga bao nhieu gam protein",
+        "category": "edge_cases",
+        "expected_agent": "NutritionAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["nutrition"],
+        "keywords": ["trung ga", "protein"]
+    },
+    {
+        "id": "edge_012",
+        "query": "dau nguc kho tho khi dang chay bo",
+        "category": "edge_cases",
+        "expected_agent": "SafetyAgent",
+        "expected_public_specialists": [],
+        "fast_path": "urgent_safety",
+        "risk_level": "urgent",
+        "target_content_types": ["medical_safety"],
+        "keywords": ["dau nguc", "kho tho"]
+    },
+    {
+        "id": "edge_013",
+        "query": "chay bo may co giam mo noi tang khong",
+        "category": "edge_cases",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise", "inbody_metric"],
+        "keywords": ["chay bo", "mo noi tang"]
+    },
+    {
+        "id": "edge_014",
+        "query": "bi dau lung khi tap deadlift thi sua the nao",
+        "category": "edge_cases",
+        "expected_agent": "TrainingAgent",
+        "expected_public_specialists": ["LifestyleAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["exercise"],
+        "keywords": ["dau lung", "deadlift"]
+    },
+    {
+        "id": "edge_015",
+        "query": "uong nuoc nhieu co bi tang can ao tren inbody khong",
+        "category": "edge_cases",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent", "KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": ["inbody_metric"],
+        "keywords": ["uong nuoc", "tang can ao", "inbody"]
+    },
+    # Fast-path BMI (10 câu):
+    {
+        "id": "edge_016",
+        "query": "Tôi cao 1m70 nặng 65kg thì chỉ số BMI là bao nhiêu?",
+        "category": "edge_cases",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent"],
+        "fast_path": "inbody_tools",
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["1m70", "65kg", "BMI = 22.49"]
+    },
+    {
+        "id": "edge_017",
+        "query": "Chiều cao 175cm cân nặng 80kg tính BMI giúp tôi với.",
+        "category": "edge_cases",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent"],
+        "fast_path": "inbody_tools",
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["175cm", "80kg", "BMI = 26.12"]
+    },
+    {
+        "id": "edge_018",
+        "query": "nặng 50kg cao 1m58 thì BMI bình thường không",
+        "category": "edge_cases",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent"],
+        "fast_path": "inbody_tools",
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["50kg", "1m58", "BMI = 20.03"]
+    },
+    {
+        "id": "edge_019",
+        "query": "Tôi nặng 72kg cao 168cm",
+        "category": "edge_cases",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent"],
+        "fast_path": "inbody_tools",
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["72kg", "168cm", "BMI = 25.51"]
+    },
+    {
+        "id": "edge_020",
+        "query": "180 cm và 75 kg tính chỉ số bmi",
+        "category": "edge_cases",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent"],
+        "fast_path": "inbody_tools",
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["180 cm", "75 kg", "BMI = 23.15"]
+    },
+    {
+        "id": "edge_021",
+        "query": "em cao 1.62m nang 58kg bmi bao nhieu",
+        "category": "edge_cases",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent"],
+        "fast_path": "inbody_tools",
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["1.62m", "58kg", "BMI"]
+    },
+    {
+        "id": "edge_022",
+        "query": "Cao 165cm nặng 55kg chỉ số khối cơ thể thế nào",
+        "category": "edge_cases",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent"],
+        "fast_path": "inbody_tools",
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["165cm", "55kg", "BMI = 20.20"]
+    },
+    {
+        "id": "edge_023",
+        "query": "Tôi cao 1m85 nặng 92kg tính bmi",
+        "category": "edge_cases",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent"],
+        "fast_path": "inbody_tools",
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["1m85", "92kg", "BMI = 26.88"]
+    },
+    {
+        "id": "edge_024",
+        "query": "nặng 48 kg cao 155 cm bmi có chuẩn không",
+        "category": "edge_cases",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent"],
+        "fast_path": "inbody_tools",
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["48 kg", "155 cm", "BMI = 19.98"]
+    },
+    {
+        "id": "edge_025",
+        "query": "cao 172cm nặng 68kg",
+        "category": "edge_cases",
+        "expected_agent": "InBodyAgent",
+        "expected_public_specialists": ["InBodyAgent"],
+        "fast_path": "inbody_tools",
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["172cm", "68kg", "BMI = 22.99"]
+    },
+    # Out-of-scope / Chat chào hỏi (10 câu):
+    {
+        "id": "edge_026",
+        "query": "Xin chào, bạn có thể giúp gì cho tôi?",
+        "category": "edge_cases",
+        "expected_agent": "GeneralChatAgent",
+        "expected_public_specialists": ["KnowledgeAgent"],
+        "fast_path": "greeting",
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["chào", "giúp đỡ"]
+    },
+    {
+        "id": "edge_027",
+        "query": "Hello bot!",
+        "category": "edge_cases",
+        "expected_agent": "GeneralChatAgent",
+        "expected_public_specialists": ["KnowledgeAgent"],
+        "fast_path": "greeting",
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["hello"]
+    },
+    {
+        "id": "edge_028",
+        "query": "Thời tiết Hà Nội hôm nay thế nào?",
+        "category": "edge_cases",
+        "expected_agent": "GeneralChatAgent",
+        "expected_public_specialists": ["KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["thời tiết"]
+    },
+    {
+        "id": "edge_029",
+        "query": "Bạn có biết làm thơ về mùa thu không?",
+        "category": "edge_cases",
+        "expected_agent": "GeneralChatAgent",
+        "expected_public_specialists": ["KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["làm thơ"]
+    },
+    {
+        "id": "edge_030",
+        "query": "Hướng dẫn cài đặt hệ điều hành Windows 11 từ USB",
+        "category": "edge_cases",
+        "expected_agent": "GeneralChatAgent",
+        "expected_public_specialists": ["KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["cài đặt windows"]
+    },
+    {
+        "id": "edge_031",
+        "query": "Thủ đô của nước Pháp là thành phố nào?",
+        "category": "edge_cases",
+        "expected_agent": "GeneralChatAgent",
+        "expected_public_specialists": ["KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["thủ đô Pháp", "Paris"]
+    },
+    {
+        "id": "edge_032",
+        "query": "Cảm ơn bạn nhé, thông tin rất hữu ích!",
+        "category": "edge_cases",
+        "expected_agent": "GeneralChatAgent",
+        "expected_public_specialists": ["KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["cảm ơn"]
+    },
+    {
+        "id": "edge_033",
+        "query": "Tạm biệt bạn hẹn gặp lại lần sau.",
+        "category": "edge_cases",
+        "expected_agent": "GeneralChatAgent",
+        "expected_public_specialists": ["KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["tạm biệt"]
+    },
+    {
+        "id": "edge_034",
+        "query": "Ai là người phát minh ra bóng đèn điện?",
+        "category": "edge_cases",
+        "expected_agent": "GeneralChatAgent",
+        "expected_public_specialists": ["KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["phát minh", "bóng đèn"]
+    },
+    {
+        "id": "edge_035",
+        "query": "Giải phương trình bậc hai 2x^2 + 5x - 3 = 0",
+        "category": "edge_cases",
+        "expected_agent": "GeneralChatAgent",
+        "expected_public_specialists": ["KnowledgeAgent"],
+        "fast_path": None,
+        "risk_level": "low",
+        "target_content_types": [],
+        "keywords": ["phương trình bậc hai"]
+    }
+]
+
+
+def generate_golden_eval_set(output_path: Path):
+    """Ghi tập dữ liệu ra file jsonl chuẩn hóa."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", encoding="utf-8") as f:
+        for item in DATASET:
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+    print(f"✅ Đã tạo thành công golden eval set với {len(DATASET)} câu hỏi tại: {output_path}")
+
+
+if __name__ == "__main__":
+    out_file = Path("backend/evals/golden_eval_set.jsonl")
+    generate_golden_eval_set(out_file)

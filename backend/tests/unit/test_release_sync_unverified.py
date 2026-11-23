@@ -34,3 +34,37 @@ def test_snapshot_digest_must_match_release_manifest(monkeypatch):
     info = search.verify_runtime_release_sync(release_manifest_path="release.json")
     assert not info["synced"]
     assert any("sha256" in reason for reason in info["reasons"])
+
+
+def test_missing_binding_field_in_snapshot_causes_mismatch(monkeypatch):
+    monkeypatch.setattr(search, "_resolve_alias_target", lambda *args, **kwargs: "collection")
+    monkeypatch.setattr(search, "_search_engine_initialized", True)
+    # snapshot lacks release_id
+    monkeypatch.setattr(search, "_search_index_metadata", {
+        "physical_collection": "collection", "release_id": None,
+        "corpus_version": "v1", "chunk_set_fingerprint": "fingerprint",
+        "snapshot_sha256": "digest",
+    })
+    monkeypatch.setattr(search, "load_release_manifest", lambda _: {
+        "physical_collection": "collection", "release_id": "release-1",
+        "corpus_version": "v1", "chunk_manifest": {"chunk_set_fingerprint": "fingerprint"},
+        "bm25_artifact": {"sha256": "digest"},
+    })
+    info = search.verify_runtime_release_sync(release_manifest_path="release.json")
+    assert not info["synced"]
+    assert any("release_id" in reason for reason in info["reasons"])
+
+
+def test_require_manifest_env_blocks_synced_without_manifest(monkeypatch):
+    monkeypatch.setattr(search, "_resolve_alias_target", lambda *args, **kwargs: "collection")
+    monkeypatch.setattr(search, "_search_engine_initialized", True)
+    monkeypatch.setattr(search, "_search_index_metadata", {
+        "physical_collection": "collection", "release_id": "release-1",
+        "corpus_version": "v1", "chunk_set_fingerprint": "fingerprint",
+    })
+    monkeypatch.delenv("CORPUS_RELEASE_MANIFEST_PATH", raising=False)
+    monkeypatch.setenv("CORPUS_REQUIRE_MANIFEST", "true")
+    info = search.verify_runtime_release_sync()
+    assert not info["synced"]
+    assert any("manifest" in reason.lower() for reason in info["reasons"])
+

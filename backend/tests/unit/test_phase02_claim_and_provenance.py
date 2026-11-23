@@ -92,6 +92,15 @@ def _synthetic_registry(doc_id: str, content: str, *, decision: str = "approved"
 # ---------------------------------------------------------------------------
 
 
+def test_conditions_remain_bound_to_each_metric():
+    evidence = [{"id": 1, "document_id": "synthetic", "chunk_id": "c1",
+                 "excerpt": "SMM là 30 kg khi tập luyện và BFM là 20 kg khi nghỉ ngơi."}]
+    wrong = "SMM là 30 kg khi nghỉ ngơi và BFM là 20 kg khi tập luyện [1]."
+    correct = "BFM là 20 kg khi nghỉ ngơi và SMM là 30 kg khi tập luyện [1]."
+    assert not verify_answer_claims_detailed(wrong, evidence)["supported"]
+    assert verify_answer_claims_detailed(correct, evidence)["supported"]
+
+
 def test_r01_dropping_negation_is_rejected_by_guard_and_composer(monkeypatch):
     source_text = "BMI không đủ để chẩn đoán sức khỏe."
     wrong_answer = "BMI đủ để chẩn đoán sức khỏe [1]."
@@ -731,4 +740,16 @@ def test_r07_import_build_chunk_payloads_preserves_provenance_to_payload_and_sea
         assert target["source_tier"] == "guideline"
         assert target["source_tier_verified"] is True
         assert target["privacy_review_status"] == "approved"
+
+
+def test_anaphoric_continuation_and_clarification_support():
+    ev = [{"id": 1, "document_id": "d-pbf", "chunk_id": "c-pbf",
+           "excerpt": "PBF là phần trăm mỡ cơ thể. Đây là tỷ lệ giữa khối lượng mỡ chia cho tổng trọng lượng cơ thể."}]
+    res = verify_answer_claims_detailed(
+        "PBF là phần trăm mỡ cơ thể [1]. Đây là tỷ lệ giữa khối lượng mỡ chia cho tổng trọng lượng cơ thể. Cần thêm thông tin về giới tính.",
+        ev,
+    )
+    assert res["supported"] is True
+    assert len(res["links"]) >= 1
+
 

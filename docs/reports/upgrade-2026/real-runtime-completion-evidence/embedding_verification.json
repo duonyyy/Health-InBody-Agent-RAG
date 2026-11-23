@@ -1,0 +1,53 @@
+{
+  "health": {
+    "cuda_available": false,
+    "device": "cpu",
+    "dtype": "float32",
+    "embedding_dim": 384,
+    "encode_batch_size": 8,
+    "max_batch_size": 32,
+    "model_loaded": true,
+    "requested_device": "cpu",
+    "status": "healthy",
+    "timestamp": 1795099917.2434268,
+    "torch_cuda_version": null,
+    "torch_version": "2.13.0+cpu"
+  },
+  "query_test": {
+    "analysis": {
+      "dim": 384,
+      "all_finite": true,
+      "norm": 1.0
+    },
+    "latency_s": 0.049
+  },
+  "passage_test": {
+    "analysis": {
+      "dim": 384,
+      "all_finite": true,
+      "norm": 1.0
+    },
+    "latency_s": 0.0365
+  },
+  "batch_test": {
+    "num_texts": 3,
+    "analyses": [
+      {
+        "dim": 384,
+        "all_finite": true,
+        "norm": 1.0
+      },
+      {
+        "dim": 384,
+        "all_finite": true,
+        "norm": 1.0
+      },
+      {
+        "dim": 384,
+        "all_finite": true,
+        "norm": 1.0
+      }
+    ],
+    "latency_s": 0.0631
+  }
+}

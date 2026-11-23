@@ -1,0 +1,29 @@
+{
+  "qdrant": {
+    "alias": "nmk_chatbot_active",
+    "physical_collection": "health_knowledge_e5_v1",
+    "points_count": 3846,
+    "vector_size": 384,
+    "distance": "Cosine",
+    "status": "green"
+  },
+  "bm25": {
+    "snapshot_path": "backend/artifacts/health_knowledge_e5_v1/bm25_snapshot.json.gz",
+    "doc_count": 3846,
+    "physical_collection": "health_knowledge_e5_v1",
+    "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+    "corpus_version": "e5small-2026-11-18-v1",
+    "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc"
+  },
+  "manifest": {
+    "path": "backend/artifacts/health_knowledge_e5_v1/release.json",
+    "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+    "corpus_version": "e5small-2026-11-18-v1",
+    "physical_collection": "health_knowledge_e5_v1",
+    "serving_alias": "nmk_chatbot_active",
+    "vector_size": 384,
+    "query_prefix": "query: ",
+    "passage_prefix": "passage: "
+  },
+  "alignment_status": "MATCHED"
+}

@@ -1,0 +1,46 @@
+{
+  "user_a_registration": {
+    "status_code": 201,
+    "username": "user_a_688d9b75"
+  },
+  "user_a_login": {
+    "status_code": 200,
+    "token_received": true
+  },
+  "user_b_registration": {
+    "status_code": 201,
+    "username": "user_b_a9814136"
+  },
+  "user_b_login": {
+    "status_code": 200,
+    "token_received": true
+  },
+  "user_a_consent_update": {
+    "status_code": 200,
+    "consent_granted": true
+  },
+  "user_a_measurement_creation": {
+    "status_code": 201,
+    "measurement_id": "1a9230ef-2884-4c0f-a234-d747e292bf64"
+  },
+  "user_a_read_measurements": {
+    "status_code": 200,
+    "count": 0
+  },
+  "user_b_read_measurements_isolation": {
+    "status_code": 200,
+    "user_b_count": 0,
+    "user_a_data_visible_to_b": false
+  },
+  "unauthenticated_request_rejected": {
+    "status_code": 401
+  },
+  "conversation_created_by_user_a": {
+    "status_code": 201,
+    "conversation_id": "acc7e335-d385-4c07-8d71-c03983667af2"
+  },
+  "user_b_read_user_a_conversation_rejected": {
+    "status_code": 404,
+    "isolated": true
+  }
+}

@@ -1,0 +1,10 @@
+Thời gian khảo sát: 2026-11-19 khoảng 02:52–02:54 +07:00; timestamp chính xác của lần cuộn cuối trong inspection.json (UTC).
+Repo: C:\Users\Admin\Desktop\KLTN\LLL RAG; branch main; HEAD 1095c98467b8e7bf681fc6132cd983c5a8c33b0f.
+Trước khảo sát: untracked .phase3-matrix-tmp/, .phase3-pytest-tmp/, .phase3-regression-tmp/; giữ nguyên.
+docker ps: chỉ qdrant-db đang chạy, publish 127.0.0.1:6333-6334. docker ps -a: không thấy container backend hoặc embedding của dự án. Inventory Win32_Process: các python đang chạy thuộc MCP khác; không thấy lệnh import/pipeline/Celery dự án. Không chứng minh không có writer từ máy khác.
+HTTP GET http://127.0.0.1:5001/health và /info: connection refused; GET http://127.0.0.1:8000/health và http://127.0.0.1:3000: connection refused. Không khởi động dịch vụ.
+HTTP GET http://127.0.0.1:6333/collections: health_knowledge_e5_v1 và nmk_chatbot_e5small_v20261118. GET /aliases: danh sách rỗng.
+Lệnh chạy thu thập: $env:PYTHONDONTWRITEBYTECODE='1'; python docs/reports/upgrade-2026/config-data-alignment-phase4-evidence/audit.py. Lệnh chỉ đọc HTTP Qdrant, file artifact/env allowlist và Docker Compose config được lọc trong process; output inspection.json. Không lưu payload/content hoặc vector. Cả hai collection được đếm exact trước và sau scroll toàn bộ; bằng count không loại trừ sửa đồng thời giữ nguyên count.
+Default host snapshot tồn tại tại backend/data/generated/bm25_snapshot.json.gz. Model config file tại infra/embed_serving/models/multilingual-e5-small/config.json công bố hidden_size=384 và _name_or_path=tmp/; không phải bằng chứng identity/revision của weights đang chạy.
+Hai tài liệu trong AGENTS.md không tồn tại: docs/P0_TRUST_RAG_SAFETY_REPORT_2026-08-14.md và docs/P1_PERSONALIZATION_REPORT.md.
+Nguồn serving /embed gọi model.encode mà không truyền normalize_embeddings hay input role; /health công bố device/dtype/dim nhưng không công bố identifier/revision. Role prefix được thêm phía caller theo env; schema backend POST /embed {texts, batch_size}, đọc embeddings; chưa kiểm schema thực tế.

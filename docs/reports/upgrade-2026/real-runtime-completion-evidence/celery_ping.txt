@@ -1,0 +1,4 @@
+->  celery@chatbot-worker: OK
+        pong
+
+1 node online.

@@ -1,0 +1,44 @@
+{
+  "timestamp": "2026-11-23 14:49:01",
+  "dataset_size": 200,
+  "router_metrics": {
+    "accuracy": 96.5,
+    "urgent_safety_accuracy": 100.0,
+    "category_stats": {
+      "inbody_metric": {
+        "total": 45,
+        "correct": 45
+      },
+      "nutrition": {
+        "total": 45,
+        "correct": 45
+      },
+      "exercise": {
+        "total": 40,
+        "correct": 40
+      },
+      "medical_safety": {
+        "total": 35,
+        "correct": 28
+      },
+      "edge_cases": {
+        "total": 35,
+        "correct": 35
+      }
+    }
+  },
+  "retrieval_metrics": {
+    "recall_at_5": 100.0,
+    "strict_top_1": 100.0,
+    "mrr": 1.0,
+    "avg_latency_ms": 55.77425853660249,
+    "safety_hit_rate": 70.58823529411765,
+    "recipes_in_safety": 0
+  },
+  "e2e_metrics": {
+    "citation_precision": 100.0,
+    "claim_support_rate": 100.0,
+    "avg_fast_path_latency_ms": 53.58799999976327,
+    "avg_rag_latency_ms": 1491.9475849999799
+  }
+}

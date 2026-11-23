@@ -658,6 +658,12 @@ def test_r13_bm25_same_alias_wrong_physical_release_refused_and_explicit_degrade
     assert res_dense[0]["retrieval_mode"] == "dense_only"
     assert res_dense[0]["release_mismatch_degraded"] is True
 
+    # A degraded fallback with zero hits must not look like a healthy empty result.
+    monkeypatch.setattr(search, "vector_search_fallback", lambda *args, **kwargs: [])
+    with pytest.raises(lc.CorpusReleaseMismatchError):
+        search.hybrid_search("BMI là gì", use_rerank=False, expand_parents=False,
+                             qdrant_client=live_qdrant, mismatch_policy="dense_only")
+
 
 def test_r13_alias_switch_mid_request_does_not_mix_corpora(monkeypatch, tmp_path):
     from data_pipeline.src.indexers.bm25_indexer import export_bm25_snapshot
@@ -911,4 +917,21 @@ def test_data_pipeline_refuses_hardcoded_version_and_offline_non_dry_run(tmp_pat
             indexer=offline_indexer,
             embedder=offline_embedder,
         )
+
+
+def test_create_qdrant_client_handles_legacy_client_typeerror(monkeypatch):
+    from rag.qdrant import client as qd_client
+
+    class FakeLegacyQdrantClient:
+        def __init__(self, url=None, timeout=None, **kwargs):
+            if "check_compatibility" in kwargs:
+                raise TypeError("Client.__init__() got an unexpected keyword argument 'check_compatibility'")
+            self.url = url
+            self.timeout = timeout
+
+    monkeypatch.setattr(qd_client, "QdrantClient", FakeLegacyQdrantClient)
+    inst = qd_client._create_qdrant_client("http://localhost:6333", 10.0)
+    assert inst.url == "http://localhost:6333"
+    assert inst.timeout == 10.0
+
 

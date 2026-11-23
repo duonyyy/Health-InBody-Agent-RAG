@@ -141,12 +141,18 @@ def _try_inbody_fast_path(state: AgentState) -> Optional[AgentState]:
     results: List[Dict[str, Any]] = []
     answer_lines: List[str] = []
 
-    weight = _first_present(extract_weight_kg(question), latest.get("weight_kg"))
-    height = _first_present(
-        extract_height_cm(question),
-        latest.get("height_cm"),
-        profile.get("height_cm"),
-    )
+    try:
+        weight = _first_present(extract_weight_kg(question), latest.get("weight_kg"))
+    except Exception:
+        weight = None
+    try:
+        height = _first_present(
+            extract_height_cm(question),
+            latest.get("height_cm"),
+            profile.get("height_cm"),
+        )
+    except Exception:
+        height = None
     if "bmi" in text and weight and height:
         result = calculate_bmi(weight, height)
         if not result.get("error"):
@@ -165,15 +171,22 @@ def _try_inbody_fast_path(state: AgentState) -> Optional[AgentState]:
                 f"**{labels.get(result['category'], result['category'])}**."
             )
 
-    pbf = _first_present(extract_pbf(question), latest.get("pbf_percent"))
+    try:
+        pbf = _first_present(extract_pbf(question), latest.get("pbf_percent"))
+    except Exception:
+        pbf = None
     if pbf is not None and _has_any(text, ["pbf", "phan tram mo", "mo co the"]):
-        result = evaluate_body_fat_percentage(
-            pbf,
-            _first_present(
+        try:
+            sex = _first_present(
                 extract_sex(question),
                 profile.get("sex_at_birth"),
                 profile.get("sex"),
-            ),
+            )
+        except Exception:
+            sex = None
+        result = evaluate_body_fat_percentage(
+            pbf,
+            sex,
         )
         if not result.get("error"):
             labels = {
@@ -195,10 +208,13 @@ def _try_inbody_fast_path(state: AgentState) -> Optional[AgentState]:
                 f"theo giới tính `{result['sex']}`."
             )
 
-    visceral_fat = _first_present(
-        extract_visceral_fat(question),
-        latest.get("visceral_fat_level"),
-    )
+    try:
+        visceral_fat = _first_present(
+            extract_visceral_fat(question),
+            latest.get("visceral_fat_level"),
+        )
+    except Exception:
+        visceral_fat = None
     if visceral_fat is not None and _has_any(text, ["mo noi tang", "visceral"]):
         result = evaluate_visceral_fat(visceral_fat)
         if not result.get("error"):

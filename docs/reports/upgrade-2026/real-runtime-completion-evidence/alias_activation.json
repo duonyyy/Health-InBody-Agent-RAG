@@ -1,0 +1,23 @@
+{
+  "activation_result": {
+    "status": true,
+    "alias": "nmk_chatbot_active",
+    "previous_collection": null,
+    "active_collection": "health_knowledge_e5_v1",
+    "points_count": 3846,
+    "chunk_set_fingerprint": "3fbdda38e8a6de9dc7338dd11d46785a0d24f151f02d2e0294058352cf34c2cc",
+    "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0"
+  },
+  "live_qdrant_aliases": {
+    "result": {
+      "aliases": [
+        {
+          "alias_name": "nmk_chatbot_active",
+          "collection_name": "health_knowledge_e5_v1"
+        }
+      ]
+    },
+    "status": "ok",
+    "time": 8.374e-06
+  }
+}

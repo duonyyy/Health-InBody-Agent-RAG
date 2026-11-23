@@ -1,0 +1,95 @@
+{
+  "timestamp": "2026-11-23T07:22:06.266Z",
+  "frontend": {
+    "url": "http://localhost:3000",
+    "status": 200,
+    "content_length": 10304,
+    "ok": true
+  },
+  "backend_health": {
+    "status": "ready",
+    "dependencies": {
+      "postgres": true,
+      "qdrant": true,
+      "valkey": true,
+      "embedding_api": true,
+      "corpus_release_sync": true
+    },
+    "corpus_release": {
+      "release_id": "rel-e5small-2026-11-18-v1-bcd3cb9369e0",
+      "corpus_version": "e5small-2026-11-18-v1",
+      "physical_collection": "health_knowledge_e5_v1",
+      "release_sync_status": "synced",
+      "release_mismatch_reason": null,
+      "lexical_index_owner": "single_api_process_in_memory"
+    },
+    "llm_provider": "not_checked"
+  },
+  "auth": {
+    "username": "e2e_user_1795418526563",
+    "token_type": "Bearer",
+    "token_length": 337,
+    "authenticated": true
+  },
+  "fastpath_bmi": {
+    "duration_ms": 19,
+    "fast_path": "inbody_tools",
+    "answer": "- BMI của bạn là **24.22**, thuộc nhóm **tiền thừa cân theo ngưỡng châu Á**.\n\nCác chỉ số trên chỉ dùng để sàng lọc/tham khảo; nên đọc cùng thành phần cơ thể, tiền sử sức khỏe và triệu chứng thực tế."
+  },
+  "fastpath_urgent": {
+    "duration_ms": 17,
+    "fast_path": "urgent_safety",
+    "safety_result": {
+      "risk_level": "urgent",
+      "conditions": [],
+      "recommended_action": "Khuyến nghị người dùng liên hệ cấp cứu hoặc cơ sở y tế ngay.",
+      "disclaimer": "Thông tin chỉ mang tính tham khảo, không thay thế chẩn đoán hoặc điều trị y khoa."
+    },
+    "answer": "Các dấu hiệu bạn mô tả có thể cần được đánh giá y tế khẩn cấp. Hãy dừng tập ngay, nghỉ ở nơi an toàn và liên hệ cơ sở cấp cứu/y tế gần nhất. Nếu triệu chứng đang tiếp diễn, nặng lên hoặc bạn ở một mình, hãy nhờ người khác hỗ trợ; không tự tiếp tục tập hoặc tự lái xe khi đang choáng, đau ngực hay khó thở. Thông tin này chỉ nhằm cảnh báo an toàn, không phải chẩn đoán."
+  },
+  "rag_inbody": {
+    "duration_ms": 10767,
+    "status": "ok",
+    "selected_agents": [
+      "InBodyAgent",
+      "KnowledgeAgent"
+    ],
+    "answer": "PBF là phần trăm mỡ cơ thể [2].",
+    "claim_evidence_links": [
+      {
+        "claim_id": 1,
+        "evidence_id": 2,
+        "document_id": "internal_inbody_pbf_001",
+        "chunk_id": "internal_inbody_pbf_001-1",
+        "evidence_scope": "chunk"
+      }
+    ],
+    "citation_count": 3,
+    "citations": [
+      {
+        "id": 1,
+        "title": "Phần trăm Mỡ Cơ thể (PBF) và Phân loại Ngưỡng Sức khỏe",
+        "source": "inbody_official_metrics_guide",
+        "source_url": "https://inbodyusa.com/general/result-sheet/",
+        "excerpt": "PBF (Percent Body Fat - Phần trăm mỡ cơ thể) là tỷ số phần trăm giữa tổng khối lượng mỡ cơ thể (BFM ",
+        "score": 0.8804413
+      },
+      {
+        "id": 2,
+        "title": "PBF và phần trăm mỡ cơ thể",
+        "source": "internal_seed",
+        "source_url": "https://inbodyusa.com/general/result-sheet/",
+        "excerpt": "PBF là phần trăm mỡ cơ thể. PBF cao cho thấy tỷ lệ mỡ trong cơ thể cao, có thể liên quan đến nguy cơ",
+        "score": 0.8560928
+      },
+      {
+        "id": 3,
+        "title": "PBF khác BFM như thế nào",
+        "source": "internal_seed",
+        "source_url": "https://inbodyusa.com/general/result-sheet/",
+        "excerpt": "PBF là phần trăm mỡ cơ thể, còn BFM là khối lượng mỡ tính bằng kg. PBF giúp so sánh tỉ lệ mỡ giữa nh",
+        "score": 0.86480653
+      }
+    ]
+  }
+}

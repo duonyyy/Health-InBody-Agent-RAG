@@ -29,12 +29,14 @@ services:
       - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL in backend/.env}
       - LLM_PROVIDER=${LLM_PROVIDER:-none}
       - OLLAMA_THINK=${OLLAMA_THINK:-auto}
+      - VECTOR_SIZE=${VECTOR_SIZE:-384}
+      - CORPUS_RELEASE_MANIFEST_PATH=${CORPUS_RELEASE_MANIFEST_PATH:-/usr/src/app/artifacts/health_knowledge_e5_v1/release.json}
+      - CUSTOM_EMBEDDING_API_URL=${CUSTOM_EMBEDDING_API_URL:-http://embedding-api:5000}
       - API_WORKERS=${API_WORKERS:-1}
       - BM25_AUTOLOAD=${BM25_AUTOLOAD:-true}
       - BM25_SNAPSHOT_PATH=${BM25_SNAPSHOT_PATH:-/usr/src/app/data/generated/bm25_snapshot.json.gz}
       - FEATURE_OCR_UPLOAD=${FEATURE_OCR_UPLOAD:-false}
       - OCR_SERVICE_URL=http://ocr-api:18100
-      - CUSTOM_EMBEDDING_API_URL=${CUSTOM_EMBEDDING_API_URL:-http://embedding-api:5000}
     volumes:
       - .:/usr/src/app/
     ports:
@@ -46,7 +48,7 @@ services:
     build: .
     hostname: chatbot-worker
     container_name: chatbot-worker
-    command: celery -A jobs.tasks.celery_app worker --loglevel=warning --logfile=/var/logs/celery.log
+    command: sh -c "pip install --no-cache-dir 'redis>=6.1.0' && exec celery -A jobs.tasks.celery_app worker --loglevel=warning --logfile=/var/logs/celery.log"
     restart: always
     env_file:
       - .env
@@ -63,6 +65,9 @@ services:
       - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL in backend/.env}
       - LLM_PROVIDER=${LLM_PROVIDER:-none}
       - OLLAMA_THINK=${OLLAMA_THINK:-auto}
+      - VECTOR_SIZE=${VECTOR_SIZE:-384}
+      - CORPUS_RELEASE_MANIFEST_PATH=${CORPUS_RELEASE_MANIFEST_PATH:-/usr/src/app/artifacts/health_knowledge_e5_v1/release.json}
+      - CUSTOM_EMBEDDING_API_URL=${CUSTOM_EMBEDDING_API_URL:-http://embedding-api:5000}
     volumes:
       - .:/usr/src/app
       - worker_volume:/var/logs/
