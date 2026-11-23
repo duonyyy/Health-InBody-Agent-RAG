@@ -1,5 +1,6 @@
 """FastAPI entrypoint cho Health/InBody Agent RAG backend."""
 
+from contextlib import asynccontextmanager
 import logging
 import os
 import time
@@ -114,6 +115,7 @@ from llm.summarizer import summarize_health_report, summarize_text
 from memory import store as memory_store
 from memory.chat import run_chat
 from persistence.database import engine as database_engine
+from api.security_middleware import ContentLengthLimitMiddleware, SecurityHeadersMiddleware
 from rag.search import (
     get_search_stats,
     hybrid_search,
@@ -125,6 +127,20 @@ from rag.search import (
 setup_logging()
 logger = logging.getLogger(__name__)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Validate single-worker lexical ownership and load BM25 snapshot on startup; close sessions on shutdown."""
+    validate_lexical_worker_config()
+    if os.getenv("BM25_AUTOLOAD", "true").strip().lower() in {"1", "true", "yes", "on"}:
+        if not load_search_snapshot():
+            logger.warning("BM25 snapshot unavailable or invalid; see /health/ready for corpus_release_sync")
+    yield
+    from core.http_client import close_http_sessions
+
+    close_http_sessions()
+
+
 app = FastAPI(
     title="Health/InBody Agent RAG Backend",
     version="1.0.0-beta",
@@ -132,7 +148,11 @@ app = FastAPI(
         "Backend API cho chatbot Health/InBody RAG: chat, health tools, "
         "hybrid search, indexing và summarization."
     ),
+    lifespan=lifespan,
 )
+
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(ContentLengthLimitMiddleware)
 
 _cors_origins = [value.strip() for value in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if value.strip()]
 if os.getenv("AUTH_MODE", "production").strip().lower() == "development" and not _cors_origins:
@@ -161,25 +181,6 @@ app.include_router(users_router)
 @app.exception_handler(InvalidHealthInput)
 async def invalid_health_input_handler(request: Request, exc: InvalidHealthInput) -> JSONResponse:
     return JSONResponse(status_code=422, content={"detail": str(exc), "code": "invalid_health_input"})
-
-
-@app.on_event("startup")
-def load_bm25_snapshot_on_startup():
-    """Validate single-worker lexical ownership and load the versioned BM25 snapshot."""
-    validate_lexical_worker_config()
-    if os.getenv("BM25_AUTOLOAD", "true").strip().lower() not in {"1", "true", "yes", "on"}:
-        logger.info("BM25 snapshot autoload is disabled")
-        return
-    if not load_search_snapshot():
-        logger.warning("BM25 snapshot unavailable or invalid; see /health/ready for corpus_release_sync")
-
-
-@app.on_event("shutdown")
-def shutdown_http_clients_on_shutdown():
-    """Close shared pooled HTTP client sessions on shutdown."""
-    from core.http_client import close_http_sessions
-
-    close_http_sessions()
 
 
 @app.get("/")

@@ -79,6 +79,21 @@ class AuthCredential(Base):
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
 
+class AuthRefreshToken(Base, TimestampMixin):
+    """First-party refresh token storage with SHA-256 token hash and rotation."""
+    __tablename__ = "auth_refresh_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    user = relationship("User")
+
+
 class InBodyMeasurement(Base, TimestampMixin):
     __tablename__ = "inbody_measurements"
 

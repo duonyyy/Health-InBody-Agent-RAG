@@ -5,7 +5,14 @@ import hashlib
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from auth.accounts import AccountConflict, InvalidCredentials, login_account, register_account
+from auth.accounts import (
+    AccountConflict,
+    InvalidCredentials,
+    login_account,
+    register_account,
+    revoke_refresh_token,
+    rotate_refresh_token,
+)
 from auth.context import auth_mode
 from core.cache import get_redis_client
 
@@ -16,6 +23,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 class Credentials(BaseModel):
     username: str = Field(min_length=3, max_length=40)
     password: str = Field(min_length=12, max_length=128)
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str = Field(min_length=16, max_length=256)
 
 
 def _require_production_mode() -> None:
@@ -49,6 +60,23 @@ def _rate_limit(request: Request, username: str) -> None:
         raise HTTPException(status_code=429, detail="Thử đăng nhập quá nhiều lần. Vui lòng chờ một phút.")
 
 
+def _rate_limit_refresh(request: Request) -> None:
+    """Shared rate limit for token refresh operations per IP."""
+    client = get_redis_client()
+    if client is None:
+        raise HTTPException(status_code=503, detail="Dịch vụ xác thực tạm thời không khả dụng.")
+    peer = request.client.host if request.client else "unknown"
+    key = "bodywise:auth:refresh:" + hashlib.sha256(f"ip:{peer}".encode()).hexdigest()
+    try:
+        count = client.incr(key)
+        if count == 1:
+            client.expire(key, 60)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Dịch vụ xác thực tạm thời không khả dụng.") from exc
+    if count > 30:
+        raise HTTPException(status_code=429, detail="Yêu cầu làm mới phiên quá thường xuyên. Vui lòng thử lại sau.")
+
+
 @router.post("/register", status_code=201)
 def register(data: Credentials, request: Request):
     _require_production_mode()
@@ -73,3 +101,22 @@ def login(data: Credentials, request: Request):
         raise HTTPException(status_code=401, detail="Tên đăng nhập hoặc mật khẩu không đúng.") from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail="Đăng nhập chưa được cấu hình.") from exc
+
+
+@router.post("/refresh")
+def refresh(data: RefreshTokenRequest, request: Request):
+    _require_production_mode()
+    _rate_limit_refresh(request)
+    try:
+        return rotate_refresh_token(data.refresh_token)
+    except InvalidCredentials as exc:
+        raise HTTPException(status_code=401, detail="Phiên đăng nhập đã hết hạn hoặc không hợp lệ.") from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Dịch vụ xác thực chưa sẵn sàng.") from exc
+
+
+@router.post("/logout")
+def logout(data: RefreshTokenRequest, request: Request):
+    _require_production_mode()
+    revoke_refresh_token(data.refresh_token)
+    return {"status": "ok"}

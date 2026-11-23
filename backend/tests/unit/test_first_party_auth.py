@@ -44,6 +44,7 @@ def client(monkeypatch):
 
     monkeypatch.setattr(accounts, "session_scope", session)
     monkeypatch.setattr(auth_api, "_rate_limit", lambda request, username: None)
+    monkeypatch.setattr(auth_api, "_rate_limit_refresh", lambda request: None)
     monkeypatch.setenv("AUTH_MODE", "production")
     monkeypatch.setenv("JWT_SIGNING_KEY", "test-only-" + "k" * 64)
     monkeypatch.setenv("JWT_ISSUER", "bodywise-test")
@@ -64,14 +65,50 @@ def test_register_login_and_signed_identity(client):
     first = client.post("/auth/register", json=credentials)
     assert first.status_code == 201
     token = first.json()["access_token"]
+    assert "refresh_token" in first.json()
     subject = client.get("/whoami", headers={"Authorization": f"Bearer {token}"}).json()["subject"]
     assert subject.startswith("bw_")
     assert client.post("/auth/register", json=credentials).status_code == 409
     assert client.post("/auth/login", json={**credentials, "password": "wrong-password-123"}).status_code == 401
     second = client.post("/auth/login", json=credentials)
     assert second.status_code == 200
+    assert "refresh_token" in second.json()
     assert client.get("/whoami", headers={"Authorization": f"Bearer {second.json()['access_token']}"}).json()["subject"] == subject
     assert client.get("/whoami", headers={"X-Dev-User-Id": "attacker"}).status_code == 401
+
+
+def test_refresh_token_rotation_and_revocation(client):
+    credentials = {"username": "Bob.Refresh", "password": "a-very-long-test-password"}
+    reg = client.post("/auth/register", json=credentials)
+    assert reg.status_code == 201
+    initial_refresh = reg.json()["refresh_token"]
+
+    # 1. Rotate refresh token
+    refreshed = client.post("/auth/refresh", json={"refresh_token": initial_refresh})
+    assert refreshed.status_code == 200
+    new_access = refreshed.json()["access_token"]
+    new_refresh = refreshed.json()["refresh_token"]
+    assert new_refresh != initial_refresh
+
+    # Verify new access token works
+    who = client.get("/whoami", headers={"Authorization": f"Bearer {new_access}"})
+    assert who.status_code == 200
+    assert who.json()["subject"].startswith("bw_")
+
+    # 2. Replay attack prevention: old refresh token must be rejected
+    replayed = client.post("/auth/refresh", json={"refresh_token": initial_refresh})
+    assert replayed.status_code == 401
+
+    # 3. Logout revokes token
+    logout = client.post("/auth/logout", json={"refresh_token": new_refresh})
+    assert logout.status_code == 200
+    revoked_refresh = client.post("/auth/refresh", json={"refresh_token": new_refresh})
+    assert revoked_refresh.status_code == 401
+
+
+def test_refresh_token_invalid_rejected(client):
+    res = client.post("/auth/refresh", json={"refresh_token": "non-existent-random-token-here-123456789"})
+    assert res.status_code == 401
 
 
 def test_rate_limit_is_shared_and_fails_closed(monkeypatch):

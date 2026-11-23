@@ -25,7 +25,37 @@ import {
 const DEMO_MODE_STORAGE_KEY = 'bodywise_explicit_demo_mode';
 const BASE_URL_STORAGE_KEY = 'api_base_url';
 const DEV_USER_STORAGE_KEY = 'active_user_id';
-let accessToken: string | null = null;
+const ACCESS_TOKEN_STORAGE_KEY = 'bodywise_access_token';
+const REFRESH_TOKEN_STORAGE_KEY = 'bodywise_refresh_token';
+
+let accessToken: string | null = typeof window !== 'undefined' ? localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY) : null;
+let isRefreshing = false;
+let refreshPromise: Promise<boolean> | null = null;
+
+export function getRefreshToken(): string | null {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem(REFRESH_TOKEN_STORAGE_KEY);
+  }
+  return null;
+}
+
+export function saveTokens(access: string | null, refresh?: string | null): void {
+  accessToken = access;
+  if (typeof window !== 'undefined') {
+    if (access) {
+      localStorage.setItem(ACCESS_TOKEN_STORAGE_KEY, access);
+    } else {
+      localStorage.removeItem(ACCESS_TOKEN_STORAGE_KEY);
+    }
+    if (refresh !== undefined) {
+      if (refresh) {
+        localStorage.setItem(REFRESH_TOKEN_STORAGE_KEY, refresh);
+      } else {
+        localStorage.removeItem(REFRESH_TOKEN_STORAGE_KEY);
+      }
+    }
+  }
+}
 
 export class ApiError extends Error {
   status: number;
@@ -36,8 +66,8 @@ export class ApiError extends Error {
     this.name = 'ApiError';
     this.status = status;
     this.data = data;
-    if (status === 401 && accessToken) {
-      accessToken = null;
+    if (status === 401 && !getRefreshToken()) {
+      saveTokens(null, null);
       if (typeof window !== 'undefined') window.dispatchEvent(new Event('bodywise-auth-expired'));
     }
   }
@@ -69,11 +99,75 @@ export function getAuthMode(): 'development' | 'production' {
 }
 
 export function hasAccessToken(): boolean {
-  return Boolean(accessToken);
+  return Boolean(accessToken || getRefreshToken());
 }
 
-export function clearAccessToken(): void {
-  accessToken = null;
+export async function clearAccessToken(): Promise<void> {
+  const refresh = getRefreshToken();
+  if (refresh) {
+    try {
+      await fetch(`${getApiBaseUrl()}/auth/logout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ refresh_token: refresh }),
+      });
+    } catch {
+      // Best effort logout
+    }
+  }
+  saveTokens(null, null);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('bodywise-auth-expired'));
+  }
+}
+
+export async function refreshAccessTokenApi(): Promise<boolean> {
+  if (isRefreshing && refreshPromise) {
+    return refreshPromise;
+  }
+  const currentRefresh = getRefreshToken();
+  if (!currentRefresh) {
+    saveTokens(null, null);
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('bodywise-auth-expired'));
+    return false;
+  }
+
+  isRefreshing = true;
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ refresh_token: currentRefresh }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.access_token && typeof data.access_token === 'string') {
+          saveTokens(data.access_token, typeof data.refresh_token === 'string' ? data.refresh_token : currentRefresh);
+          return true;
+        }
+      }
+    } catch {
+      // Network or host offline
+    }
+    saveTokens(null, null);
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('bodywise-auth-expired'));
+    return false;
+  })().finally(() => {
+    isRefreshing = false;
+    refreshPromise = null;
+  });
+
+  return refreshPromise;
+}
+
+export async function restoreSession(): Promise<boolean> {
+  if (getAuthMode() === 'development') return true;
+  if (accessToken) return true;
+  if (getRefreshToken()) {
+    return await refreshAccessTokenApi();
+  }
+  return false;
 }
 
 export async function authenticateAccount(username: string, password: string, register = false): Promise<void> {
@@ -90,7 +184,7 @@ export async function authenticateAccount(username: string, password: string, re
   if (data.token_type !== 'bearer' || typeof data.access_token !== 'string') {
     throw new ApiError('Máy chủ trả phiên đăng nhập không hợp lệ.', 502);
   }
-  accessToken = data.access_token;
+  saveTokens(data.access_token, typeof data.refresh_token === 'string' ? data.refresh_token : null);
 }
 
 export function getActiveUserId(): string {
@@ -138,6 +232,26 @@ function getRequestHeaders(extraHeaders: Record<string, string> = {}): Record<st
     headers.Authorization = `Bearer ${accessToken}`;
   }
   return headers;
+}
+
+export async function fetchWithAuth(url: string, init: RequestInit = {}): Promise<Response> {
+  const customHeaders = (init.headers as Record<string, string>) || {};
+  let res = await fetch(url, {
+    ...init,
+    headers: getRequestHeaders(customHeaders),
+  });
+
+  if (res.status === 401 && getAuthMode() === 'production' && getRefreshToken()) {
+    const refreshed = await refreshAccessTokenApi();
+    if (refreshed) {
+      res = await fetch(url, {
+        ...init,
+        headers: getRequestHeaders(customHeaders),
+      });
+    }
+  }
+
+  return res;
 }
 
 // -------------------------------------------------------------
@@ -203,9 +317,9 @@ export async function sendChatMessageApi(
     // Frontend timeout 65s (lớn hơn hard timeout 60s của backend theo WP-04)
     const timer = setTimeout(() => controller.abort(), 65000);
 
-    const res = await fetch(`${baseUrl}/agent/answer`, {
+    const res = await fetchWithAuth(`${baseUrl}/agent/answer`, {
       method: 'POST',
-      headers: getRequestHeaders({ 'Content-Type': 'application/json' }),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         question: message,
         conversation_id: conversationId || undefined,
@@ -325,9 +439,7 @@ export async function fetchUserProfile(): Promise<UserProfile> {
 
   const baseUrl = getApiBaseUrl();
   try {
-    const res = await fetch(`${baseUrl}/me/profile`, {
-      headers: getRequestHeaders(),
-    });
+    const res = await fetchWithAuth(`${baseUrl}/me/profile`);
 
     if (res.ok) {
       const data = await res.json();
@@ -387,9 +499,9 @@ export async function saveUserProfile(profile: Partial<UserProfile>): Promise<Us
   }
 
   try {
-    const res = await fetch(`${baseUrl}/me/profile`, {
+    const res = await fetchWithAuth(`${baseUrl}/me/profile`, {
       method: 'PATCH',
-      headers: getRequestHeaders({ 'Content-Type': 'application/json' }),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
 
@@ -408,7 +520,7 @@ export async function saveUserProfile(profile: Partial<UserProfile>): Promise<Us
 
 export async function fetchCurrentGoal(): Promise<UserGoal | null> {
   if (isExplicitDemoMode()) return null;
-  const res = await fetch(`${getApiBaseUrl()}/me/goals/current`, { headers: getRequestHeaders() });
+  const res = await fetchWithAuth(`${getApiBaseUrl()}/me/goals/current`);
   if (!res.ok) throw new ApiError(`Không thể tải mục tiêu (${res.status}).`, res.status);
   const data = await res.json();
   return data.goal || null;
@@ -416,8 +528,9 @@ export async function fetchCurrentGoal(): Promise<UserGoal | null> {
 
 export async function saveCurrentGoal(goal: UserGoal): Promise<UserGoal> {
   if (!goal.goal_type) throw new ApiError('Vui lòng chọn loại mục tiêu.', 422);
-  const res = await fetch(`${getApiBaseUrl()}/me/goals/current`, {
-    method: 'PUT', headers: getRequestHeaders({ 'Content-Type': 'application/json' }),
+  const res = await fetchWithAuth(`${getApiBaseUrl()}/me/goals/current`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       goal_type: goal.goal_type,
       target_weight_kg: goal.target_weight_kg,
@@ -443,9 +556,7 @@ export async function fetchInBodyMeasurements(): Promise<InBodyMeasurement[]> {
 
   const baseUrl = getApiBaseUrl();
   try {
-    const res = await fetch(`${baseUrl}/me/measurements?limit=50`, {
-      headers: getRequestHeaders(),
-    });
+    const res = await fetchWithAuth(`${baseUrl}/me/measurements?limit=50`);
 
     if (res.ok) {
       const data = await res.json();
@@ -573,9 +684,9 @@ export async function saveInBodyMeasurement(
   };
 
   try {
-    const res = await fetch(`${baseUrl}/me/measurements`, {
+    const res = await fetchWithAuth(`${baseUrl}/me/measurements`, {
       method: 'POST',
-      headers: getRequestHeaders({ 'Content-Type': 'application/json' }),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
 
@@ -629,9 +740,8 @@ export async function deleteInBodyMeasurement(id: string): Promise<boolean> {
 
   const baseUrl = getApiBaseUrl();
   try {
-    const res = await fetch(`${baseUrl}/me/measurements/${encodeURIComponent(id)}`, {
+    const res = await fetchWithAuth(`${baseUrl}/me/measurements/${encodeURIComponent(id)}`, {
       method: 'DELETE',
-      headers: getRequestHeaders(),
     });
     if (res.ok || res.status === 204) return true;
 
@@ -682,9 +792,8 @@ export async function uploadInBodyOcrFile(file: File): Promise<Partial<InBodyMea
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 110000);
 
-    const res = await fetch(`${baseUrl}/me/inbody-ocr`, {
+    const res = await fetchWithAuth(`${baseUrl}/me/inbody-ocr`, {
       method: 'POST',
-      headers: getRequestHeaders(),
       body: formData,
       signal: controller.signal,
     });
@@ -758,9 +867,7 @@ export async function fetchCheckIns(): Promise<CheckInLog[]> {
 
   const baseUrl = getApiBaseUrl();
   try {
-    const res = await fetch(`${baseUrl}/me/check-ins`, {
-      headers: getRequestHeaders(),
-    });
+    const res = await fetchWithAuth(`${baseUrl}/me/check-ins`);
 
     if (res.ok) {
       const data = await res.json();
@@ -879,9 +986,9 @@ export async function saveCheckIn(checkIn: Partial<CheckInLog>): Promise<CheckIn
   };
 
   try {
-    const res = await fetch(`${baseUrl}/me/check-ins`, {
+    const res = await fetchWithAuth(`${baseUrl}/me/check-ins`, {
       method: 'POST',
-      headers: getRequestHeaders({ 'Content-Type': 'application/json' }),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
 
@@ -943,9 +1050,7 @@ export async function fetchMemoryFacts(): Promise<MemoryProposal[]> {
 
   const baseUrl = getApiBaseUrl();
   try {
-    const res = await fetch(`${baseUrl}/me/memory/facts`, {
-      headers: getRequestHeaders(),
-    });
+    const res = await fetchWithAuth(`${baseUrl}/me/memory/facts`);
 
     if (res.ok) {
       const data = await res.json();
@@ -1013,9 +1118,8 @@ export async function updateMemoryFactStatus(
 
   const baseUrl = getApiBaseUrl();
   if (status === 'confirmed') {
-    const res = await fetch(`${baseUrl}/me/memory/facts/${encodeURIComponent(id)}/confirm`, {
+    const res = await fetchWithAuth(`${baseUrl}/me/memory/facts/${encodeURIComponent(id)}/confirm`, {
       method: 'POST',
-      headers: getRequestHeaders(),
     });
     if (!res.ok) throw new ApiError(`Không thể xác nhận ký ức (${res.status})`, res.status);
   } else {
@@ -1027,9 +1131,8 @@ export async function deleteMemoryFact(id: string): Promise<void> {
   if (isExplicitDemoMode()) return;
 
   const baseUrl = getApiBaseUrl();
-  const res = await fetch(`${baseUrl}/me/memory/facts/${encodeURIComponent(id)}`, {
+  const res = await fetchWithAuth(`${baseUrl}/me/memory/facts/${encodeURIComponent(id)}`, {
     method: 'DELETE',
-    headers: getRequestHeaders(),
   });
   if (!res.ok && res.status !== 204 && res.status !== 404) {
     throw new ApiError(`Không thể xóa ký ức (${res.status})`, res.status);
@@ -1051,9 +1154,9 @@ export async function searchCorpusApi(query: string, category?: string): Promise
 
   const baseUrl = getApiBaseUrl();
   try {
-    const res = await fetch(`${baseUrl}/search`, {
+    const res = await fetchWithAuth(`${baseUrl}/search`, {
       method: 'POST',
-      headers: getRequestHeaders({ 'Content-Type': 'application/json' }),
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         query: query.trim(),
         limit: 8,

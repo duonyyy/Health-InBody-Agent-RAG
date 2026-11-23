@@ -9,7 +9,7 @@ import ProfileAndGoals from '@/components/profile/ProfileAndGoals';
 import CorpusSearch from '@/components/search/CorpusSearch';
 import DevTools from '@/components/dev/DevTools';
 import { BackendHealth, InBodyMeasurement, UserProfile } from '@/types';
-import { checkBackendHealth, fetchInBodyMeasurements, fetchUserProfile, clearAccessToken, getAuthMode, hasAccessToken } from '@/lib/api';
+import { checkBackendHealth, fetchInBodyMeasurements, fetchUserProfile, clearAccessToken, getAuthMode, hasAccessToken, restoreSession } from '@/lib/api';
 import AuthPanel from '@/components/auth/AuthPanel';
 import { BrandLogo } from '@/components/branding/BrandLogo';
 import { Menu, X } from 'lucide-react';
@@ -33,14 +33,25 @@ export default function Home() {
   const [authEpoch, setAuthEpoch] = useState(0);
 
   useEffect(() => {
+    let mounted = true;
+    if (getAuthMode() === 'production' && !authenticated) {
+      restoreSession().then((success) => {
+        if (mounted && success) {
+          setAuthenticated(true);
+        }
+      });
+    }
     const expire = () => {
       setAuthenticated(false);
       setUserProfile(null);
       setLatestMeasurement(null);
     };
     window.addEventListener('bodywise-auth-expired', expire);
-    return () => window.removeEventListener('bodywise-auth-expired', expire);
-  }, []);
+    return () => {
+      mounted = false;
+      window.removeEventListener('bodywise-auth-expired', expire);
+    };
+  }, [authenticated]);
 
   // Ref để gọi làm mới phiên chat từ Header
   const chatResetRef = useRef<(() => void) | null>(null);

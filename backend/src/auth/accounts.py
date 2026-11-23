@@ -1,6 +1,9 @@
-"""First-party username/password enrollment and short-lived JWT issuance."""
+"""First-party username/password enrollment, short-lived JWT issuance, and refresh token rotation."""
 
+from datetime import datetime, timedelta, timezone
+import hashlib
 import re
+import secrets
 from uuid import uuid4
 
 from argon2 import PasswordHasher, Type
@@ -9,8 +12,10 @@ from sqlalchemy.exc import IntegrityError
 
 from auth.context import _jwt_configuration, issue_access_token
 from persistence.database import session_scope
-from persistence.models import AuthCredential, User
+from persistence.models import AuthCredential, AuthRefreshToken, User
 
+DEFAULT_ACCESS_TOKEN_TTL = 900  # 15 minutes
+DEFAULT_REFRESH_TOKEN_TTL = 604800  # 7 days
 
 _USERNAME = re.compile(r"^[a-z0-9][a-z0-9._-]{2,39}$")
 _HASHER = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1, type=Type.ID)
@@ -31,6 +36,24 @@ def _normalized_username(username: str) -> str:
     return value
 
 
+def _hash_token(raw_token: str) -> str:
+    return hashlib.sha256(raw_token.strip().encode("utf-8")).hexdigest()
+
+
+def _create_refresh_token(db, user_id, ttl_seconds: int = DEFAULT_REFRESH_TOKEN_TTL) -> str:
+    raw_token = secrets.token_urlsafe(48)
+    token_hash = _hash_token(raw_token)
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)
+    record = AuthRefreshToken(
+        user_id=user_id,
+        token_hash=token_hash,
+        expires_at=expires_at,
+        revoked=False,
+    )
+    db.add(record)
+    return raw_token
+
+
 def register_account(username: str, password: str) -> dict:
     if _jwt_configuration() is None:
         raise RuntimeError("JWT chưa được cấu hình")
@@ -45,9 +68,16 @@ def register_account(username: str, password: str) -> dict:
             db.add(user)
             db.flush()
             db.add(AuthCredential(user_id=user.id, username=normalized, password_hash=password_hash))
+            refresh_token = _create_refresh_token(db, user.id)
     except IntegrityError as exc:
         raise AccountConflict() from exc
-    return {"access_token": issue_access_token(subject), "token_type": "bearer", "expires_in": 900}
+    return {
+        "access_token": issue_access_token(subject, ttl_seconds=DEFAULT_ACCESS_TOKEN_TTL),
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_in": DEFAULT_ACCESS_TOKEN_TTL,
+        "refresh_expires_in": DEFAULT_REFRESH_TOKEN_TTL,
+    }
 
 
 def login_account(username: str, password: str) -> dict:
@@ -73,4 +103,53 @@ def login_account(username: str, password: str) -> dict:
         if not valid:
             raise InvalidCredentials()
         subject = user.external_id
-    return {"access_token": issue_access_token(subject), "token_type": "bearer", "expires_in": 900}
+        refresh_token = _create_refresh_token(db, user.id)
+    return {
+        "access_token": issue_access_token(subject, ttl_seconds=DEFAULT_ACCESS_TOKEN_TTL),
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_in": DEFAULT_ACCESS_TOKEN_TTL,
+        "refresh_expires_in": DEFAULT_REFRESH_TOKEN_TTL,
+    }
+
+
+def rotate_refresh_token(raw_refresh_token: str) -> dict:
+    if _jwt_configuration() is None:
+        raise RuntimeError("JWT chưa được cấu hình")
+    token_hash = _hash_token(raw_refresh_token)
+    with session_scope() as db:
+        record = db.query(AuthRefreshToken).filter(AuthRefreshToken.token_hash == token_hash).first()
+        if record is None or record.revoked:
+            raise InvalidCredentials()
+        now = datetime.now(timezone.utc)
+        record_exp = record.expires_at
+        if record_exp.tzinfo is None:
+            record_exp = record_exp.replace(tzinfo=timezone.utc)
+        if record_exp <= now:
+            raise InvalidCredentials()
+
+        user = db.query(User).filter(User.id == record.user_id, User.deleted_at.is_(None)).first()
+        if user is None:
+            raise InvalidCredentials()
+
+        record.revoked = True
+        new_refresh_token = _create_refresh_token(db, user.id)
+        subject = user.external_id
+
+    return {
+        "access_token": issue_access_token(subject, ttl_seconds=DEFAULT_ACCESS_TOKEN_TTL),
+        "refresh_token": new_refresh_token,
+        "token_type": "bearer",
+        "expires_in": DEFAULT_ACCESS_TOKEN_TTL,
+        "refresh_expires_in": DEFAULT_REFRESH_TOKEN_TTL,
+    }
+
+
+def revoke_refresh_token(raw_refresh_token: str) -> bool:
+    token_hash = _hash_token(raw_refresh_token)
+    with session_scope() as db:
+        record = db.query(AuthRefreshToken).filter(AuthRefreshToken.token_hash == token_hash).first()
+        if record is not None and not record.revoked:
+            record.revoked = True
+            return True
+    return False
