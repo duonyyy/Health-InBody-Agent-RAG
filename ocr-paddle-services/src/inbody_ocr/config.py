@@ -24,6 +24,9 @@ class Settings(BaseModel):
     paddle_min_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
     paddle_row_gap_px: int = Field(default=12, ge=2, le=100)
 
+    # Internal service-to-service authentication
+    internal_service_key: str = ""
+
     @property
     def ollama_base_url(self) -> str:
         return self.ollama_url.rstrip("/")
@@ -54,6 +57,11 @@ def get_settings() -> Settings:
         paddle_use_gpu=os.getenv("PADDLE_USE_GPU", "false").lower() in {"1", "true", "yes"},
         paddle_min_confidence=float(os.getenv("PADDLE_MIN_CONFIDENCE", "0.5")),
         paddle_row_gap_px=int(os.getenv("PADDLE_ROW_GAP_PX", "12")),
+        internal_service_key=(
+            os.getenv("INTERNAL_SERVICE_KEY")
+            or os.getenv("OCR_SERVICE_API_KEY")
+            or ""
+        ).strip(),
     )
 
 

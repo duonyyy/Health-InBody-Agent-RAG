@@ -22,6 +22,8 @@ services:
       - ENABLE_LEGACY_USER_ENDPOINTS=${ENABLE_LEGACY_USER_ENDPOINTS:-false}
       - ENABLE_PERSONALIZATION_DEBUG=${ENABLE_PERSONALIZATION_DEBUG:-false}
       - REDIS_HOST=valkey-db
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY:-${OCR_SERVICE_API_KEY:-}}
       - QDRANT_URL=http://qdrant-db:6333
       - QDRANT_COLLECTION_NAME=${QDRANT_COLLECTION_NAME:-nmk_chatbot_active}
       - QDRANT_COLLECTION_ALIAS=${QDRANT_COLLECTION_ALIAS:-nmk_chatbot_active}
@@ -40,7 +42,13 @@ services:
     volumes:
       - .:/usr/src/app/
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT_BINDING:-127.0.0.1:8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     networks:
       - internal-network
 
@@ -48,7 +56,7 @@ services:
     build: .
     hostname: chatbot-worker
     container_name: chatbot-worker
-    command: sh -c "pip install --no-cache-dir 'redis>=6.1.0' && exec celery -A jobs.tasks.celery_app worker --loglevel=warning --logfile=/var/logs/celery.log"
+    command: celery -A jobs.tasks.celery_app worker --loglevel=warning --logfile=/var/logs/celery.log
     restart: always
     env_file:
       - .env
@@ -58,6 +66,8 @@ services:
       - ENABLE_LEGACY_USER_ENDPOINTS=${ENABLE_LEGACY_USER_ENDPOINTS:-false}
       - ENABLE_PERSONALIZATION_DEBUG=${ENABLE_PERSONALIZATION_DEBUG:-false}
       - REDIS_HOST=valkey-db
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - INTERNAL_SERVICE_KEY=${INTERNAL_SERVICE_KEY:-${OCR_SERVICE_API_KEY:-}}
       - QDRANT_URL=http://qdrant-db:6333
       - QDRANT_COLLECTION_NAME=${QDRANT_COLLECTION_NAME:-nmk_chatbot_active}
       - QDRANT_COLLECTION_ALIAS=${QDRANT_COLLECTION_ALIAS:-nmk_chatbot_active}
@@ -76,12 +86,15 @@ services:
 
   chatbot-scheduler:
     build: .
+    hostname: chatbot-scheduler
+    container_name: chatbot-scheduler
     command: celery -A jobs.tasks.celery_app beat --schedule=/tmp/memory-celerybeat --loglevel=info
     restart: always
     env_file:
       - .env
     environment:
       - REDIS_HOST=valkey-db
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL in backend/.env}
     networks:
       - internal-network

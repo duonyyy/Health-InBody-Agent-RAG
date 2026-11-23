@@ -71,6 +71,18 @@ def extract_inbody(
     if not content or len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File rỗng hoặc quá lớn.")
     url = os.getenv("OCR_SERVICE_URL", "http://ocr-api:18100").rstrip("/")
+    internal_key = (
+        os.getenv("INTERNAL_SERVICE_KEY")
+        or os.getenv("OCR_SERVICE_API_KEY")
+        or ""
+    ).strip()
+    post_kwargs: dict[str, Any] = {
+        "files": {"file": (file.filename or "report", content, file.content_type or "application/octet-stream")},
+        "timeout": 100,
+    }
+    if internal_key:
+        post_kwargs["headers"] = {"X-Internal-Service-Key": internal_key}
+
     resolver = (
         session_provider
         if callable(session_provider) and not isinstance(session_provider, DependsClass)
@@ -80,8 +92,7 @@ def extract_inbody(
     try:
         response = session.post(
             f"{url}/ocr/inbody",
-            files={"file": (file.filename or "report", content, file.content_type or "application/octet-stream")},
-            timeout=100,
+            **post_kwargs,
         )
     except requests.Timeout as exc:
         raise HTTPException(status_code=504, detail="OCR quá thời gian chờ.") from exc

@@ -74,3 +74,40 @@ def test_authenticated_upload_returns_unconfirmed_extraction(monkeypatch):
     assert seen["url"].endswith("/ocr/inbody")
     assert seen["bytes"] == b"sample"
     assert seen["trust_env"] is False
+
+
+def test_authenticated_upload_passes_internal_service_key(monkeypatch):
+    monkeypatch.setenv("FEATURE_OCR_UPLOAD", "true")
+    monkeypatch.setenv("INTERNAL_SERVICE_KEY", "internal-secret-token-xyz")
+    monkeypatch.setattr("api.inbody_ocr._has_health_consent", lambda _subject: True)
+    seen = {}
+
+    class Response:
+        status_code = 200
+
+        def json(self):
+            return {
+                "document_type": "inbody_result", "parser_version": "inbody-v1",
+                "status": "needs_confirmation", "extracted_fields": {},
+                "unresolved_fields": [], "warnings": [],
+            }
+
+    class Session:
+        trust_env = True
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def post(self, url, files, **kwargs):
+            seen["url"] = url
+            seen["headers"] = kwargs.get("headers")
+            return Response()
+
+    monkeypatch.setattr("api.inbody_ocr.requests.Session", Session)
+    response = _client(True).post("/me/inbody-ocr", files={"file": ("report.png", b"sample")})
+    assert response.status_code == 200
+    assert seen["headers"] == {"X-Internal-Service-Key": "internal-secret-token-xyz"}
+

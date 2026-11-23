@@ -5,7 +5,12 @@ import logging
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from starlette.concurrency import run_in_threadpool
 
-from inbody_ocr.api.dependencies import get_inbody_service, get_ollama_client, get_paddle_reader
+from inbody_ocr.api.dependencies import (
+    get_inbody_service,
+    get_ollama_client,
+    get_paddle_reader,
+    verify_service_api_key,
+)
 from inbody_ocr.clients.ollama import OllamaClient, OllamaError, OllamaModelNotFoundError, OllamaTimeoutError
 from inbody_ocr.clients.paddle import PaddleOcrReader, PaddleOcrError
 from inbody_ocr.config import Settings, get_settings
@@ -32,7 +37,7 @@ def health(
     }
 
 
-@app.post("/ocr/inbody", response_model=InBodyResponse)
+@app.post("/ocr/inbody", response_model=InBodyResponse, dependencies=[Depends(verify_service_api_key)])
 async def ocr_inbody(
     file: UploadFile = File(...),
     settings: Settings = Depends(get_settings),

@@ -17,3 +17,8 @@ data/
 worker_volume/
 qdrant_volume/
 valkey_data/
+tests/
+evals/
+*.md
+.coverage
+htmlcov/

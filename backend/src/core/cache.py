@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 REDIS_HOST = os.environ.get("REDIS_HOST", "valkey-db")
 REDIS_PORT = int(os.environ.get("REDIS_PORT", "6379"))
 REDIS_DB = int(os.environ.get("REDIS_DB", "0"))
+REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD") or None
 CACHE_NAMESPACE = os.environ.get("CACHE_NAMESPACE", "health_inbody")
 CACHE_MEMORY_MAX_ENTRIES = max(1, int(os.environ.get("CACHE_MEMORY_MAX_ENTRIES", "256")))
 CACHE_REDIS_RETRY_SECONDS = max(1.0, float(os.environ.get("CACHE_REDIS_RETRY_SECONDS", "15")))
@@ -79,13 +80,18 @@ def get_redis_client(timeout: Optional[float] = None):
         try:
             import redis
 
-            client = redis.StrictRedis(
-                host=REDIS_HOST,
-                port=REDIS_PORT,
-                db=REDIS_DB,
-                socket_connect_timeout=CACHE_REDIS_CONNECT_TIMEOUT_SECONDS,
-                socket_timeout=CACHE_REDIS_SOCKET_TIMEOUT_SECONDS,
-            )
+            effective_password = os.environ.get("REDIS_PASSWORD") or REDIS_PASSWORD
+            redis_kwargs = {
+                "host": REDIS_HOST,
+                "port": REDIS_PORT,
+                "db": REDIS_DB,
+                "socket_connect_timeout": CACHE_REDIS_CONNECT_TIMEOUT_SECONDS,
+                "socket_timeout": CACHE_REDIS_SOCKET_TIMEOUT_SECONDS,
+            }
+            if effective_password:
+                redis_kwargs["password"] = effective_password
+
+            client = redis.StrictRedis(**redis_kwargs)
             client.ping()
             with _redis_probe_lock:
                 _redis_client = client

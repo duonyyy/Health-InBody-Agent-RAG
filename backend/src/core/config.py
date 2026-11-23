@@ -26,7 +26,17 @@ DEFAULT_DATABASE_URL = os.getenv(
     "postgresql+psycopg2://health_user:change-me@localhost:5432/health_inbody",
 )
 
-DEFAULT_CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "redis://valkey-db:6379/0")
+_redis_host = os.getenv("REDIS_HOST", "valkey-db")
+_redis_port = os.getenv("REDIS_PORT", "6379")
+_redis_db = os.getenv("REDIS_DB", "0")
+_redis_password = os.getenv("REDIS_PASSWORD", "").strip()
+
+if _redis_password:
+    _default_broker = f"redis://:{_redis_password}@{_redis_host}:{_redis_port}/{_redis_db}"
+else:
+    _default_broker = f"redis://{_redis_host}:{_redis_port}/{_redis_db}"
+
+DEFAULT_CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", _default_broker)
 DEFAULT_CELERY_RESULT_BACKEND = os.getenv(
     "CELERY_RESULT_BACKEND",
     DEFAULT_CELERY_BROKER_URL,

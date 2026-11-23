@@ -9,13 +9,20 @@ services:
       OLLAMA_TIMEOUT_SECONDS: ${OCR_OLLAMA_TIMEOUT_SECONDS:-45}
       PADDLE_LANG: ${PADDLE_LANG:-en}
       PADDLE_USE_GPU: ${PADDLE_USE_GPU:-false}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY:-${OCR_SERVICE_API_KEY:-}}
     expose:
       - "18100"
     ports:
-      - "18100:18100"
+      - "${OCR_PORT_BINDING:-127.0.0.1:18100}:18100"
     networks:
       - internal-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:18100/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 networks:
   internal-network:

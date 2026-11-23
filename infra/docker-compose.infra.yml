@@ -39,7 +39,7 @@ services:
 
   # 2. Vector Database phục vụ lưu trữ embeddings BGE-M3 và truy xuất ngữ nghĩa (RAG)
   qdrant-db:
-    image: qdrant/qdrant:latest
+    image: qdrant/qdrant:${QDRANT_IMAGE_TAG:-v1.20.2}
     hostname: qdrant-db
     container_name: qdrant-db
     restart: always
@@ -62,13 +62,25 @@ services:
     hostname: valkey-db
     container_name: valkey-db
     restart: always
+    environment:
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:-${REDIS_PASSWORD:-}}
     ports:
       - "127.0.0.1:6379:6379"
-    command: ["--save", "60", "1"]
+    command: >
+      sh -c 'if [ -n "$$VALKEY_PASSWORD" ]; then
+        exec valkey-server --save 60 1 --requirepass "$$VALKEY_PASSWORD"
+      else
+        exec valkey-server --save 60 1
+      fi'
     volumes:
       - valkey_data:/data
     networks:
       - internal-network
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli $${VALKEY_PASSWORD:+-a \"$$VALKEY_PASSWORD\"} ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   # 4. Microservice phục vụ mô hình embedding BGE-M3
   embedding-api:
