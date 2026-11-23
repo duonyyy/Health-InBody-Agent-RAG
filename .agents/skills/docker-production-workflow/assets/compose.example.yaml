@@ -1,0 +1,107 @@
+# TEMPLATE — Go API + worker + PostgreSQL + Redis cache.
+# Cần tạo secrets/postgres_password.txt (không commit) và .gitignore secrets/.
+# Go app phải hỗ trợ DB_PASSWORD_FILE và subcommand `healthcheck` (hoặc sửa probe).
+# Đổi cmd/api, cmd/worker, ports, env vars và phiên bản image cho đúng dự án.
+name: go-backend-demo
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_PATH: ./cmd/api
+    environment:
+      APP_PORT: "8080"
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: app
+      DB_USER: app
+      DB_PASSWORD_FILE: /run/secrets/postgres_password
+      REDIS_ADDR: cache:6379
+    secrets:
+      - postgres_password
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/app", "healthcheck"] # Chỉ có hiệu lực khi Go binary hỗ trợ
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        APP_PATH: ./cmd/worker
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: app
+      DB_USER: app
+      DB_PASSWORD_FILE: /run/secrets/postgres_password
+      REDIS_ADDR: cache:6379
+    secrets:
+      - postgres_password
+    depends_on:
+      db:
+        condition: service_healthy
+      cache:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine # Đổi sang release/digest đã kiểm chứng tương thích.
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  cache:
+    image: redis:7-alpine # Ví dụ cache nội bộ KHÔNG auth; production phải có network/auth policy.
+    command: ["redis-server", "--save", "", "--appendonly", "no"] # Cache tạm, không persistent.
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+
+volumes:
+  postgres_data: {}

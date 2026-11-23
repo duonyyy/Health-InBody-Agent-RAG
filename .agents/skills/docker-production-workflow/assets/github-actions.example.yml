@@ -1,0 +1,40 @@
+# TEMPLATE: chép thành .github/workflows/docker-ci.yml ở repo Go.
+# PR chỉ build/test, KHÔNG push image và KHÔNG deploy. Chỉnh paths theo dự án.
+name: Docker CI
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Go setup
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Go tests
+        run: go test ./...
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Dockerfile build and check
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=min
+          sbom: true
+      # Tùy dự án: dùng docker compose config --quiet riêng khi file secret
+      # template đã được provision trong runner. Không echo secret vào logs.
+      # Bổ sung CVE policy/Trivy khi sẵn sàng, trước khi gắn nhãn release.
