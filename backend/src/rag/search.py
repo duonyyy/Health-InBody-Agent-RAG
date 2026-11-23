@@ -20,6 +20,20 @@ from harness.budget import (
     remaining_for_call,
     resolve_deadline,
 )
+from rag.bm25 import (
+    HEALTH_DOMAIN_KEYWORDS,
+    build_bm25_index as _pure_build_bm25_index,
+    compute_bm25_score as _pure_compute_bm25_score,
+    detect_content_type as _pure_detect_content_type,
+    extract_document_text as _pure_extract_document_text,
+    get_bm25_candidate_indices as _pure_get_bm25_candidate_indices,
+    is_recipe_document,
+    matches_document_filters as _pure_matches_document_filters,
+    normalize_lexical_text as _pure_normalize_lexical_text,
+    normalize_search_document as _pure_normalize_search_document,
+    score_bm25_corpus as _pure_score_bm25_corpus,
+    tokenize as _pure_tokenize,
+)
 from rag.corpus_lifecycle import (
     BM25_TOKENIZER_VERSION,
     CANONICAL_ID_SCHEMA_VERSION,
@@ -27,6 +41,13 @@ from rag.corpus_lifecycle import (
     canonical_chunk_identity,
     compute_chunk_set_fingerprint,
     load_release_manifest,
+)
+from rag.hybrid_fusion import (
+    assert_same_chunk_consistency as _pure_assert_same_chunk_consistency,
+    canonical_content_key as _pure_canonical_content_key,
+    combine_search_results as _pure_combine_search_results,
+    expand_parent_documents as _pure_expand_parent_documents,
+    normalize_scores as _pure_normalize_scores,
 )
 from rag.provenance import PROVENANCE_METADATA_FIELDS
 from rag.retrieval_errors import RetrievalDependencyError
@@ -152,130 +173,35 @@ def _resolve_alias_target(alias_name: str, qdrant_client: Any = None) -> Optiona
 
 def _normalize_lexical_text(text: str) -> str:
     """Normalize Vietnamese accents so legacy ASCII documents remain searchable."""
-    lowered = (text or "").lower().replace("đ", "d")
-    return "".join(
-        character
-        for character in unicodedata.normalize("NFD", lowered)
-        if unicodedata.category(character) != "Mn"
-    )
+    return _pure_normalize_lexical_text(text)
 
 
 def _tokenize(text: str) -> List[str]:
-    return re.findall(r"\w+", _normalize_lexical_text(text))
+    return _pure_tokenize(text)
 
 
 def _document_text(doc: Dict[str, Any]) -> str:
-    title = doc.get("title", "") or doc.get("question", "") or ""
-    content = doc.get("content", "") or doc.get("page_content", "") or ""
-    source = doc.get("source", "") or doc.get("source_file", "") or ""
-    return f"{title}\n{content}\n{source}".strip()
+    return _pure_extract_document_text(doc)
 
 
 def _detect_content_type(text: str) -> str:
-    text_lower = (text or "").lower()
-    for content_type, keywords in HEALTH_DOMAIN_KEYWORDS.items():
-        if any(keyword in text_lower for keyword in keywords):
-            return content_type
-    return "general_health"
+    return _pure_detect_content_type(text, domain_keywords=HEALTH_DOMAIN_KEYWORDS)
 
 
 def _normalize_document(doc: Dict[str, Any], index: int) -> Optional[Dict[str, Any]]:
-    text = _document_text(doc)
-    if not text:
-        return None
-
-    doc_metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
-    doc_id = str(doc.get("doc_id", doc.get("id", index)))
-    document_id = str(
-        doc.get("document_id")
-        or doc_metadata.get("document_id")
-        or doc_metadata.get("doc_id")
-        or doc_id
-    )
-    chunk_id = str(doc.get("chunk_id") or doc_metadata.get("chunk_id") or doc_id)
-
-    normalized = {
-        "title": doc.get("title", "") or doc.get("question", ""),
-        "question": doc.get("question", ""),
-        "content": doc.get("content", "") or doc.get("page_content", ""),
-        "source": doc.get("source", "") or doc.get("source_file", "unknown"),
-        "doc_id": doc_id,
-        "document_id": document_id,
-        "chunk_id": chunk_id,
-        "content_type": doc.get("content_type") or _detect_content_type(text),
-        "domain": doc.get("domain", "health_inbody"),
-    }
-
-    for key, value in doc.items():
-        normalized.setdefault(key, value)
-
-    for field in PROVENANCE_METADATA_FIELDS:
-        if field not in normalized and field in doc_metadata:
-            normalized[field] = doc_metadata[field]
-
-    return normalized
+    return _pure_normalize_search_document(doc, index)
 
 
 def _build_bm25_index(documents: List[Dict[str, Any]]) -> Dict[str, Any]:
-    tokenized_docs = [_tokenize(_document_text(doc)) for doc in documents]
-    doc_freq = Counter()
-    content_type_indices: Dict[str, List[int]] = {}
-
-    for index, tokens in enumerate(tokenized_docs):
-        doc_freq.update(set(tokens))
-        content_type = documents[index].get("content_type")
-        if content_type:
-            content_type_indices.setdefault(str(content_type), []).append(index)
-
-    doc_count = len(tokenized_docs)
-    avg_doc_len = (
-        sum(len(tokens) for tokens in tokenized_docs) / doc_count if doc_count else 0
-    )
-
-    return {
-        "tokenized_docs": tokenized_docs,
-        "doc_freq": doc_freq,
-        "doc_count": doc_count,
-        "avg_doc_len": avg_doc_len,
-        "content_type_indices": content_type_indices,
-    }
+    return _pure_build_bm25_index(documents)
 
 
 def _bm25_score(query_tokens: List[str], doc_index: int, k1: float = 1.5, b: float = 0.75):
-    tokenized_docs = _bm25_index.get("tokenized_docs", [])
-    if doc_index >= len(tokenized_docs):
-        return 0.0
-
-    doc_tokens = tokenized_docs[doc_index]
-    if not doc_tokens:
-        return 0.0
-
-    term_freq = Counter(doc_tokens)
-    doc_freq = _bm25_index.get("doc_freq", Counter())
-    doc_count = _bm25_index.get("doc_count", 0)
-    avg_doc_len = _bm25_index.get("avg_doc_len", 0) or 1
-    doc_len = len(doc_tokens)
-
-    score = 0.0
-    for token in query_tokens:
-        if token not in term_freq:
-            continue
-
-        df = doc_freq.get(token, 0)
-        idf = math.log(1 + ((doc_count - df + 0.5) / (df + 0.5)))
-        numerator = term_freq[token] * (k1 + 1)
-        denominator = term_freq[token] + k1 * (1 - b + b * (doc_len / avg_doc_len))
-        score += idf * (numerator / denominator)
-
-    return score
+    return _pure_compute_bm25_score(query_tokens, doc_index, _bm25_index, k1=k1, b=b)
 
 
 def _normalize_scores(scored_docs: List[Tuple[int, float]]) -> Dict[int, float]:
-    if not scored_docs:
-        return {}
-
-    max_score = max(score for _, score in scored_docs) or 1.0
-    return {idx: score / max_score for idx, score in scored_docs}
+    return _pure_normalize_scores(scored_docs)
 
 
 def initialize_search_index(
@@ -637,25 +563,7 @@ def verify_runtime_release_sync(
 
 def _bm25_candidate_indices(filters: Optional[Dict[str, Any]]) -> List[int] | range:
     """Narrow the common content-type filter before scoring the BM25 corpus."""
-    if not filters or "content_type" not in filters:
-        return range(len(_documents))
-
-    expected = filters["content_type"]
-    if isinstance(expected, str):
-        allowed = [expected]
-    elif isinstance(expected, (list, tuple, set)):
-        allowed = [str(value) for value in expected]
-    else:
-        return range(len(_documents))
-
-    index_by_type = _bm25_index.get("content_type_indices", {})
-    return sorted(
-        {
-            index
-            for content_type in allowed
-            for index in index_by_type.get(content_type, [])
-        }
-    )
+    return _pure_get_bm25_candidate_indices(len(_documents), _bm25_index, filters)
 
 
 def bm25_search(
@@ -811,81 +719,16 @@ def vector_search_fallback(
 
 
 def _content_key(doc: Dict[str, Any]) -> tuple:
-    identity = canonical_chunk_identity(doc)
-    metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
-    explicit_chunk = doc.get("chunk_id") or metadata.get("chunk_id")
-    if identity["document_id"] and explicit_chunk:
-        return ("chunk", identity["document_id"], identity["chunk_id"])
-    if identity["content_hash"]:
-        return ("content", identity["document_id"], identity["content_hash"])
-    return ("point", identity["qdrant_point_id"])
+    return _pure_canonical_content_key(doc)
 
 
 def _check_same_chunk(first: Dict[str, Any], second: Dict[str, Any]) -> None:
-    a, b = canonical_chunk_identity(first), canonical_chunk_identity(second)
-    for field in ("content_hash",):
-        if a[field] and b[field] and a[field] != b[field]:
-            raise CorpusReleaseMismatchError("Conflicting chunk content")
-    for field in ("release_id", "corpus_version", "active_physical_collection"):
-        if first.get(field) and second.get(field) and first[field] != second[field]:
-            raise CorpusReleaseMismatchError("Conflicting chunk release")
-
-
-def is_recipe_document(doc: Dict[str, Any]) -> bool:
-    """Detect whether a document contains culinary recipes rather than clinical/safety evidence."""
-    if doc.get("is_recipe") is True:
-        return True
-    meta = doc.get("metadata") or {}
-    if meta.get("is_recipe") is True or meta.get("document_kind") == "recipe":
-        return True
-    text = (doc.get("content") or "").lower()
-    title = (doc.get("title") or "").lower()
-    recipe_markers = [
-        "công thức món",
-        "công thức nấu",
-        "nguyên liệu:",
-        "cách chế biến:",
-        "hướng dẫn nấu",
-        "muỗng canh",
-        "muỗng cà phê",
-        "thìa cà phê",
-        "hầm 45 phút",
-        "hầm 30 phút",
-    ]
-    return any(marker in text or marker in title for marker in recipe_markers)
+    _pure_assert_same_chunk_consistency(first, second)
 
 
 def _matches_filters(doc: Dict[str, Any], filters: Optional[Dict[str, Any]]) -> bool:
     """Apply simple equality/range filters to non-Qdrant retrieval results."""
-    if not filters:
-        return True
-
-    # Rule: Medical safety retrieval MUST filter out recipe documents (AGENTS.md rule 8)
-    if filters.get("content_type") == "medical_safety" or filters.get("exclude_recipe"):
-        if is_recipe_document(doc):
-            return False
-
-    for field, expected in filters.items():
-        if field == "exclude_recipe":
-            continue
-        actual = doc.get(field)
-        if isinstance(expected, dict):
-            if actual is None:
-                return False
-            if "gte" in expected and actual < expected["gte"]:
-                return False
-            if "lte" in expected and actual > expected["lte"]:
-                return False
-            if "gt" in expected and actual <= expected["gt"]:
-                return False
-            if "lt" in expected and actual >= expected["lt"]:
-                return False
-        elif isinstance(expected, (list, tuple, set)):
-            if actual not in expected:
-                return False
-        elif actual != expected:
-            return False
-    return True
+    return _pure_matches_document_filters(doc, filters)
 
 
 def combine_search_results(
@@ -896,68 +739,14 @@ def combine_search_results(
     bm25_weight: float = DEFAULT_BM25_WEIGHT,
 ) -> List[Dict]:
     """Gop ket qua BM25 va vector search thanh danh sach co hybrid_score trung thuc."""
-    combined: Dict[str, Dict[str, Any]] = {}
-    both_branches_present = bool(bm25_results) and bool(vector_results)
-
-    bm25_scored = [
-        (idx, float(doc.get("bm25_score", 0))) for idx, doc in enumerate(bm25_results)
-    ]
-    vector_scored = [
-        (idx, float(doc.get("similarity_score", doc.get("vector_score", 0))))
-        for idx, doc in enumerate(vector_results)
-    ]
-    normalized_bm25 = _normalize_scores(bm25_scored)
-    normalized_vector = _normalize_scores(vector_scored)
-
-    for idx, doc in enumerate(bm25_results):
-        key = _content_key(doc)
-        if key in combined:
-            _check_same_chunk(combined[key], doc)
-            continue
-        item = doc.copy()
-        item["bm25_score"] = normalized_bm25.get(idx, 0.0)
-        item["vector_score"] = 0.0
-        item["search_method"] = "bm25"
-        item["retrieval_mode"] = "hybrid" if both_branches_present else "bm25_only"
-        combined[key] = item
-
-    for idx, doc in enumerate(vector_results):
-        key = _content_key(doc)
-        vector_score = normalized_vector.get(idx, 0.0)
-        if key in combined:
-            _check_same_chunk(combined[key], doc)
-            combined[key].update({k: v for k, v in doc.items() if v not in (None, "")})
-            combined[key]["vector_score"] = vector_score
-            combined[key]["search_method"] = "hybrid"
-            combined[key]["retrieval_mode"] = "hybrid"
-        else:
-            item = doc.copy()
-            item["bm25_score"] = 0.0
-            item["vector_score"] = vector_score
-            item["search_method"] = "vector"
-            item["retrieval_mode"] = "hybrid" if both_branches_present else "dense_only"
-            combined[key] = item
-
-    query_content_type = _detect_content_type(query)
-    for doc in combined.values():
-        content_type = doc.get("content_type") or _detect_content_type(_document_text(doc))
-        doc["content_type"] = content_type
-        doc.setdefault("domain", "health_inbody")
-
-        hybrid_bonus = 0.1 if doc.get("search_method") == "hybrid" else 0.0
-        domain_bonus = 0.05 if content_type == query_content_type else 0.0
-        doc["hybrid_score"] = round(
-            (dense_weight * doc.get("vector_score", 0.0))
-            + (bm25_weight * doc.get("bm25_score", 0.0))
-            + hybrid_bonus
-            + domain_bonus,
-            6,
-        )
-
-    results = list(combined.values())
-    results.sort(key=lambda doc: doc.get("hybrid_score", 0.0), reverse=True)
-    logger.info("Combined %s search results (mode=%s)", len(results), "hybrid" if both_branches_present else ("bm25_only" if bm25_results else "dense_only"))
-    return results
+    return _pure_combine_search_results(
+        bm25_results,
+        vector_results,
+        query,
+        dense_weight=dense_weight,
+        bm25_weight=bm25_weight,
+        domain_keywords=HEALTH_DOMAIN_KEYWORDS,
+    )
 
 
 def expand_parent_documents(
@@ -965,63 +754,7 @@ def expand_parent_documents(
     max_parents: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Expand retrieved child chunks to their parent documents while deduplicating by parent_id."""
-    if not docs:
-        return []
-
-    expanded_parents: List[Dict[str, Any]] = []
-    seen_parent_keys = set()
-    parents = {}
-
-    for doc in docs:
-        parent_id = doc.get("parent_id") or (doc.get("metadata") or {}).get("parent_id")
-        parent_content = doc.get("parent_content") or (doc.get("metadata") or {}).get("parent_content")
-
-        if not parent_id or not parent_content:
-            key = _content_key(doc)
-            if key not in seen_parent_keys and (not max_parents or len(expanded_parents) < max_parents):
-                seen_parent_keys.add(key)
-                expanded_parents.append(doc)
-            continue
-
-        parent_key = (doc.get("document_id") or (doc.get("metadata") or {}).get("document_id") or "", str(parent_id))
-        child_identity = canonical_chunk_identity(doc)
-        if parent_key in parents:
-            parent = parents[parent_key]
-            if parent["content"] != parent_content:
-                raise CorpusReleaseMismatchError("Conflicting parent content")
-            if child_identity not in parent["matched_children"]:
-                parent["matched_children"].append(child_identity)
-            continue
-
-        if max_parents and len(expanded_parents) >= max_parents:
-            continue
-
-        seen_parent_keys.add(parent_key)
-        parent_doc = doc.copy()
-        nested_meta = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
-        parent_doc["child_content"] = doc.get("content", "")
-        parent_doc["child_chunk_id"] = str(doc.get("chunk_id") or doc.get("doc_id") or "")
-        parent_doc["parent_id"] = str(parent_id)
-        parent_doc["document_id"] = str(
-            doc.get("document_id")
-            or nested_meta.get("document_id")
-            or nested_meta.get("doc_id")
-            or doc.get("doc_id")
-            or str(parent_id)
-        )
-        parent_doc["chunk_id"] = str(parent_id)
-        parent_doc["matched_children"] = [child_identity]
-        parent_doc["evidence_scope"] = "parent_section"
-        parent_doc["content"] = parent_content
-        parent_doc["content_hash"] = hashlib.sha256(parent_content.encode("utf-8")).hexdigest()
-        if doc.get("parent_title"):
-            parent_doc["title"] = doc["parent_title"]
-        parent_doc["is_expanded_parent"] = True
-
-        expanded_parents.append(parent_doc)
-        parents[parent_key] = parent_doc
-
-    return expanded_parents
+    return _pure_expand_parent_documents(docs, max_parents=max_parents)
 
 
 def hybrid_search(
