@@ -1119,11 +1119,6 @@ def import_embedding_dataset(
     return result
 
 
-def import_qa_data(*args, **kwargs):
-    """Backward-compatible alias cho code cũ."""
-    return import_embedding_dataset(*args, **kwargs)
-
-
 def parse_args(argv=None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Import Health/InBody embedding_documents.jsonl into a staging Qdrant collection"

@@ -484,30 +484,6 @@ def search_vector(
         return []
 
 
-def search_with_multiple_vectors(collection_name, vectors, limit=4, filters=None):
-    """Tìm kiếm bằng nhiều query vector và gộp kết quả."""
-    all_results = []
-    seen_content_keys = set()
-
-    for i, vector in enumerate(vectors):
-        try:
-            results = search_vector(collection_name, vector, limit, filters)
-
-            for result in results:
-                content_key = result.get("content", "").strip().lower()
-                if content_key not in seen_content_keys:
-                    seen_content_keys.add(content_key)
-                    result["query_vector_index"] = i
-                    all_results.append(result)
-
-        except Exception as e:
-            logger.error(f"Search with vector {i} failed: {e}")
-            continue
-
-    all_results.sort(key=lambda x: x.get("similarity_score", 0), reverse=True)
-    return all_results[:limit]
-
-
 def get_collection_stats(collection_name, *, qdrant_client: Any = None):
     """Lấy thông tin thống kê/trạng thái của một collection trong Qdrant."""
     active = _active_client(qdrant_client)

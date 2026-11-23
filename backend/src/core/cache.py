@@ -8,8 +8,6 @@ import threading
 from threading import RLock
 from typing import Any, Optional
 
-from core.utils import generate_request_id
-
 logger = logging.getLogger(__name__)
 
 REDIS_HOST = os.environ.get("REDIS_HOST", "valkey-db")
@@ -261,39 +259,3 @@ def llm_response_cache_delete(key: str) -> bool:
         return False
     _llm_response_cache_stats["invalidations"] += 1
     return deleted
-
-
-def get_conversation_key(bot_id, user_id):
-    """Tao key conversation theo namespace Health/InBody."""
-    return _namespaced_key("conversation", bot_id, user_id)
-
-
-def get_conversation_id(bot_id, user_id, ttl_seconds=3600):
-    """
-    Lay conversation_id tu cache, neu chua co thi tao moi.
-    """
-    key = get_conversation_key(bot_id, user_id)
-    conversation_id = cache_get(key)
-    if conversation_id:
-        cache_set(key, conversation_id, ttl_seconds=ttl_seconds)
-        return conversation_id
-
-    conversation_id = generate_request_id()
-    cache_set(key, conversation_id, ttl_seconds=ttl_seconds)
-    return conversation_id
-
-
-def clear_conversation_id(bot_id, user_id):
-    """Xoa conversation_id cua nguoi dung."""
-    key = get_conversation_key(bot_id, user_id)
-    return cache_delete(key)
-
-
-def get_rag_cache_key(query: str, user_id: Optional[str] = None) -> str:
-    """Tao key cache cho retrieval/query Health RAG."""
-    return _namespaced_key("rag", user_id or "anonymous", query.lower().strip())
-
-
-def get_embedding_cache_key(text: str) -> str:
-    """Tao key cache cho embedding text/chunk."""
-    return _namespaced_key("embedding", hash(text))

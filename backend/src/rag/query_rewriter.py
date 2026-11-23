@@ -170,15 +170,6 @@ def expand_health_query(query: str) -> str:
     return expanded_query
 
 
-def expand_legal_query(query: str) -> str:
-    """
-    Backward-compatible alias cho prototype cu.
-
-    New code should call expand_health_query.
-    """
-    return expand_health_query(query)
-
-
 def rewrite_query_to_multi_queries(
     original_query: str,
     num_queries: int = 3,
@@ -278,64 +269,3 @@ Bây giờ hãy tạo {num_queries} câu truy vấn cho câu hỏi gốc trên:"
         while len(fallback) < num_queries:
             fallback.append(original_query)
         return fallback[:num_queries]
-
-
-def rewrite_query_with_context(query: str, conversation_history: List[dict]) -> str:
-    """
-    Viet lai cau hoi follow-up thanh cau hoi doc lap co ngu canh suc khoe/InBody.
-
-    Args:
-        query: Cau hoi hien tai.
-        conversation_history: Lich su hoi thoai truoc do.
-
-    Returns:
-        Cau hoi doc lap, ro nghia hon cho retrieval.
-    """
-    if not conversation_history or len(conversation_history) <= 1:
-        return query
-
-    history_text = ""
-    for msg in conversation_history[-6:]:
-        role = msg.get("role", "user")
-        content = msg.get("content", "")
-        if role == "user":
-            history_text += f"Người dùng: {content}\n"
-        elif role == "assistant":
-            history_text += f"Trợ lý: {content}\n"
-
-    prompt = f"""Dựa vào lịch sử hội thoại dưới đây, hãy viết lại câu hỏi hiện tại thành một câu hỏi độc lập, rõ ràng và đầy đủ ý nghĩa bằng tiếng Việt cho hệ thống Health/InBody RAG.
-
-Lịch sử hội thoại:
-{history_text}
-
-Câu hỏi hiện tại: {query}
-
-Yêu cầu:
-- Thay các đại từ như "nó", "cái đó", "chỉ số đó", "mức này" bằng đối tượng cụ thể.
-- Giữ đúng ý định của người dùng.
-- Nếu đang nói về chỉ số InBody, nêu rõ chỉ số như BMI, PBF, SMM, BFM hoặc mỡ nội tạng.
-- Nếu có bệnh nền, thuốc hoặc triệu chứng nguy hiểm, giữ nguyên sắc thái cảnh báo y tế.
-- CHỈ trả về câu hỏi đã viết lại, KHÔNG giải thích.
-
-Câu hỏi đã viết lại:"""
-
-    messages = [
-        {
-            "role": "system",
-            "content": (
-                "Bạn viết lại câu hỏi follow-up cho chatbot sức khỏe/InBody. "
-                "Không chẩn đoán, không thêm thông tin không có trong hội thoại."
-            ),
-        },
-        {"role": "user", "content": prompt},
-    ]
-
-    logger.info("Rewriting health query with context: %s", query)
-
-    try:
-        rewritten = _chat_complete(messages).strip()
-        logger.info("Rewritten contextual health query: %s", rewritten)
-        return rewritten or query
-    except Exception as e:
-        logger.error("Error rewriting health query with context: %s", e)
-        return query

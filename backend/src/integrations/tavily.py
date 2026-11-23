@@ -78,15 +78,6 @@ def tavily_search_health(
     return output
 
 
-def tavily_qna(question: str) -> str:
-    """
-    Mục đích:
-        Trả lời nhanh một câu hỏi cần tìm kiếm trên web bằng cách gọi tìm kiếm sức khỏe với tối đa 3 kết quả.
-    """
-    results = tavily_search_health(question, max_results=3)
-    return results
-
-
 def tavily_search(
     query: str,
     max_results: int = 5,
@@ -175,16 +166,6 @@ def tavily_search(
             "num_results": 0,
             "safety_note": HEALTH_SAFETY_NOTE,
         }
-
-
-def tavily_search_legal(query: str, max_results: int = 5) -> str:
-    """
-    Mục đích:
-        Hàm tương thích ngược (alias) cho tính năng tìm kiếm pháp lý cũ.
-        Hiện tại hàm này đã lỗi thời (deprecated), hệ thống sẽ cảnh báo và chuyển sang gọi `tavily_search_health`.
-    """
-    logger.warning("tavily_search_legal is deprecated; use tavily_search_health")
-    return tavily_search_health(query, max_results=max_results)
 
 
 def _get_tavily_client():

@@ -19,7 +19,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from persistence.database import Base, session_scope
+from persistence.database import Base
 
 
 class TimestampMixin:
@@ -263,74 +263,3 @@ class DocumentCreate(BaseModel):
     document_type: Optional[str] = None
     content_type: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
-
-
-def get_or_create_chat_session(bot_id: str, external_user_id: str) -> uuid.UUID:
-    with session_scope() as db:
-        session = (
-            db.query(ChatSession)
-            .filter(
-                ChatSession.bot_id == bot_id,
-                ChatSession.external_user_id == external_user_id,
-            )
-            .order_by(ChatSession.created_at.desc())
-            .first()
-        )
-        if session is None:
-            session = ChatSession(bot_id=bot_id, external_user_id=external_user_id)
-            db.add(session)
-            db.flush()
-        return session.id
-
-
-def update_chat_conversation(bot_id, user_id, message, is_user=True):
-    """Persist a chat message and return the session id."""
-    with session_scope() as db:
-        session = (
-            db.query(ChatSession)
-            .filter(
-                ChatSession.bot_id == bot_id,
-                ChatSession.external_user_id == str(user_id),
-            )
-            .order_by(ChatSession.created_at.desc())
-            .first()
-        )
-        if session is None:
-            session = ChatSession(bot_id=bot_id, external_user_id=str(user_id))
-            db.add(session)
-            db.flush()
-
-        db.add(
-            ChatMessage(
-                session_id=session.id,
-                role="user" if is_user else "assistant",
-                content=message,
-            )
-        )
-        return str(session.id)
-
-
-def get_conversation_messages(conversation_id) -> List[Dict[str, str]]:
-    with session_scope() as db:
-        messages = (
-            db.query(ChatMessage)
-            .filter(ChatMessage.session_id == conversation_id)
-            .order_by(ChatMessage.created_at.asc())
-            .all()
-        )
-        return [{"role": msg.role, "content": msg.content} for msg in messages]
-
-
-def insert_document(question, content, source="api", doc_id=None):
-    """Persist a RAG source document and return its database id."""
-    with session_scope() as db:
-        doc = Document(
-            external_id=str(doc_id) if doc_id else None,
-            title=question,
-            content=content,
-            source=source,
-            domain="health_inbody",
-        )
-        db.add(doc)
-        db.flush()
-        return str(doc.id)

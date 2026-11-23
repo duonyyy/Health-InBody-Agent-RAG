@@ -68,16 +68,6 @@ def _measurement_to_dict(measurement: InBodyMeasurement) -> Dict[str, Any]:
     }
 
 
-def get_or_create_user(external_id: str) -> Dict[str, Any]:
-    with session_scope() as db:
-        user = db.query(User).filter(User.external_id == external_id).first()
-        if user is None:
-            user = User(external_id=external_id)
-            db.add(user)
-            db.flush()
-        return _user_to_dict(user)
-
-
 def get_user_profile(external_id: str, auto_create: bool = True) -> Optional[Dict[str, Any]]:
     with session_scope() as db:
         user = db.query(User).filter(User.external_id == external_id).first()
@@ -140,8 +130,3 @@ def list_inbody_measurements(external_id: str, limit: int = 5) -> List[Dict[str,
             .all()
         )
         return [_measurement_to_dict(item) for item in measurements]
-
-
-def get_latest_inbody_measurement(external_id: str) -> Optional[Dict[str, Any]]:
-    measurements = list_inbody_measurements(external_id, limit=1)
-    return measurements[0] if measurements else None
